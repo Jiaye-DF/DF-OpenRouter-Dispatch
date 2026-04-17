@@ -5,7 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ProjectCreateRequest(BaseModel):
     department_uid: UUID
-    code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=128)
     description: str | None = None
 

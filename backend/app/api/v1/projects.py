@@ -7,6 +7,7 @@ from app.core.audit import write_audit
 from app.core.deps import AdminDep, ClientIpDep, DbDep, UserDep
 from app.core.exceptions import AppError
 from app.core.response import success_response
+from app.core.snowflake import generate_id_str
 from app.models.project import Project
 from app.repositories.department import DepartmentRepository
 from app.repositories.project import ProjectRepository
@@ -21,7 +22,7 @@ async def list_projects(
     actor: UserDep,
     db: DbDep,
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
+    size: int = Query(20, ge=1, le=200),
     department_uid: UUID | None = None,
 ):
     repo = ProjectRepository(db)
@@ -48,15 +49,13 @@ async def create_project(
     dept_repo = DepartmentRepository(db)
     dept = await dept_repo.get_by_uid(body.department_uid)
     if dept is None or not dept.is_active:
-        raise AppError("invalid_input", code=400)
+        raise AppError("department_not_found", code=400)
     repo = ProjectRepository(db)
-    dup = await repo.get_by_dept_code(body.department_uid, body.code)
-    if dup is not None:
-        raise AppError("code_conflict", code=409)
+    # code 由後端以 Snowflake ID 產生；全域唯一，無需撞名檢查
     row = Project(
         project_uid=UUID(str(uuid7())),
         department_uid=body.department_uid,
-        code=body.code,
+        code=generate_id_str(),
         name=body.name,
         description=body.description,
     )

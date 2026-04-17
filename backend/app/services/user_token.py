@@ -24,10 +24,10 @@ async def generate_token(
     if user is None or user.is_deleted or not user.is_active:
         raise AppError("not_found", code=404)
     if user.department_uid is None:
-        raise AppError("invalid_input", code=400)
+        raise AppError("user_no_department", code=400)
     dept = await dept_repo.get_by_uid(user.department_uid)
     if dept is None:
-        raise AppError("invalid_input", code=400)
+        raise AppError("user_department_missing", code=400)
 
     issued_at = datetime.now(tz=UTC)
     payload = {

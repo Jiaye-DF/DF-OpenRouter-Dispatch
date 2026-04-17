@@ -21,7 +21,7 @@ async def create_openrouter_key(
     dept_repo = DepartmentRepository(db)
     dept = await dept_repo.get_by_uid(department_uid)
     if dept is None or not dept.is_active:
-        raise AppError("invalid_input", code=400)
+        raise AppError("department_not_found", code=400)
 
     ciphertext = encrypt_bytes(raw_key.encode("utf-8"))
     prefix = raw_key[:4] if len(raw_key) >= 4 else raw_key

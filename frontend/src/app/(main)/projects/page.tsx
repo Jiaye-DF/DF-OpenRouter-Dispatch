@@ -74,7 +74,7 @@ export default function ProjectsPage() {
       setDepts(deptList.items);
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "載入失敗", message: err.detail });
+        showDialog({ type: "error", title: "載入失敗", message: err.localizedDetail });
       }
     } finally {
       setLoading(false);
@@ -104,35 +104,45 @@ export default function ProjectsPage() {
   };
 
   const onSave = async () => {
-    if (!form.department_uid || !form.code.trim() || !form.name.trim()) {
+    if (!form.name.trim()) {
       showDialog({
         type: "warning",
         title: "欄位未填",
-        message: "部門、代碼、名稱為必填",
+        message: "請輸入專案名稱",
+      });
+      return;
+    }
+    if (!form.project_uid && !form.department_uid) {
+      showDialog({
+        type: "warning",
+        title: "欄位未填",
+        message: "請選擇所屬部門",
       });
       return;
     }
     setSaving(true);
     try {
-      const payload = {
-        department_uid: form.department_uid,
-        code: form.code.trim(),
-        name: form.name.trim(),
-        description: form.description.trim() || null,
-      };
       if (form.project_uid) {
-        await apiClient.patch(
-          API_ENDPOINTS.projectById(form.project_uid),
-          payload
-        );
+        // 編輯：部門與代碼建立後不可改
+        await apiClient.patch(API_ENDPOINTS.projectById(form.project_uid), {
+          name: form.name.trim(),
+          description: form.description.trim() || null,
+        });
       } else {
-        await apiClient.post(API_ENDPOINTS.projects, payload);
+        // 新增：代碼由後端以 Snowflake ID 自動產生
+        await apiClient.post(API_ENDPOINTS.projects, {
+          department_uid: form.department_uid,
+          name: form.name.trim(),
+          description: form.description.trim() || null,
+        });
       }
       setDialogOpen(false);
-      load();
+      setForm(EMPTY_FORM);
+      setPage(1);
+      await load();
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "儲存失敗", message: err.detail });
+        showDialog({ type: "error", title: "儲存失敗", message: err.localizedDetail });
       }
     } finally {
       setSaving(false);
@@ -155,7 +165,7 @@ export default function ProjectsPage() {
       load();
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "刪除失敗", message: err.detail });
+        showDialog({ type: "error", title: "刪除失敗", message: err.localizedDetail });
       }
     }
   };
@@ -277,14 +287,22 @@ export default function ProjectsPage() {
           </DialogHeader>
           <div className="flex flex-col gap-4 pt-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="proj-dept">所屬部門</Label>
+              <Label htmlFor="proj-dept">
+                所屬部門
+                {form.project_uid && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    （建立後不可修改）
+                  </span>
+                )}
+              </Label>
               <select
                 id="proj-dept"
-                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 hover:cursor-pointer"
+                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 hover:cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
                 value={form.department_uid}
                 onChange={(e) =>
                   setForm({ ...form, department_uid: e.target.value })
                 }
+                disabled={!!form.project_uid}
               >
                 {depts.map((d) => (
                   <option key={d.department_uid} value={d.department_uid}>
@@ -293,15 +311,23 @@ export default function ProjectsPage() {
                 ))}
               </select>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="proj-code">代碼</Label>
-              <Input
-                id="proj-code"
-                value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value })}
-                placeholder="例：ORD-ANALYTICS"
-              />
-            </div>
+            {form.project_uid && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="proj-code">
+                  代碼
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    （建立時由系統自動產生，不可修改）
+                  </span>
+                </Label>
+                <Input
+                  id="proj-code"
+                  value={form.code}
+                  placeholder=""
+                  disabled
+                  readOnly
+                />
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="proj-name">名稱</Label>
               <Input

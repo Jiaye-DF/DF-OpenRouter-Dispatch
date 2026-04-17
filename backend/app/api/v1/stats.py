@@ -61,9 +61,9 @@ async def by_department(
             department_uid=r[0],
             department_code=r[1],
             department_name=r[2],
-            requests=r[3],
-            tokens=r[4],
-            cost_usd=r[5],
+            total_requests=r[3],
+            total_tokens=r[4],
+            total_cost_usd=r[5],
         )
         for r in rows
     ]
@@ -88,11 +88,11 @@ async def by_model(
     items = [
         ModelStatItem(
             model=r[0],
-            requests=r[1],
+            total_requests=r[1],
             prompt_tokens=r[2],
             completion_tokens=r[3],
-            tokens=r[4],
-            cost_usd=r[5],
+            total_tokens=r[4],
+            total_cost_usd=r[5],
         )
         for r in rows
     ]
@@ -119,7 +119,13 @@ async def timeseries(
         granularity=granularity,
     )
     items = [
-        TimeseriesPoint(bucket=r[0], requests=r[1], tokens=r[2], cost_usd=r[3]) for r in rows
+        TimeseriesPoint(
+            bucket=r[0],
+            total_requests=r[1],
+            total_tokens=r[2],
+            total_cost_usd=r[3],
+        )
+        for r in rows
     ]
     return success_response(
         data=[x.model_dump(mode="json") for x in items], detail="success"

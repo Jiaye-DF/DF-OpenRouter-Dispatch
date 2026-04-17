@@ -54,6 +54,10 @@ async def login(
         await db.commit()
         raise AppError("invalid_credentials", code=401)
 
+    # 僅 admin 可登入平台；一般使用者只作為 SDK 代理呼叫的身分識別。
+    if user.role != "admin":
+        raise AppError("invalid_credentials", code=401)
+
     user.failed_login_count = 0
     user.locked_until = None
 
@@ -159,30 +163,6 @@ async def logout(db: AsyncSession, *, refresh_cookie: str | None) -> None:
     if row is None or row.revoked_at is not None:
         return
     await rt_repo.revoke(row, now=datetime.now(tz=UTC))
-    await db.commit()
-
-
-async def change_password(
-    db: AsyncSession,
-    *,
-    user_uid: UUID,
-    old_password: str,
-    new_password: str,
-) -> None:
-    repo = UserRepository(db)
-    rt_repo = RefreshTokenRepository(db)
-    user = await repo.get_by_uid(user_uid)
-    if user is None or user.is_deleted or not user.is_active:
-        raise AppError("unauthorized", code=401)
-    if not verify_password(old_password, user.password_hash):
-        raise AppError("invalid_credentials", code=400)
-    validate_password(new_password)
-    if verify_password(new_password, user.password_hash):
-        raise AppError("password_reused", code=400)
-    now = datetime.now(tz=UTC)
-    user.password_hash = hash_password(new_password)
-    user.password_changed_at = now
-    await rt_repo.revoke_all_for_user(user.user_uid, now=now)
     await db.commit()
 
 

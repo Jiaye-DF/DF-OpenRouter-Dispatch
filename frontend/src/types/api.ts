@@ -127,6 +127,7 @@ export interface StatsByModel {
 
 export interface StatsTimeseriesPoint {
   bucket: string;
+  total_requests: number;
   total_tokens: number;
   total_cost_usd: string;
 }

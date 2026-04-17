@@ -69,7 +69,7 @@ export default function OpenRouterKeysPage() {
       setDepts(deptList.items);
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "載入失敗", message: err.detail });
+        showDialog({ type: "error", title: "載入失敗", message: err.localizedDetail });
       }
     } finally {
       setLoading(false);
@@ -134,7 +134,7 @@ export default function OpenRouterKeysPage() {
         load();
       } catch (err) {
         if (err instanceof ApiError) {
-          showDialog({ type: "error", title: "建立失敗", message: err.detail });
+          showDialog({ type: "error", title: "建立失敗", message: err.localizedDetail });
         }
       } finally {
         setSaving(false);
@@ -150,7 +150,7 @@ export default function OpenRouterKeysPage() {
         load();
       } catch (err) {
         if (err instanceof ApiError) {
-          showDialog({ type: "error", title: "儲存失敗", message: err.detail });
+          showDialog({ type: "error", title: "儲存失敗", message: err.localizedDetail });
         }
       } finally {
         setSaving(false);
@@ -166,7 +166,7 @@ export default function OpenRouterKeysPage() {
       load();
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "操作失敗", message: err.detail });
+        showDialog({ type: "error", title: "操作失敗", message: err.localizedDetail });
       }
     }
   };
@@ -187,7 +187,7 @@ export default function OpenRouterKeysPage() {
       load();
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "刪除失敗", message: err.detail });
+        showDialog({ type: "error", title: "刪除失敗", message: err.localizedDetail });
       }
     }
   };

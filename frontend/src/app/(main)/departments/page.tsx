@@ -62,7 +62,7 @@ export default function DepartmentsPage() {
       setTotal(data.total);
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "載入失敗", message: err.detail });
+        showDialog({ type: "error", title: "載入失敗", message: err.localizedDetail });
       }
     } finally {
       setLoading(false);
@@ -88,34 +88,47 @@ export default function DepartmentsPage() {
   };
 
   const onSave = async () => {
-    if (!form.code.trim() || !form.name.trim()) {
+    if (!form.name.trim()) {
       showDialog({
         type: "warning",
         title: "欄位未填",
-        message: "請輸入部門代碼與名稱",
+        message: "請輸入部門名稱",
+      });
+      return;
+    }
+    if (!form.department_uid && !form.code.trim()) {
+      showDialog({
+        type: "warning",
+        title: "欄位未填",
+        message: "請輸入部門代碼",
       });
       return;
     }
     setSaving(true);
     try {
-      const payload = {
-        code: form.code.trim(),
-        name: form.name.trim(),
-        description: form.description.trim() || null,
-      };
       if (form.department_uid) {
+        // 編輯：code 建立後不可改
         await apiClient.patch(
           API_ENDPOINTS.departmentById(form.department_uid),
-          payload
+          {
+            name: form.name.trim(),
+            description: form.description.trim() || null,
+          }
         );
       } else {
-        await apiClient.post(API_ENDPOINTS.departments, payload);
+        await apiClient.post(API_ENDPOINTS.departments, {
+          code: form.code.trim(),
+          name: form.name.trim(),
+          description: form.description.trim() || null,
+        });
       }
       setDialogOpen(false);
-      load();
+      setForm(EMPTY_FORM);
+      setPage(1);
+      await load();
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "儲存失敗", message: err.detail });
+        showDialog({ type: "error", title: "儲存失敗", message: err.localizedDetail });
       }
     } finally {
       setSaving(false);
@@ -138,7 +151,7 @@ export default function DepartmentsPage() {
       load();
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "刪除失敗", message: err.detail });
+        showDialog({ type: "error", title: "刪除失敗", message: err.localizedDetail });
       }
     }
   };
@@ -263,12 +276,21 @@ export default function DepartmentsPage() {
           </DialogHeader>
           <div className="flex flex-col gap-4 pt-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="dept-code">代碼</Label>
+              <Label htmlFor="dept-code">
+                代碼
+                {form.department_uid && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    （建立後不可修改）
+                  </span>
+                )}
+              </Label>
               <Input
                 id="dept-code"
                 value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value })}
                 placeholder="例：T000"
+                disabled={!!form.department_uid}
+                readOnly={!!form.department_uid}
               />
             </div>
             <div className="flex flex-col gap-1.5">

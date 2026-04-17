@@ -51,7 +51,7 @@ export default function UsageLogsPage() {
       setTotal(data.total);
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "載入失敗", message: err.detail });
+        showDialog({ type: "error", title: "載入失敗", message: err.localizedDetail });
       }
     } finally {
       setLoading(false);

@@ -26,7 +26,7 @@ async def list_departments(
     actor: UserDep,
     db: DbDep,
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
+    size: int = Query(20, ge=1, le=200),
 ):
     repo = DepartmentRepository(db)
     only = None if actor.is_admin else actor.department_uid

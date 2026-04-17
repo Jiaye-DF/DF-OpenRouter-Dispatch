@@ -27,7 +27,7 @@ async def list_usage_logs(
     actor: UserDep,
     db: DbDep,
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
+    size: int = Query(20, ge=1, le=200),
     department_uid: UUID | None = None,
     user_uid: UUID | None = None,
     model: str | None = None,

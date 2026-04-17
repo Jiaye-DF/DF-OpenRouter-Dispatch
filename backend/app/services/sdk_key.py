@@ -33,7 +33,7 @@ async def create_sdk_key(
     dept_repo = DepartmentRepository(db)
     dept = await dept_repo.get_by_uid(department_uid)
     if dept is None or not dept.is_active:
-        raise AppError("invalid_input", code=400)
+        raise AppError("department_not_found", code=400)
 
     full, prefix = _gen_sdk_key()
     row = SdkApiKey(

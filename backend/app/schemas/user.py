@@ -8,9 +8,11 @@ _ACCOUNT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 class UserCreateRequest(BaseModel):
-    account: str = Field(min_length=4, max_length=64)
+    # 一般使用者（role="user"）不在平台登入，account/password 由後端自動產生；
+    # 僅 role="admin" 需要 admin 指定 account + password。
+    account: str | None = Field(default=None, min_length=4, max_length=64)
     username: str = Field(min_length=1, max_length=128)
-    password: str = Field(min_length=10, max_length=128)
+    password: str | None = Field(default=None, min_length=10, max_length=128)
     role: Literal["admin", "user"] = "user"
     department_uid: UUID | None = None
     employee_id: str | None = Field(default=None, max_length=32)
@@ -18,7 +20,9 @@ class UserCreateRequest(BaseModel):
 
     @field_validator("account")
     @classmethod
-    def _account_pattern(cls, v: str) -> str:
+    def _account_pattern(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
         if not _ACCOUNT_RE.fullmatch(v):
             raise ValueError("account 只能包含英數字與 . _ -")
         return v

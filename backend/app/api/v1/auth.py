@@ -6,7 +6,7 @@ from app.core.config import get_settings
 from app.core.deps import ClientIpDep, DbDep, UserDep
 from app.core.response import success_response
 from app.schemas.actor import Actor
-from app.schemas.auth import LoginRequest, PasswordChangeRequest
+from app.schemas.auth import LoginRequest
 from app.services import auth as auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -102,20 +102,3 @@ async def logout(request: Request, db: DbDep):
 @router.get("/me", summary="回傳當前登入 Actor")
 async def me(actor: UserDep):
     return success_response(data=actor.model_dump(mode="json"), detail="success")
-
-
-@router.post("/password", summary="自行修改密碼")
-async def change_password(
-    body: PasswordChangeRequest,
-    actor: UserDep,
-    db: DbDep,
-):
-    await auth_service.change_password(
-        db,
-        user_uid=actor.user_uid,
-        old_password=body.old_password,
-        new_password=body.new_password,
-    )
-    resp = success_response(detail="success")
-    _clear_cookies(resp)
-    return resp

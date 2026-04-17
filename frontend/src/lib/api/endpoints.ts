@@ -6,7 +6,6 @@ export const API_ENDPOINTS = {
   refresh: "/api/v1/auth/refresh",
   logout: "/api/v1/auth/logout",
   me: "/api/v1/auth/me",
-  changePassword: "/api/v1/auth/password",
 
   // 使用者（admin）
   users: "/api/v1/users",

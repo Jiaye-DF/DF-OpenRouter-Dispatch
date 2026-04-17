@@ -9,7 +9,6 @@ import {
   FolderKanban,
   KeyRound,
   LayoutDashboard,
-  Lock,
   ScrollText,
   Users,
 } from "lucide-react";
@@ -37,7 +36,6 @@ const NAV_ITEMS: NavItem[] = [
   },
   { href: "/sdk-keys", label: "SDK Keys", icon: KeyRound, adminOnly: true },
   { href: "/usage-logs", label: "用量紀錄", icon: ScrollText },
-  { href: "/settings/password", label: "修改密碼", icon: Lock },
 ];
 
 export function Sidebar() {

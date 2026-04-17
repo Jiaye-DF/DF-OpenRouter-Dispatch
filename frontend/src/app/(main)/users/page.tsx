@@ -26,23 +26,22 @@ import { API_ENDPOINTS } from "@/lib/api/endpoints";
 import type { Department, Paginated, User } from "@/types/api";
 import { useAppSelector } from "@/store/hooks";
 
-// 僅 admin 可見：使用者管理（建立 / 重設密碼 / 產生 Token / 撤銷 Token）
+// 僅 admin 可見：使用者管理
+// 一般使用者（role=user）不在平台登入，僅作為 SDK 代理呼叫的身分識別；
+// 因此建立時只輸入顯示姓名 / 部門 / 員工編號 / Email；帳號與密碼由後端自動產生。
+
+const EMAIL_SUFFIX = "@df-recycle.com";
+const EMAIL_LOCAL_RE = /^[A-Za-z0-9._%+-]+$/;
 
 interface CreateForm {
-  account: string;
   username: string;
-  password: string;
-  role: "admin" | "user";
   department_uid: string;
   employee_id: string;
   email: string;
 }
 
 const EMPTY_CREATE: CreateForm = {
-  account: "",
   username: "",
-  password: "",
-  role: "user",
   department_uid: "",
   employee_id: "",
   email: "",
@@ -91,7 +90,11 @@ export default function UsersPage() {
       setDepts(deptList.items);
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "載入失敗", message: err.detail });
+        showDialog({
+          type: "error",
+          title: "載入失敗",
+          message: err.localizedDetail,
+        });
       }
     } finally {
       setLoading(false);
@@ -120,32 +123,67 @@ export default function UsersPage() {
 
   const onCreate = async () => {
     const f = createForm;
-    if (f.account.length < 4 || f.username.length < 1 || f.password.length < 10) {
+    if (!f.username.trim()) {
       showDialog({
         type: "warning",
-        title: "欄位錯誤",
-        message: "帳號 ≥ 4、名稱 ≥ 1、密碼 ≥ 10 字元",
+        title: "欄位未填",
+        message: "請輸入姓名",
+      });
+      return;
+    }
+    if (!f.department_uid) {
+      showDialog({
+        type: "warning",
+        title: "欄位未填",
+        message: "請選擇部門（產生 Token 時必要）",
+      });
+      return;
+    }
+    if (!f.employee_id.trim()) {
+      showDialog({
+        type: "warning",
+        title: "欄位未填",
+        message: "請輸入員工編號",
+      });
+      return;
+    }
+    const emailLocal = f.email.trim();
+    if (!emailLocal) {
+      showDialog({
+        type: "warning",
+        title: "欄位未填",
+        message: "請輸入 Email 前綴",
+      });
+      return;
+    }
+    if (!EMAIL_LOCAL_RE.test(emailLocal)) {
+      showDialog({
+        type: "warning",
+        title: "Email 格式錯誤",
+        message: "前綴僅能包含英數字與 . _ % + -",
       });
       return;
     }
     setSaving(true);
     try {
-      const payload = {
-        account: f.account,
-        username: f.username,
-        password: f.password,
-        role: f.role,
-        department_uid: f.department_uid || null,
-        employee_id: f.employee_id || null,
-        email: f.email || null,
-      };
-      await apiClient.post(API_ENDPOINTS.users, payload);
+      await apiClient.post(API_ENDPOINTS.users, {
+        username: f.username.trim(),
+        role: "user",
+        department_uid: f.department_uid,
+        employee_id: f.employee_id.trim(),
+        email: `${emailLocal}${EMAIL_SUFFIX}`,
+      });
       setMode(null);
       setCreateForm(EMPTY_CREATE);
-      load();
+      setPage(1);
+      await load();
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "建立失敗", message: err.detail });
+        showDialog({
+          type: "error",
+          title: "建立失敗",
+          message: err.localizedDetail,
+        });
       }
     } finally {
       setSaving(false);
@@ -164,10 +202,9 @@ export default function UsersPage() {
     }
     setSaving(true);
     try {
-      await apiClient.post(
-        API_ENDPOINTS.resetUserPassword(mode.user.user_uid),
-        { new_password: resetPwd }
-      );
+      await apiClient.post(API_ENDPOINTS.resetUserPassword(mode.user.user_uid), {
+        new_password: resetPwd,
+      });
       setRevealTitle("新密碼（請立即複製）");
       setRevealValue(resetPwd);
       setRevealOpen(true);
@@ -175,7 +212,11 @@ export default function UsersPage() {
       setResetPwd("");
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "重設失敗", message: err.detail });
+        showDialog({
+          type: "error",
+          title: "重設失敗",
+          message: err.localizedDetail,
+        });
       }
     } finally {
       setSaving(false);
@@ -190,11 +231,15 @@ export default function UsersPage() {
         {}
       );
       setRevealTitle(`${user.username} 的 User Token`);
-      setRevealValue(data?.token ?? "(後端未回傳 token 欄位)");
+      setRevealValue(data?.token ?? "");
       setRevealOpen(true);
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "產生失敗", message: err.detail });
+        showDialog({
+          type: "error",
+          title: "產生失敗",
+          message: err.localizedDetail,
+        });
       }
     } finally {
       setSaving(false);
@@ -210,13 +255,16 @@ export default function UsersPage() {
     });
     if (!ok) return;
     try {
-      await apiClient.post(
-        API_ENDPOINTS.revokeUserTokens(user.user_uid),
-        { reason: "admin_revoke" }
-      );
+      await apiClient.post(API_ENDPOINTS.revokeUserTokens(user.user_uid), {
+        reason: "admin_revoke",
+      });
     } catch (err) {
       if (err instanceof ApiError) {
-        showDialog({ type: "error", title: "撤銷失敗", message: err.detail });
+        showDialog({
+          type: "error",
+          title: "撤銷失敗",
+          message: err.localizedDetail,
+        });
       }
     }
   };
@@ -227,7 +275,7 @@ export default function UsersPage() {
     <>
       <PageTitle
         title="使用者管理"
-        description="建立使用者、重設密碼、產生或撤銷 User Token"
+        description="建立使用者、產生或撤銷 User Token"
         actions={
           <Button onClick={() => setMode({ kind: "create" })}>
             <Plus className="h-4 w-4" />
@@ -249,8 +297,8 @@ export default function UsersPage() {
             <Table>
               <THead>
                 <TR>
-                  <TH>帳號</TH>
-                  <TH>名稱</TH>
+                  <TH>姓名</TH>
+                  <TH>員工編號</TH>
                   <TH>角色</TH>
                   <TH>部門</TH>
                   <TH>Email</TH>
@@ -261,10 +309,14 @@ export default function UsersPage() {
               <TBody>
                 {items.map((u) => (
                   <TR key={u.user_uid}>
-                    <TD className="font-mono">{u.account}</TD>
                     <TD>{u.username}</TD>
+                    <TD className="font-mono text-muted-foreground">
+                      {u.employee_id ?? "-"}
+                    </TD>
                     <TD>
-                      <Badge variant={u.role === "admin" ? "default" : "secondary"}>
+                      <Badge
+                        variant={u.role === "admin" ? "default" : "secondary"}
+                      >
                         {u.role}
                       </Badge>
                     </TD>
@@ -277,30 +329,36 @@ export default function UsersPage() {
                     </TD>
                     <TD className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="重設密碼"
-                          onClick={() => setMode({ kind: "reset", user: u })}
-                        >
-                          <KeyRound className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="產生 Token"
-                          onClick={() => onGenToken(u)}
-                        >
-                          <Ticket className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="撤銷 Token"
-                          onClick={() => onRevokeToken(u)}
-                        >
-                          <ShieldOff className="h-4 w-4 text-destructive" />
-                        </Button>
+                        {u.role === "admin" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="重設密碼"
+                            onClick={() => setMode({ kind: "reset", user: u })}
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {u.role === "user" && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="產生 Token"
+                              onClick={() => onGenToken(u)}
+                            >
+                              <Ticket className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="撤銷 Token"
+                              onClick={() => onRevokeToken(u)}
+                            >
+                              <ShieldOff className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </TD>
                   </TR>
@@ -347,84 +405,60 @@ export default function UsersPage() {
             <DialogTitle>建立使用者</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-3 pt-4">
-            <FormField label="帳號（account）">
-              <Input
-                value={createForm.account}
-                onChange={(e) =>
-                  setCreateForm({ ...createForm, account: e.target.value })
-                }
-              />
-            </FormField>
-            <FormField label="名稱（username）">
+            <p className="text-xs text-muted-foreground">
+              一般使用者僅作為 SDK 呼叫的身分識別,無法登入平台。
+            </p>
+            <FormField label="姓名">
               <Input
                 value={createForm.username}
                 onChange={(e) =>
                   setCreateForm({ ...createForm, username: e.target.value })
                 }
+                placeholder="顯示用姓名"
               />
             </FormField>
-            <FormField label="首次密碼">
-              <Input
-                type="password"
-                value={createForm.password}
+            <FormField label="部門">
+              <select
+                value={createForm.department_uid}
                 onChange={(e) =>
-                  setCreateForm({ ...createForm, password: e.target.value })
+                  setCreateForm({
+                    ...createForm,
+                    department_uid: e.target.value,
+                  })
                 }
-              />
+                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
+              >
+                <option value="">（請選擇）</option>
+                {depts.map((d) => (
+                  <option key={d.department_uid} value={d.department_uid}>
+                    {d.name}（{d.code}）
+                  </option>
+                ))}
+              </select>
             </FormField>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="角色">
-                <select
-                  value={createForm.role}
-                  onChange={(e) =>
-                    setCreateForm({
-                      ...createForm,
-                      role: e.target.value as "admin" | "user",
-                    })
-                  }
-                  className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
-                >
-                  <option value="user">user</option>
-                  <option value="admin">admin</option>
-                </select>
-              </FormField>
-              <FormField label="部門">
-                <select
-                  value={createForm.department_uid}
-                  onChange={(e) =>
-                    setCreateForm({
-                      ...createForm,
-                      department_uid: e.target.value,
-                    })
-                  }
-                  className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
-                >
-                  <option value="">（未指定）</option>
-                  {depts.map((d) => (
-                    <option key={d.department_uid} value={d.department_uid}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-            </div>
             <FormField label="員工編號">
               <Input
                 value={createForm.employee_id}
                 onChange={(e) =>
                   setCreateForm({ ...createForm, employee_id: e.target.value })
                 }
-                placeholder="選填，SDK Token payload 使用"
+                placeholder="User Token payload 使用"
               />
             </FormField>
             <FormField label="Email">
-              <Input
-                value={createForm.email}
-                onChange={(e) =>
-                  setCreateForm({ ...createForm, email: e.target.value })
-                }
-                placeholder="選填，SDK Token payload 使用"
-              />
+              <div className="flex items-stretch rounded-xl border border-border bg-background overflow-hidden focus-within:ring-2 focus-within:ring-ring">
+                <input
+                  value={createForm.email}
+                  onChange={(e) =>
+                    setCreateForm({ ...createForm, email: e.target.value })
+                  }
+                  placeholder="員工帳號前綴"
+                  className="h-10 flex-1 min-w-0 bg-transparent px-3 text-sm outline-none"
+                />
+                <span className="flex items-center px-3 text-sm text-muted-foreground bg-muted/40 border-l border-border select-none">
+                  {EMAIL_SUFFIX}
+                </span>
+              </div>
             </FormField>
           </div>
           <DialogFooter>
@@ -442,7 +476,7 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 重設密碼 */}
+      {/* 重設密碼（僅 admin 用戶） */}
       <Dialog
         open={mode?.kind === "reset"}
         onOpenChange={(o) => !o && setMode(null)}
@@ -462,7 +496,7 @@ export default function UsersPage() {
               />
             </FormField>
             <p className="text-xs text-muted-foreground">
-              送出後會顯示明文一次，請以帶外管道交付使用者。
+              送出後會顯示明文一次,請以帶外管道交付使用者。
             </p>
           </div>
           <DialogFooter>
@@ -488,7 +522,7 @@ export default function UsersPage() {
           </DialogHeader>
           <div className="flex flex-col gap-3 pt-4">
             <p className="text-sm text-destructive">
-              請立即複製，關閉後無法再取得。
+              請立即複製,關閉後無法再取得。
             </p>
             <div className="rounded-xl border border-border bg-muted/40 p-3 font-mono text-sm break-all">
               {revealValue}

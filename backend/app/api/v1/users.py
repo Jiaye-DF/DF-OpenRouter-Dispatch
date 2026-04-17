@@ -1,3 +1,4 @@
+import secrets
 from uuid import UUID
 
 from fastapi import APIRouter, Query
@@ -20,6 +21,11 @@ from app.schemas.user import (
 from app.services import auth as auth_service
 from app.services.password_policy import validate_password
 
+
+def _gen_internal_account() -> str:
+    """為 role=user 的內部使用者產生不可登入的合成帳號。"""
+    return f"usr_{secrets.token_hex(12)}"
+
 router = APIRouter(prefix="/users", tags=["users"])
 
 
@@ -28,7 +34,7 @@ async def list_users(
     admin: AdminDep,
     db: DbDep,
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
+    size: int = Query(20, ge=1, le=200),
     department_uid: UUID | None = None,
 ):
     repo = UserRepository(db)
@@ -49,17 +55,32 @@ async def create_user(
     db: DbDep,
     ip: ClientIpDep,
 ):
-    validate_password(body.password)
     repo = UserRepository(db)
-    existing = await repo.get_by_account(body.account)
+
+    # admin 需明確指定 account/password；user 由後端自動產生（不可登入）
+    if body.role == "admin":
+        if not body.account or not body.password:
+            raise AppError("admin_requires_credentials", code=400)
+        validate_password(body.password)
+        account = body.account
+        password_hash = hash_password(body.password)
+    else:
+        # role=user 為 SDK 代理身分；員工編號 / Email 為 User Token payload 必要欄位
+        if not body.employee_id or not body.email:
+            raise AppError("user_requires_identity", code=400)
+        account = _gen_internal_account()
+        # 隨機長密碼 hash；無人知道，確保 role=user 無法以密碼登入
+        password_hash = hash_password(secrets.token_urlsafe(32))
+
+    existing = await repo.get_by_account(account)
     if existing is not None:
         raise AppError("account_taken", code=400)
 
     user = User(
         user_uid=UUID(str(uuid7())),
-        account=body.account,
+        account=account,
         username=body.username,
-        password_hash=hash_password(body.password),
+        password_hash=password_hash,
         role=body.role,
         department_uid=body.department_uid,
         employee_id=body.employee_id,

@@ -74,8 +74,8 @@ services:
       - INITIAL_ADMIN_USERNAME=${INITIAL_ADMIN_USERNAME}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
       - OPENROUTER_API_BASE_URL=${OPENROUTER_API_BASE_URL}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENROUTER_API_TIMEOUT=${OPENROUTER_API_TIMEOUT}
+      - ALLOWED_MODELS=${ALLOWED_MODELS}
     expose:
       - "8000"
     depends_on:
@@ -120,7 +120,7 @@ volumes:
 | 本機開發 | 專案根目錄 `.env`（由 `.env.example` 複製填寫） |
 | Coolify 部署 | **Coolify 後台 Environment Variables**；`.env` **禁止**上傳至正式環境 |
 
-- 敏感資訊（`OPENROUTER_API_KEY`、`JWT_SECRET`、`ENCRYPTION_KEY`、`INITIAL_ADMIN_PASSWORD`、`POSTGRES_PASSWORD`）一律於 Coolify 後台填寫。
+- 敏感資訊（`JWT_SECRET`、`ENCRYPTION_KEY`、`INITIAL_ADMIN_PASSWORD`、`POSTGRES_PASSWORD`）一律於 Coolify 後台填寫。OpenRouter 原生 API Key **不**以環境變數注入，改由 admin 於後台建立部門層級 Key（AES-256-GCM 加密存 DB）。
 - `SERVICE_URL_*` 變數無需手動填值，Coolify 於部署時自動注入對應公開網址。
 - 環境變數新增流程詳見 [60-naming-env.md](./60-naming-env.md)。
 

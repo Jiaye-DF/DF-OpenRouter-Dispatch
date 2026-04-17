@@ -4,7 +4,7 @@
 
 > **本平台為 admin 後台管理系統**，**禁止**任何自助流程（註冊 / 忘記密碼 / Email 驗證）。所有帳號生命週期由 admin 於後台操作。
 
-> 代理端（`/api/v1/proxy/*`）**不**套用本文件，改以 `ord_*` 本地金鑰認證，詳見 [50-openrouter.md](./50-openrouter.md) 與 [80-permission.md § 1](./80-permission.md#1-主體類型)。
+> 代理端（`/api/v1/model/openrouter/*`）**不**套用本文件，改以 **SDK Key + 加密 User Token** 雙因子認證，詳見 [50-openrouter.md § 3](./50-openrouter.md#3-本地認證sdk-key--user-token-雙因子) 與 [80-permission.md § 1](./80-permission.md#1-主體類型)。
 
 ## 1. 核心原則
 

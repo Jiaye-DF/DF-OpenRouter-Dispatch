@@ -1,14 +1,14 @@
 # 50 · OpenRouter 整合
 
-本文件定義後端作為 OpenRouter API 代理層的整合規範：API Key 管理、路由策略、錯誤處理、重試、串流、用量與稽核。
+本文件定義後端作為 OpenRouter API 代理層的整合規範：OpenRouter Key 管理、代理認證（SDK Key + User Token 雙因子）、路由策略、錯誤處理、重試、用量與稽核。
 
 > OpenRouter 官方文件：https://openrouter.ai/docs
 
 ## 1. 代理原則
 
 - **後端為唯一出口**：所有對 OpenRouter 的呼叫**必須**經由 `backend/app/clients/openrouter/`，**禁止**前端或其他服務直連。
-- **API Key 僅存後端**：OpenRouter 的 API Key 透過環境變數 `OPENROUTER_API_KEY` 注入，或加密後寫入 DB。**禁止**在 Response、Log、前端程式碼中出現。
-- **使用者不持有 OpenRouter Key**：本平台對使用者發放的是**本地金鑰**（詳見 § 3），由本平台在後端換發 OpenRouter 呼叫；使用者**永遠無法**取得 OpenRouter 原生 Key。
+- **OpenRouter Key 僅存後端**：OpenRouter 原生 API Key 以 **AES-256-GCM** 加密後存於 `openrouter_keys.key_ciphertext`，解密金鑰為 `ENCRYPTION_KEY`。**禁止**在 Response、Log、前端程式碼中出現明文。
+- **使用者不持有 OpenRouter Key**：本平台對使用者發放的是 **SDK Key + 加密 User Token** 雙因子憑證（見 § 3），由後端換發 OpenRouter 呼叫；使用者**永遠無法**取得 OpenRouter 原生 Key。
 
 ## 2. Client 結構
 
@@ -23,9 +23,9 @@ backend/app/clients/openrouter/
 **Client 職責：**
 
 - 包裝 HTTP 呼叫（chat completions、models list、generation metadata 查詢）。
-- 注入 `Authorization: Bearer ${OPENROUTER_API_KEY}` 與必要 Header（例如 `HTTP-Referer`、`X-Title`）。
+- 注入 `Authorization: Bearer <解密後 OpenRouter Key>` 與必要 Header（例如 `HTTP-Referer`、`X-Title`）。
 - 統一處理逾時、重試、錯誤分類。
-- **禁止**在 Client 層決定業務規則（配額、白名單、模型改寫），這屬於 service 層的職責。
+- **禁止**在 Client 層決定業務規則（部門別、白名單、模型改寫、Key 選擇），這屬於 service 層的職責。
 
 **依賴注入：**
 
@@ -36,43 +36,75 @@ async def get_openrouter_client() -> OpenRouterClient: ...
 
 所有 service **必須**透過 `Depends(get_openrouter_client)` 取得 Client，**禁止**自行 `httpx.AsyncClient()`。
 
-## 3. 本地金鑰（Local API Key）
+## 3. 本地認證（SDK Key + User Token 雙因子）
 
-- 本平台對使用者發放自有金鑰（格式建議 `ord_<prefix>_<random>`，例：`ord_live_Ab3...`）。
-- 金鑰於建立時回傳一次明文，其後 DB 僅保留 **hash** 與 **prefix**；**禁止**以明文寫入 DB 或 Log。
-- 每把金鑰綁定：
-  - 擁有者（`user_uid`）
-  - 可用模型白名單（`allowed_models`，空值代表無限制、但仍受平台全域設定限制）
-  - 配額（每日 / 每月請求數、Token 數、金額上限）
-  - 啟用狀態（`is_active`）
-- 呼叫代理端點時以 `Authorization: Bearer ord_...` 帶入，後端比對 hash 後執行。
+本平台代理端採 **SDK Key + User Token 雙因子** 認證，取代過去的 `ord_*` 單一金鑰設計。兩者缺一不可，且**部門必須一致**。
+
+### 3.1 SDK Key
+
+- 以「部門」為單位核發，代表呼叫來源的部門識別與 SDK 本身可用性。
+- 一個部門可有多把 SDK Key，便於輪替與分裝（例如不同機器 / 不同環境）。
+- 明文格式建議 `ordsk_<12 字 hex>_<32 字 base62 secret>`，例 `ordsk_ab12cd34ef56_<secret>`。
+- DB 僅存 `argon2id` hash + 公開 prefix（`ordsk_<12 字 hex>`）；明文**僅於建立時一次性回應**。
+- 呼叫端以 Header `X-SDK-Key: <明文>` 送出；後端以 prefix 候選 + argon2 比對 secret。
+
+### 3.2 User Token（加密）
+
+- 以個別「使用者（員工）」為單位核發。
+- Payload 固定欄位（值取自 `users` + `departments`）：
+
+  ```json
+  {
+    "user_uid":        "<uuid>",
+    "department_uid":  "<uuid>",
+    "department_code": "T000",
+    "employee_id":     "00063",
+    "email":           "user@df-recycle.com",
+    "issued_at":       "2026-04-17T10:00:00Z"
+  }
+  ```
+
+- 加密採 **AES-256-GCM**；金鑰 = `ENCRYPTION_KEY`（32 bytes base64，`.env` 注入），nonce 12 bytes 隨機。
+- 輸出格式：`base64url(nonce || ciphertext || tag)`。
+- 由 admin 於後台 `POST /api/v1/users/{user_uid}/tokens` 產生並**一次性**顯示；admin 以帶外管道（口頭 / 即時通訊）交付使用者設定於 SDK 環境變數。
+- Token **不**落地 DB（payload 可由 `users` 重建），但**必須**提供撤銷端點寫入 `user_tokens_revocations`；驗證時以 `token.issued_at >= user.latest_revocation.revoked_issued_at` 比對。
+
+### 3.3 OpenRouter Key（後端持有）
+
+- OpenRouter 原生 API Key 綁定在一個「部門」下（見資料表 `openrouter_keys`）。
+- 同一部門**典型 3 把**（負載平衡、Rate Limit 輪替、成本歸戶）。
+- 明文以 **AES-256-GCM** 加密存於 `openrouter_keys.key_ciphertext`（`nonce||ciphertext||tag`）。
+- 建立後**禁止**再取得明文；僅回傳 `key_prefix` / `key_last4` 作識別。
+- Key 選擇策略：給定 `department_uid`，從 `is_active=TRUE AND is_deleted=FALSE` 中 **random choice**；401 時重試下一把，單次呼叫最多嘗試 N 把（N = 該部門 active key 數，上限 5）。
 
 ## 4. 呼叫流程
 
 ```
-Client (使用者應用 / 管理 UI)
-  │  Authorization: Bearer ord_...
+SDK（使用者應用）
+  │  Headers:  X-SDK-Key, X-User-Token
+  │  Body:     { model, text, images }
   ▼
-[backend] /api/v1/proxy/chat/completions
-  │  1. 驗證本地金鑰 hash → user + 配額上下文
-  │  2. 檢查模型白名單
-  │  3. 檢查配額（日 / 月 / 金額）
-  │  4. 改寫 Request（剝除敏感欄位、補 metadata）
-  │  5. 呼叫 OpenRouterClient
+[backend] POST /api/v1/model/openrouter/chat
+  │  1. 解析 X-SDK-Key → argon2 比對 sdk_api_keys → 得 department_uid (SDK)
+  │  2. 解密 X-User-Token → payload → 驗 revocation → 取 department_uid (User)
+  │  3. 若 SDK.department_uid != User.department_uid → 401 unauthorized
+  │  4. 驗 model 白名單（ALLOWED_MODELS）；超出則 403 model_forbidden
+  │  5. 依 department_uid 選一把 active openrouter_key（random）
+  │  6. 改寫 Request 為 OpenRouter chat/completions messages[].content[]
   ├───────────────────▶ OpenRouter /api/v1/chat/completions
-  │                     （Authorization: Bearer OPENROUTER_API_KEY）
-  │  6. 接收 Response / stream chunk
-  │  7. 擷取 usage（tokens、cost）並寫入 usage_logs
-  │  8. 串回 Client（維持 Response 結構；串流為 SSE）
+  │                     （Authorization: Bearer <解密後 OpenRouter Key>）
+  │  7. 取得 Response；失敗（401）則嘗試下一把 Key
+  │  8. 回 Client 後以 BackgroundTasks 寫 usage_logs
   ▼
-Client
+SDK
 ```
 
 ## 5. 代理端點規範
 
-- 路徑**必須**使用 `/api/v1/proxy/<openrouter-path>`，對應 OpenRouter 的官方 path（去掉 `/api/v1`）。
-  - 例：OpenRouter `POST /api/v1/chat/completions` → 本平台 `POST /api/v1/proxy/chat/completions`
-- Request 欄位**應**盡量與 OpenRouter 相容，以利既有 SDK（OpenAI Python、LangChain 等）切換 baseURL 後直接使用。
+- 代理端點路徑**必須**使用 `/api/v1/model/openrouter/<action>` 格式；`<action>` 為功能語意（例 `chat`），**不**直接對應 OpenRouter 原生 path。
+  - 例：模型對話 → `POST /api/v1/model/openrouter/chat`
+- Request 採**平台簡化 schema**（`{ model, text, images }`），由後端改寫為 OpenRouter 官方 `chat/completions` 格式（`messages[].content[]`）後上游送出。
+  - 本版本**不**做 OpenAI passthrough；後續版本若需擴充，得於同 `/model/openrouter/` 命名空間下新增 action。
 - 非代理端點（管理 UI 用）使用 `/api/v1/<resource>`，遵循 [20-backend.md § 3](./20-backend.md#3-路由與-api-命名)。
 
 ## 6. 請求改寫與欄位過濾
@@ -81,33 +113,36 @@ Client
 
 | 處理 | 說明 |
 | --- | --- |
-| 移除 `user` 欄位原值 | 改為本平台 `user_uid`（避免將 Client 端使用者識別直接傳給 OpenRouter） |
-| 注入 `metadata` | 加入 `{"ord_user_uid": ..., "ord_api_key_uid": ...}` 以便回溯 |
-| 剔除不允許欄位 | 由設定檔定義 `disallowed_fields`（預設含 `route`、未授權的 `provider`） |
-| 模型別名展開 | 平台可定義短別名（例 `default-fast`）對應到 OpenRouter 實際模型字串 |
+| Schema 展開 | `{ model, text, images }` → `messages:[{role:"user", content:[{type:"text", text}, {type:"image_url", image_url:{url}}]}]` |
+| 白名單檢查 | 依全域 `ALLOWED_MODELS`（逗號分隔）；為空代表不限 |
+| 影片輸入 | 本版本**禁止**（`videos` 若出現 → 400 `feature_not_supported`） |
+| 模型別名展開 | 可定義短別名對應 OpenRouter 實際模型字串（本版本不實作） |
 
 Response 回傳給 Client 前：
 
 | 處理 | 說明 |
 | --- | --- |
-| 保留 OpenRouter 原始 `id`、`choices`、`usage` | 保持 SDK 相容 |
-| 移除內部 metadata | 不回傳後端注入的 `ord_*` 欄位 |
+| 保留 OpenRouter 原始 `id`、`choices`、`usage` | 便於 Client 後續引用 |
+| 移除內部識別欄位 | **禁止**回傳 `department_uid`、`user_uid`、`openrouter_key_uid` 等內部資訊 |
 | **禁止**回傳任何包含 API Key 的欄位 | 即使 OpenRouter 未回傳，代碼層仍需防禦性過濾 |
 
 ## 7. 串流（Streaming）
 
+本版本（v1）**不**實作串流；後續版本若擴充，規範如下（預留）：
+
 - 支援 `stream=true`，後端以 **SSE**（`text/event-stream`）回傳，Content-Type 與 chunk 格式**必須**與 OpenRouter 相同（`data: {...}\n\n` + `data: [DONE]\n\n`）。
 - 串流中途若 OpenRouter 中斷，後端**必須**送出 `event: error` chunk 後關閉連線，**禁止**靜默截斷。
-- 串流端點**不**套用統一 `ApiResponse` 包裝（見 [20-backend.md § 1](./20-backend.md#1-統一-response-格式)）；但**啟動前**的錯誤（驗證、配額、白名單）**必須**以 HTTP 4xx + `ApiResponse` 回絕，**不**開啟串流。
+- 串流端點**不**套用統一 `ApiResponse` 包裝；但**啟動前**的錯誤（驗證、白名單、OpenRouter 拒絕）**必須**以 HTTP 4xx + `ApiResponse` 回絕，**不**開啟串流。
 - Client 斷線時後端**必須**取消上游 httpx stream（`response.aclose()`），避免額外 Token 計費。
 
 ## 8. 重試策略
 
 | 情境 | 重試 | 策略 |
 | --- | --- | --- |
+| HTTP 401（Key 失效） | ✅ | 換下一把同部門 active Key；最多嘗試 N 把（N = 該部門 active key 數，上限 5） |
 | HTTP 5xx（非 502/504 具體指令） | ✅ | 指數退避，最多 2 次 |
 | HTTP 429（rate limit） | ✅ | 依 `Retry-After` header，最多 1 次；超過仍失敗則回 429 給 Client |
-| HTTP 4xx（除 429） | ❌ | 直接回傳 |
+| HTTP 4xx（除 401、429） | ❌ | 直接回傳 |
 | 連線錯誤 / timeout | ✅ | 指數退避，最多 2 次 |
 | Streaming 開始後 | ❌ | 開始後**禁止**重試（已有 chunk 送達 Client） |
 
@@ -116,14 +151,14 @@ Response 回傳給 Client 前：
 | OpenRouter 行為 | 後端回應 HTTP | `detail` |
 | --- | --- | --- |
 | 400（欄位錯誤） | 400 | `invalid_request` |
-| 401（API Key 無效） | 502 | `openrouter_unavailable`（不得洩漏「Key 失效」予 Client） |
+| 401（單把 Key 失效） | — | 嘗試下一把；全部失敗 → 502 `openrouter_unavailable` |
 | 402（餘額不足） | 502 | `openrouter_unavailable`；**必須**立即告警管理員 |
 | 403（模型不可用） | 403 | `model_forbidden` |
 | 404（模型不存在） | 404 | `model_not_found` |
 | 429 | 429 | `rate_limited` |
 | 5xx / timeout | 502 | `openrouter_unavailable` |
-| 本平台配額不足 | 429 | `quota_exceeded` |
 | 本平台白名單拒絕 | 403 | `model_forbidden` |
+| 影片輸入（本版本未支援） | 400 | `feature_not_supported` |
 
 OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`），但**禁止**回傳前端。
 
@@ -131,26 +166,30 @@ OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`）�
 
 - 每次呼叫完成（含錯誤）**必須**寫入 `usage_logs` 表，欄位至少：
   - `usage_log_uid`（UUIDv7）
-  - `api_key_uid`、`user_uid`
-  - `model`、`provider`（若 OpenRouter 回傳）
+  - `user_uid`、`department_uid`、`openrouter_key_uid`
+  - `model`
   - `openrouter_generation_id`（如有）
   - `prompt_tokens`、`completion_tokens`、`total_tokens`
-  - `cost`（USD，取自 OpenRouter `usage` 或事後查詢 `/generation`）
+  - `cost_usd`（USD，取自 OpenRouter `usage`）
   - `latency_ms`
   - `status`（`success` / `error`）、`error_code`
+  - `request_content`（JSONB，原始 body；base64 影像以 sha256 指紋代替以免暴增）
+  - `response_summary`（JSONB，首段文字 ≤ 500 字 + `usage`）
   - `created_at`
-- 串流呼叫的 Token 統計**必須**在串流結束後查詢 OpenRouter `/api/v1/generation?id=...` 補齊（OpenRouter 串流本身不夾帶最終 usage）。
-- 此表屬高頻寫入，**應**加上 `(user_uid, created_at)` 與 `(api_key_uid, created_at)` 複合索引以利日報彙總。
+- 寫入**必須**於 response 回給 Client **之後**執行（`BackgroundTasks` 或 `asyncio.create_task`），避免拖慢呼叫。
+- 此表屬高頻寫入，**應**加上 `(department_uid, created_at)`、`(user_uid, created_at)`、`(model, created_at)` 複合索引以利日報彙總。
 
 ## 11. 設定與健康檢查
 
 - `OPENROUTER_API_BASE_URL` 預設 `https://openrouter.ai/api/v1`，**可**於 `.env` 覆寫以導向測試 / 私有 Gateway。
-- `OPENROUTER_API_TIMEOUT` 預設 60（秒）；串流使用獨立 `OPENROUTER_STREAM_TIMEOUT`（預設 300 秒）。
+- `OPENROUTER_API_TIMEOUT` 預設 60（秒）；串流使用獨立 `OPENROUTER_STREAM_TIMEOUT`（預設 300 秒，本版本未啟用）。
+- `ALLOWED_MODELS` 逗號分隔；空字串代表不限。
 - 後端**應**提供 `/api/v1/health/openrouter` 端點（僅限 admin），實呼低成本模型驗證金鑰與通路。
 
 ## 12. 禁止事項
 
 - **禁止**將 OpenRouter API Key 以任何形式下發至前端或 Response。
-- **禁止**在 Log 中完整列印本地金鑰明文、OpenRouter 原始錯誤的敏感欄位（若含）。
+- **禁止**在 Log 中完整列印 SDK Key 明文、User Token 明文、OpenRouter Key 明文；必要時只保留前後 4 字元。
 - **禁止**繞過 `OpenRouterClient` 直接 `httpx` 呼叫 OpenRouter。
-- **禁止**在代理端點使用與管理 API 相同的本地金鑰（管理 UI 用登入 Cookie，代理用 `ord_*` 金鑰，兩者**必須**分離）。
+- **禁止**在代理端點接受管理 Cookie / Access Token；管理端點接受 `X-SDK-Key` / `X-User-Token`（兩者**必須**分離）。
+- **禁止**於 Response 中分別揭露「SDK Key 無效」「User Token 解密失敗」「部門不一致」中的具體項目；一律回 401 `unauthorized`。

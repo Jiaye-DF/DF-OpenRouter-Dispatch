@@ -65,7 +65,7 @@ AI 在產出或修改 `docs/Tasks/v*-p*/Task-v*-p*.md` **之前必須**完成：
 
 - **必須**以 `/api/v1` 為前綴。
 - 管理端**必須**使用 kebab-case 複數（例：`/api-keys`）。
-- 代理端**必須**使用 `/api/v1/proxy/<openrouter-path>` 格式（例：`/api/v1/proxy/chat/completions`），以維持與 OpenRouter 相容。
+- 代理端**必須**使用 `/api/v1/model/openrouter/<action>` 格式（例：`/api/v1/model/openrouter/chat`），action 為功能語意。
 - 單一資源以 UID 作為 path parameter。
 
 ### 4.3 敏感欄位
@@ -92,7 +92,7 @@ Task 設計**禁止**：
 - 繞過 Table 設計必備欄位（`pid` / `<table>_uid` / `is_active` / `is_deleted` / `created_at` / `updated_at`）。
 - 在前端直接呼叫 OpenRouter API 或繞過後端代理。
 - 將外部系統的內部 id（例如 OpenRouter 回傳的 `id`）作為本地 PK 或對外 UID。
-- 在管理端接受 `ord_*` 本地金鑰，或在代理端接受管理 Cookie。
+- 在管理端接受 `X-SDK-Key` / `X-User-Token`，或在代理端接受管理 Cookie / Access Token。
 - 在 Response、Log、Commit 中洩漏敏感資訊。
 
 ## 6. 檢核清單

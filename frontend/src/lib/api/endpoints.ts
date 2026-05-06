@@ -35,4 +35,13 @@ export const API_ENDPOINTS = {
   statsByDepartment: "/api/v1/stats/by-department",
   statsByModel: "/api/v1/stats/by-model",
   statsTimeseries: "/api/v1/stats/timeseries",
+
+  // 模型主檔(v1.1)
+  models: "/api/v1/models",
+  modelById: (uid: string) => `/api/v1/models/${uid}`,
+  syncModels: "/api/v1/models/sync",
+
+  // 模型分級(v1.1)
+  modelTiers: "/api/v1/model-tiers",
+  modelTierById: (uid: string) => `/api/v1/model-tiers/${uid}`,
 } as const;

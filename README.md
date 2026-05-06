@@ -26,7 +26,7 @@ OpenRouter API 中控派發管理平台（MVP v1.0）
 
 - [CLAUDE.md](CLAUDE.md)：AI 協作規範
 - [docs/Design-Base/](docs/Design-Base/)：不隨版本異動的基礎設計
-- [docs/Tasks/v1.0/Tasks-v1.md](docs/Tasks/v1.0/Tasks-v1.md)：本版本功能設計
+- [docs/Tasks/v1.0/propose-v1.0.0.md](docs/Tasks/v1.0/propose-v1.0.0.md)：本版本功能設計
 
 ## 主要 API（v1）
 

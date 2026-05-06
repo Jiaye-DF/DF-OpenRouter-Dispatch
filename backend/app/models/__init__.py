@@ -1,6 +1,8 @@
 from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.department import Department
+from app.models.model import Model
+from app.models.model_tier import ModelTier
 from app.models.openrouter_key import OpenRouterKey
 from app.models.project import Project
 from app.models.refresh_token import RefreshToken
@@ -13,6 +15,8 @@ __all__ = [
     "AuditLog",
     "Base",
     "Department",
+    "Model",
+    "ModelTier",
     "OpenRouterKey",
     "Project",
     "RefreshToken",

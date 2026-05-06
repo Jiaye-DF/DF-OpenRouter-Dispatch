@@ -1,50 +1,57 @@
 # 90 · Task 產出規範
 
-本文件規範 `docs/Tasks/v*-p*/Task-v*-p*.md` 的撰寫格式、前置檢查與對齊 Design-Base 的強制流程。所有 AI 協作產出的 Task **必須**符合本規範。
+本文件規範 `docs/Tasks/v<major>.<minor>/{propose,tasks}-v<major>.<minor>.<patch>.md` 的撰寫格式、前置檢查與對齊 Design-Base 的強制流程。所有 AI 協作產出的 Task **必須**符合本規範。
 
 ## 1. 適用範圍
 
-- `docs/Tasks/v*-p*/` 目錄下的 Task 文件均適用。命名規則：`v` = version、`p` = process step（例：`v1-p1.0` = 版本 1 第 1.0 步驟）。
-- 範例：`docs/Tasks/v1-p1.0/Task-v1-p1.0.md`、`docs/Tasks/v1-p1.1/Task-v1-p1.1.0.md`。
-- 一份 Task 文件對應一個版本的交付範圍；跨版本的大型功能**應**拆為多份。
-- 同一 process 下的多個子步驟 / 規劃文件（例：`Plan-v1-p1.1.md`、`Task-v1-p1.1.0.md`）統一放置於同一 `docs/Tasks/v*-p*/` 目錄。
+- 所有 Task 文件統一放於 `docs/Tasks/v<major>.<minor>/` 子目錄下，**禁止**散落於其他位置或舊式 `v*-p*/` 結構。
+- 檔名格式（小寫,使用 dash 分隔）:
+  - `propose-v<major>.<minor>.<patch>.md` — **規劃草案**(可選),用於對齊需求、收斂開放問題、做設計決議
+  - `tasks-v<major>.<minor>.<patch>.md` — **正式 Task 文件**,本規範後續章節所稱「Task」指此檔
+- 範例:
+  - `docs/Tasks/v1.0/propose-v1.0.0.md`
+  - `docs/Tasks/v1.1/propose-v1.1.0.md`
+  - `docs/Tasks/v1.1/tasks-v1.1.0.md`
+- 一份 Task 對應一個 patch 的交付範圍;跨 patch 的大型功能**應**拆為多份(`tasks-v1.1.0.md`、`tasks-v1.1.1.md`...)。
+- propose 與 tasks 同 patch 號時,**propose 為 tasks 的母本**,內容收斂後 tasks 為實作依據;有歧異時以 tasks 為準。
 
 ## 2. Task 文件結構
 
 每份 Task 文件**必須**包含以下區塊，順序固定：
 
 ```markdown
-# Task v<版號>
+# Tasks v<major>.<minor>.<patch>
 
 ## 版本資訊
-- 前置依賴：<列出前版本已完成的功能，或寫「無」>
-- 本版本範圍：<一句話摘要>
-- 對齊的 Design-Base 章節：
+- 前置依賴:<列出前版本已完成的功能,或寫「無」>
+- 本版本範圍:<一句話摘要>
+- 對齊的 Design-Base 章節:
   - [00-overview.md § 技術棧](../../Design-Base/00-overview.md#技術棧)
   - [20-backend.md § 1 統一 Response 格式](../../Design-Base/20-backend.md#1-統一-response-格式)
   - …
+- 母本 propose(若有):[`propose-v<major>.<minor>.<patch>.md`](./propose-v<major>.<minor>.<patch>.md)
 
 ## Definition of Done
 - [ ] <可驗證的交付條件 1>
 - [ ] <可驗證的交付條件 2>
 - [ ] Swagger 可於 `/api/docs` 查閱新增 API
 - [ ] 單元測試 / 整合測試覆蓋關鍵流程
-- [ ] `.env.example` 與 `.env` 同步更新（若有新變數）
+- [ ] `.env.example` 與 `.env` 同步更新(若有新變數)
 
 ## 功能設計
 ### 功能 A
 ### 功能 B
 
 ## 交付物清單
-- 後端檔案：<列出新增 / 修改的路徑>
-- 前端檔案：<列出新增 / 修改的路徑>
-- Migration：<列出 V{版號}__{描述}.sql>
-- 環境變數：<列出新增 key>
+- 後端檔案:<列出新增 / 修改的路徑>
+- 前端檔案:<列出新增 / 修改的路徑>
+- Migration:<列出 V{流水號}__{描述}.sql>
+- 環境變數:<列出新增 key>
 ```
 
 ## 3. 前置檢查（AI 產 Task 前必做）
 
-AI 在產出或修改 `docs/Tasks/v*-p*/Task-v*-p*.md` **之前必須**完成：
+AI 在產出或修改 `docs/Tasks/v<major>.<minor>/tasks-v<major>.<minor>.<patch>.md` **之前必須**完成:
 
 1. **閱讀全部 Design-Base 檔案**：`00-overview.md` → `90-task-spec.md`。
 2. **確認對齊章節**：在 Task 的「對齊的 Design-Base 章節」列出引用的具體章節錨點，**不得**只寫檔名。

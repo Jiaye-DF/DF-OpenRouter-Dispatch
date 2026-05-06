@@ -5,9 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Box,
   Building2,
   FolderKanban,
   KeyRound,
+  Layers,
   LayoutDashboard,
   ScrollText,
   Users,
@@ -28,6 +30,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/departments", label: "部門", icon: Building2 },
   { href: "/projects", label: "專案", icon: FolderKanban },
   { href: "/users", label: "使用者", icon: Users, adminOnly: true },
+  { href: "/admin/models", label: "模型管理", icon: Box, adminOnly: true },
+  { href: "/admin/model-tiers", label: "模型分級", icon: Layers, adminOnly: true },
   {
     href: "/openrouter-keys",
     label: "OpenRouter Keys",

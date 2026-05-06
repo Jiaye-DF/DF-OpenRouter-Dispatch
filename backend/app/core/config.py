@@ -1,6 +1,5 @@
 from functools import lru_cache
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,7 +34,6 @@ class Settings(BaseSettings):
     # --- OpenRouter ---
     OPENROUTER_API_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_API_TIMEOUT: int = 60
-    ALLOWED_MODELS: str = ""
 
     # --- Dev Seed ---
     DEFAULT_OPENROUTER_KEY: str = ""
@@ -43,10 +41,6 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
-
-    @property
-    def allowed_models_list(self) -> list[str]:
-        return [m.strip() for m in self.ALLOWED_MODELS.split(",") if m.strip()]
 
     @property
     def is_prod(self) -> bool:

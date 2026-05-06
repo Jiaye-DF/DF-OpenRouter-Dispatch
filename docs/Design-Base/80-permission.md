@@ -87,6 +87,9 @@
 | 所有用量 / 成本統計 | ✅ | ❌ |
 | 自身部門用量 / 個人用量 | ✅ | ✅ |
 | 系統稽核 Log | ✅ | ❌ |
+| 模型 CRUD-lite（toggle / tier） | ✅ | ❌（僅讀已啟用） |
+| 模型分級（model_tiers）CRUD | ✅ | ❌（可讀，UI 顯示徽章用） |
+| OpenRouter 餘額欄位 | ✅ | ❌ |
 
 - 查詢端點**必須**在 service 層套用 `if not actor.is_admin: query.where(department_uid == actor.department_uid)`，**禁止**前端過濾。
 
@@ -98,7 +101,7 @@
 | --- | --- |
 | `sdk_api_keys.is_active` | 停用後任何呼叫均 401 |
 | `openrouter_keys.is_active` | 停用後該把不被選中；全部停用 → 502 `openrouter_unavailable` |
-| `ALLOWED_MODELS`（全域） | 模型白名單（空值代表無限制） |
+| `models.is_active` | 全域控管；模型停用或不存在均拒絕呼叫 |
 | `user_tokens_revocations` | 撤銷某時間前簽發的全部 User Token |
 
 - 本版本**不**實作配額（日 / 月 tokens / cost）；後續版本得擴充。

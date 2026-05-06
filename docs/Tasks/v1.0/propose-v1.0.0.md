@@ -409,7 +409,7 @@ CREATE INDEX idx_usage_logs_model_time ON usage_logs (model, created_at DESC);
 ### 5.2 寫入規則
 
 - **每次**代理呼叫（含失敗）**必須**寫一筆；即使驗證失敗（SDK Key / Token 無效），也**應**寫一筆 `status='error'` 記錄（`user_uid`、`department_uid` 可能為 NULL）。
-- `request_content` 儲存**原始** request body（`model` + `text` + `images` URL 或 base64 指標，**不**儲存 base64 本體以免暴增資料量；base64 影像以 sha256 指紋代替）。
+- `request_content` 儲存**原始** request body（`model` + `text` + `images`,base64 影像本體**完整保留**),供管理端分析使用者實際消費模型的方式;**注意**此策略會放大儲存量,後續視運維狀況再考慮分階段保存或冷儲存遷移。
 - `response_summary` 儲存 response 首段文字（≤ 500 字）+ `usage`；完整 response **不**落地。
 - 寫入**必須**於 response 回給 Client **之後**執行（透過 FastAPI `BackgroundTasks` 或 `asyncio.create_task`），避免拖慢呼叫。
 

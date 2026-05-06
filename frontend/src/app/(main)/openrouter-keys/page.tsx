@@ -223,6 +223,7 @@ export default function OpenRouterKeysPage() {
                   <TH>部門</TH>
                   <TH>名稱</TH>
                   <TH>Key</TH>
+                  <TH>餘額</TH>
                   <TH>狀態</TH>
                   <TH className="text-right">操作</TH>
                 </TR>
@@ -232,8 +233,11 @@ export default function OpenRouterKeysPage() {
                   <TR key={k.openrouter_key_uid}>
                     <TD>{deptName(k.department_uid)}</TD>
                     <TD>{k.name}</TD>
-                    <TD className="font-mono text-xs">
+                    <TD className="font-mono text-xs whitespace-nowrap">
                       {k.key_prefix}····{k.key_last4}
+                    </TD>
+                    <TD>
+                      <CreditsCell item={k} />
                     </TD>
                     <TD>
                       <button
@@ -379,5 +383,84 @@ export default function OpenRouterKeysPage() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// 餘額顯示:used / limit 進度條 + Free Tier 徽章 + 同步狀態警告
+// limit 為 NULL → 顯示「無上限」+ 已用金額,不畫進度條
+// credits_synced_at 為 NULL → 顯示「尚未同步」
+// credits_synced_at > 24h → 警告色 + tooltip
+function CreditsCell({ item }: { item: OpenRouterKey }) {
+  const used = item.credits_used_usd != null ? Number(item.credits_used_usd) : null;
+  const limit = item.credits_limit_usd != null ? Number(item.credits_limit_usd) : null;
+  const synced = item.credits_synced_at ?? null;
+  const isFree = item.credits_is_free_tier === true;
+
+  // 同步狀態警告(> 24h 或從未同步)
+  const stale = React.useMemo(() => {
+    if (!synced) return "never" as const;
+    const diffMs = Date.now() - new Date(synced).getTime();
+    if (diffMs > 24 * 60 * 60 * 1000) return "stale" as const;
+    return "fresh" as const;
+  }, [synced]);
+
+  if (used === null && limit === null && synced === null) {
+    return (
+      <span className="text-xs text-muted-foreground">尚未同步</span>
+    );
+  }
+
+  // 進度條比例(0-1);limit 為 0 或 NULL 時不畫
+  let ratio: number | null = null;
+  if (used !== null && limit !== null && limit > 0) {
+    ratio = Math.min(1, Math.max(0, used / limit));
+  }
+  const overEighty = ratio !== null && ratio > 0.8;
+
+  return (
+    <div className="flex flex-col gap-1 min-w-[160px]">
+      <div className="flex items-center gap-2 text-xs whitespace-nowrap">
+        <span className="font-mono">
+          ${used !== null ? used.toFixed(2) : "-"}
+          {" / "}
+          {limit !== null ? `$${limit.toFixed(2)}` : "無上限"}
+        </span>
+        {isFree && (
+          <Badge variant="secondary" className="text-[10px]">
+            Free Tier
+          </Badge>
+        )}
+      </div>
+      {ratio !== null && (
+        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+          <div
+            className={`h-full rounded-full ${
+              overEighty ? "bg-destructive" : "bg-primary"
+            }`}
+            style={{ width: `${ratio * 100}%` }}
+          />
+        </div>
+      )}
+      <div
+        className={`text-[10px] ${
+          stale === "fresh"
+            ? "text-muted-foreground"
+            : "text-amber-600"
+        }`}
+        title={
+          stale === "stale"
+            ? "同步資料過時,請執行模型同步"
+            : stale === "never"
+            ? "尚未同步,請執行模型同步"
+            : undefined
+        }
+      >
+        {synced
+          ? `同步於 ${new Date(synced).toLocaleString("zh-TW", {
+              hour12: false,
+            })}`
+          : "尚未同步"}
+      </div>
+    </div>
   );
 }

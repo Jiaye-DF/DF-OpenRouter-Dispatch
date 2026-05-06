@@ -1,3 +1,5 @@
+from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,3 +25,9 @@ class OpenRouterKeyResponse(BaseModel):
     key_prefix: str
     key_last4: str
     is_active: bool
+
+    # 餘額 4 欄 — 僅 admin 可見;router 對非 admin 須剔除(目前列表/單筆皆走 AdminDep)。
+    credits_used_usd: Decimal | None = None
+    credits_limit_usd: Decimal | None = None
+    credits_is_free_tier: bool | None = None
+    credits_synced_at: datetime | None = None

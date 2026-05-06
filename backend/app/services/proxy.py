@@ -1,10 +1,10 @@
 import asyncio
 import time
 from decimal import Decimal
-from hashlib import sha256
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
@@ -16,10 +16,10 @@ from app.clients.openrouter.errors import (
     OpenRouterModelNotFoundError,
     OpenRouterRateLimitError,
 )
-from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
+from app.models.model import Model
 from app.models.usage_log import UsageLog
 from app.services.openrouter_key import decrypt_key, pick_random_active
 
@@ -42,17 +42,11 @@ def _rewrite_request(model: str, text: str | None, images: list[str] | None) -> 
     }
 
 
-def _sanitize_request_for_log(
+def _build_request_log(
     model: str, text: str | None, images: list[str] | None
 ) -> dict[str, Any]:
-    sanitized_images: list[str] = []
-    for img in images or []:
-        if img.startswith("data:"):
-            fp = sha256(img.encode("utf-8")).hexdigest()[:16]
-            sanitized_images.append(f"data:<base64:{fp}>")
-        else:
-            sanitized_images.append(img)
-    return {"model": model, "text": text, "images": sanitized_images}
+    # 完整保留原始 images(含 base64 本體),供管理端分析使用者實際提交內容
+    return {"model": model, "text": text, "images": list(images or [])}
 
 
 def _summarize_response(resp: dict[str, Any]) -> dict[str, Any]:
@@ -73,11 +67,17 @@ def _summarize_response(resp: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
-def _check_model_whitelist(model: str) -> None:
-    settings = get_settings()
-    allow = settings.allowed_models_list
-    if allow and model not in allow:
+async def _check_model_whitelist(db: AsyncSession, model: str) -> Model:
+    """白名單由 DB 驅動;不存在 / 停用 / 軟刪除 一律 403 model_forbidden(避免列舉差異)。"""
+    stmt = select(Model).where(
+        Model.openrouter_model_id == model,
+        Model.is_active.is_(True),
+        Model.is_deleted.is_(False),
+    )
+    instance = (await db.execute(stmt)).scalar_one_or_none()
+    if instance is None:
         raise AppError("model_forbidden", code=403)
+    return instance
 
 
 def schedule_usage_log(
@@ -86,6 +86,7 @@ def schedule_usage_log(
     user_uid: UUID | None,
     openrouter_key_uid: UUID | None,
     model: str,
+    model_uid: UUID | None,
     resp: dict[str, Any] | None,
     latency_ms: int,
     status: str,
@@ -111,6 +112,7 @@ def schedule_usage_log(
                     department_uid=department_uid,
                     openrouter_key_uid=openrouter_key_uid,
                     model=model,
+                    model_uid=model_uid,
                     prompt_tokens=prompt,
                     completion_tokens=completion,
                     total_tokens=total,
@@ -148,10 +150,11 @@ async def run_chat(
 ) -> dict[str, Any]:
     if videos:
         raise AppError("feature_not_supported", code=400)
-    _check_model_whitelist(model)
+    model_row = await _check_model_whitelist(db, model)
+    model_uid = model_row.model_uid
 
     payload = _rewrite_request(model, text, images)
-    request_log = _sanitize_request_for_log(model, text, images)
+    request_log = _build_request_log(model, text, images)
 
     tried: set[UUID] = set()
     last_err: Exception | None = None
@@ -182,6 +185,7 @@ async def run_chat(
                 user_uid=user_uid,
                 openrouter_key_uid=key_row.openrouter_key_uid,
                 model=model,
+                model_uid=model_uid,
                 resp=None,
                 latency_ms=int((time.monotonic() - started) * 1000),
                 status="error",
@@ -195,6 +199,7 @@ async def run_chat(
                 user_uid=user_uid,
                 openrouter_key_uid=key_row.openrouter_key_uid,
                 model=model,
+                model_uid=model_uid,
                 resp=None,
                 latency_ms=int((time.monotonic() - started) * 1000),
                 status="error",
@@ -208,6 +213,7 @@ async def run_chat(
                 user_uid=user_uid,
                 openrouter_key_uid=key_row.openrouter_key_uid,
                 model=model,
+                model_uid=model_uid,
                 resp=None,
                 latency_ms=int((time.monotonic() - started) * 1000),
                 status="error",
@@ -227,6 +233,7 @@ async def run_chat(
             user_uid=user_uid,
             openrouter_key_uid=key_row.openrouter_key_uid,
             model=model,
+            model_uid=model_uid,
             resp=resp_body,
             latency_ms=latency_ms,
             status="success",
@@ -245,6 +252,7 @@ async def run_chat(
         user_uid=user_uid,
         openrouter_key_uid=None,
         model=model,
+        model_uid=model_uid,
         resp=None,
         latency_ms=latency_ms,
         status="error",

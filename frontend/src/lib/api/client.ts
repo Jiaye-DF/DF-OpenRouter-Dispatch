@@ -1,4 +1,5 @@
 import type { ApiResponse } from "@/types/api";
+import { localizeError } from "./error-map";
 
 // API Client：封裝 fetch，統一處理 Cookie、統一回應格式、401 自動 refresh 重試
 
@@ -20,6 +21,16 @@ export class ApiError extends Error {
     this.code = code;
     this.detail = detail;
     this.payload = payload;
+  }
+
+  // 後端錯誤碼經 error-map 中文化後的顯示訊息
+  get localizedDetail(): string {
+    return localizeError(this.detail);
+  }
+
+  // 結構化錯誤酬載(如 sync_throttled.retry_after_seconds、tier_in_use.using_models)
+  get data(): unknown {
+    return this.payload?.data ?? null;
   }
 }
 

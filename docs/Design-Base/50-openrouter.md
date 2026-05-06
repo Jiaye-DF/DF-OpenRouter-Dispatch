@@ -88,7 +88,7 @@ SDK（使用者應用）
   │  1. 解析 X-SDK-Key → argon2 比對 sdk_api_keys → 得 department_uid (SDK)
   │  2. 解密 X-User-Token → payload → 驗 revocation → 取 department_uid (User)
   │  3. 若 SDK.department_uid != User.department_uid → 401 unauthorized
-  │  4. 驗 model 白名單（ALLOWED_MODELS）；超出則 403 model_forbidden
+  │  4. 驗 model 白名單（DB `models.is_active`）；未通過則 403 model_forbidden
   │  5. 依 department_uid 選一把 active openrouter_key（random）
   │  6. 改寫 Request 為 OpenRouter chat/completions messages[].content[]
   ├───────────────────▶ OpenRouter /api/v1/chat/completions
@@ -114,7 +114,7 @@ SDK
 | 處理 | 說明 |
 | --- | --- |
 | Schema 展開 | `{ model, text, images }` → `messages:[{role:"user", content:[{type:"text", text}, {type:"image_url", image_url:{url}}]}]` |
-| 白名單檢查 | 依全域 `ALLOWED_MODELS`（逗號分隔）；為空代表不限 |
+| 白名單檢查 | 依 `models.is_active` DB 查詢（`models WHERE openrouter_model_id=? AND is_active=TRUE AND is_deleted=FALSE`）；未通過或不存在均回 403 `model_forbidden`，不揭露差異 |
 | 影片輸入 | 本版本**禁止**（`videos` 若出現 → 400 `feature_not_supported`） |
 | 模型別名展開 | 可定義短別名對應 OpenRouter 實際模型字串（本版本不實作） |
 
@@ -159,6 +159,9 @@ Response 回傳給 Client 前：
 | 5xx / timeout | 502 | `openrouter_unavailable` |
 | 本平台白名單拒絕 | 403 | `model_forbidden` |
 | 影片輸入（本版本未支援） | 400 | `feature_not_supported` |
+| 模型同步進行中 | 425 | `sync_in_progress` |
+| 模型同步距上次 < 10 min | 425 | `sync_throttled` |
+| 刪除 model_tier 仍被引用 | 400 | `tier_in_use` |
 
 OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`），但**禁止**回傳前端。
 
@@ -173,7 +176,7 @@ OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`）�
   - `cost_usd`（USD，取自 OpenRouter `usage`）
   - `latency_ms`
   - `status`（`success` / `error`）、`error_code`
-  - `request_content`（JSONB，原始 body；base64 影像以 sha256 指紋代替以免暴增）
+  - `request_content`（JSONB，**完整**原始 body;base64 影像以原文保留,供管理端分析使用者實際消費模型的方式)
   - `response_summary`（JSONB，首段文字 ≤ 500 字 + `usage`）
   - `created_at`
 - 寫入**必須**於 response 回給 Client **之後**執行（`BackgroundTasks` 或 `asyncio.create_task`），避免拖慢呼叫。
@@ -183,7 +186,6 @@ OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`）�
 
 - `OPENROUTER_API_BASE_URL` 預設 `https://openrouter.ai/api/v1`，**可**於 `.env` 覆寫以導向測試 / 私有 Gateway。
 - `OPENROUTER_API_TIMEOUT` 預設 60（秒）；串流使用獨立 `OPENROUTER_STREAM_TIMEOUT`（預設 300 秒，本版本未啟用）。
-- `ALLOWED_MODELS` 逗號分隔；空字串代表不限。
 - 後端**應**提供 `/api/v1/health/openrouter` 端點（僅限 admin），實呼低成本模型驗證金鑰與通路。
 
 ## 12. 禁止事項
@@ -193,3 +195,17 @@ OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`）�
 - **禁止**繞過 `OpenRouterClient` 直接 `httpx` 呼叫 OpenRouter。
 - **禁止**在代理端點接受管理 Cookie / Access Token；管理端點接受 `X-SDK-Key` / `X-User-Token`（兩者**必須**分離）。
 - **禁止**於 Response 中分別揭露「SDK Key 無效」「User Token 解密失敗」「部門不一致」中的具體項目；一律回 401 `unauthorized`。
+
+## 13. 模型同步
+
+自 v1.1 起,OpenRouter 模型清單與 Key 餘額採 **DB 驅動**,取代過去的 `ALLOWED_MODELS` 環境變數白名單。模型資料落地於 `models` 表(`is_active` 控制白名單),分級資料落地於 `model_tiers` 表(管理 UI 顯示徽章與分類用)。
+
+同步由 admin 於後台 `POST /api/v1/models/sync` 觸發,流程要點如下:
+
+- **並發控制**:後端以 `pg_try_advisory_xact_lock(LOCK_KEY_MODELS_SYNC)` 取得交易鎖;失敗即回 425 `sync_in_progress`,**禁止**排隊等候。
+- **限流(throttle)**:檢查 `max(models.last_synced_at)`,距今 < 10 分鐘回 425 `sync_throttled`,response `data.retry_after_seconds` 提示前端倒數;前端**應**將上次成功時間寫入 `localStorage` 以利重新進頁面時續算冷卻。
+- **模型 UPSERT**:以任一把 `is_active=TRUE` 的 OpenRouter Key 呼叫 `GET /models`,對 `openrouter_model_id` 做 UPSERT — 新模型 `is_active=TRUE` 並依規則自動匹配 `tier_key`;既有僅更新元資料(`name` / `description` / `context_length` / `pricing` / `modality`),**不覆寫** `is_active` 與 `tier_key`;DB 有但 API 無者標記 `is_active=FALSE`(軟下架,保留歷史)。
+- **餘額同步(best-effort)**:對每把 `is_active=TRUE` Key 以該 Key 自身呼叫 `GET /auth/key`,回填 `credits_used_usd` / `credits_limit_usd` / `credits_is_free_tier` / `credits_synced_at`;個別 Key 失敗**不**整批 rollback,僅累計 `credits_failed` 計數於 response。
+- **稽核**:寫入 `action="sync_models_and_credits"`,`detail` 包含 added / updated / deactivated / credits_synced / credits_failed。
+
+詳細流程、錯誤對照與 SQL 細節參見 [../Tasks/v1.1/propose-v1.1.0.md § 6](../Tasks/v1.1/propose-v1.1.0.md)。

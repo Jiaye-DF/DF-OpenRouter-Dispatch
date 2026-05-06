@@ -19,6 +19,8 @@ class UsageLog(Base, TimestampMixin):
     department_uid: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     openrouter_key_uid: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     model: Mapped[str] = mapped_column(String(128), nullable=False)
+    # V11 加入;允許 NULL 容錯既有歷史與白名單拒絕情境
+    model_uid: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

@@ -45,7 +45,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(AppError)
     async def _app_error_handler(_: Request, exc: AppError):
-        return failure_response(exc.code, exc.detail)
+        return failure_response(exc.code, exc.detail, exc.data)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_handler(_: Request, exc: RequestValidationError):

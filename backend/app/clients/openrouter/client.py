@@ -60,6 +60,66 @@ class OpenRouterClient:
         except Exception as exc:  # noqa: BLE001
             raise OpenRouterError(502, "invalid JSON response") from exc
 
+    async def list_models(self, api_key: str) -> list[dict]:
+        """GET /models — 回傳 data[]。同步流程拿任一把 active OR Key 即可。"""
+        headers = {"Authorization": f"Bearer {api_key}"}
+        try:
+            resp = await self._client.get(
+                f"{self._base_url}/models",
+                headers=headers,
+            )
+        except httpx.HTTPError as exc:
+            logger.exception("OpenRouter /models HTTP 連線失敗")
+            raise OpenRouterError(502, str(exc)) from exc
+
+        if resp.status_code == 401:
+            raise OpenRouterAuthError(401, resp.text[:500])
+        if resp.status_code == 403:
+            raise OpenRouterForbiddenError(403, resp.text[:500])
+        if resp.status_code == 429:
+            raise OpenRouterRateLimitError(429, resp.text[:500])
+        if resp.status_code >= 400:
+            raise OpenRouterError(resp.status_code, resp.text[:500])
+
+        try:
+            body = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            raise OpenRouterError(502, "invalid JSON response") from exc
+        data = body.get("data")
+        if not isinstance(data, list):
+            raise OpenRouterError(502, "invalid /models response shape")
+        return data
+
+    async def get_key_info(self, api_key: str) -> dict:
+        """GET /auth/key — 回傳 OpenRouter data,含 label / usage / limit / is_free_tier。"""
+        headers = {"Authorization": f"Bearer {api_key}"}
+        try:
+            resp = await self._client.get(
+                f"{self._base_url}/auth/key",
+                headers=headers,
+            )
+        except httpx.HTTPError as exc:
+            logger.exception("OpenRouter /auth/key HTTP 連線失敗")
+            raise OpenRouterError(502, str(exc)) from exc
+
+        if resp.status_code == 401:
+            raise OpenRouterAuthError(401, resp.text[:500])
+        if resp.status_code == 403:
+            raise OpenRouterForbiddenError(403, resp.text[:500])
+        if resp.status_code == 429:
+            raise OpenRouterRateLimitError(429, resp.text[:500])
+        if resp.status_code >= 400:
+            raise OpenRouterError(resp.status_code, resp.text[:500])
+
+        try:
+            body = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            raise OpenRouterError(502, "invalid JSON response") from exc
+        data = body.get("data")
+        if not isinstance(data, dict):
+            raise OpenRouterError(502, "invalid /auth/key response shape")
+        return data
+
 
 _client_singleton: httpx.AsyncClient | None = None
 

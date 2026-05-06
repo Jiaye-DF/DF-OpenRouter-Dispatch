@@ -136,4 +136,4 @@ DF-OpenRouter-Dispatch/
 
 衝突時以下列順序決定：
 
-**`docs/Tasks/v*-p*/Task-v*-p*.md`（版本功能設計）** > **`docs/Design-Base/*`（基礎設計）** > **[CLAUDE.md](../../CLAUDE.md)（AI 協作規範）** > 其他。
+**`docs/Tasks/v<major>.<minor>/{propose,tasks}-v<major>.<minor>.<patch>.md`（版本功能設計)** > **`docs/Design-Base/*`（基礎設計）** > **[CLAUDE.md](../../CLAUDE.md)（AI 協作規範）** > 其他。

@@ -1,6 +1,8 @@
+from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import BigInteger, LargeBinary, String
+from sqlalchemy import BigInteger, Boolean, DateTime, LargeBinary, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,3 +21,15 @@ class OpenRouterKey(Base, TimestampMixin):
     key_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     key_prefix: Mapped[str] = mapped_column(String(16), nullable=False)
     key_last4: Mapped[str] = mapped_column(String(8), nullable=False)
+
+    # OpenRouter 帳號餘額(由 sync 流程回填;一般使用者不可見,僅 admin)
+    credits_used_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
+    credits_limit_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
+    credits_is_free_tier: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    credits_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

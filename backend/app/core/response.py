@@ -22,6 +22,8 @@ def success_response(
     return JSONResponse(status_code=status_code, content=body.model_dump(mode="json"))
 
 
-def failure_response(code: int, detail: str) -> JSONResponse:
-    body = ApiResponse[Any](success=False, code=code, data=None, detail=detail)
+def failure_response(
+    code: int, detail: str, data: Any = None
+) -> JSONResponse:
+    body = ApiResponse[Any](success=False, code=code, data=data, detail=detail)
     return JSONResponse(status_code=code, content=body.model_dump(mode="json"))

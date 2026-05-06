@@ -192,13 +192,13 @@ interface SidebarGroup {
 }
 ```
 
-### 首發分組（v1.2）
+### 首發分組（v1.1+）
 
 | group key | label | adminOnly | 成員 |
 | --- | --- | --- | --- |
 | overview | 概覽 | 否 | 儀表板 |
 | resources | 我的資源 | 否 | Agent 管理 / Skill 管理 / Script 管理 |
-| admin | 系統管理 | 是 | 使用者管理 / LLM 模型管理 / 語言管理 / Agent 範本 / 系統設定 |
+| admin | 系統管理 | 是 | 使用者管理 / 模型管理 / 模型分級 / 語言管理 / Agent 範本 / 系統設定 |
 
 ### 權限與顯示規則
 

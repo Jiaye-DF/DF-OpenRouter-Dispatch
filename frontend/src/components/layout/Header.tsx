@@ -66,7 +66,7 @@ export function Header() {
             <Zap className="h-4 w-4" />
           </div>
           <span className="hidden sm:inline font-semibold tracking-tight">
-            ORD
+            Model Dispatcher
           </span>
         </Link>
       </div>

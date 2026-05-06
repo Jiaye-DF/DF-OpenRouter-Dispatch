@@ -84,7 +84,7 @@ export default function LoginPage() {
         <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
           <Zap className="h-6 w-6" />
         </div>
-        <CardTitle>OpenRouter Dispatch</CardTitle>
+        <CardTitle>Model Dispatcher</CardTitle>
         <CardDescription>登入以管理部門 Key 與用量</CardDescription>
       </CardHeader>
       <CardContent>

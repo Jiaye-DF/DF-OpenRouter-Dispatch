@@ -3,23 +3,37 @@
 import * as React from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { setTheme, type ThemeName } from "@/store/theme-slice";
+import {
+  ALL_THEME_IDS,
+  LEGACY_THEME_STORAGE_KEY,
+  THEME_STORAGE_KEY,
+} from "@/lib/theme/themes";
 
-const VALID: ThemeName[] = ["light", "dark", "cool", "warm", "purple"];
-
-// 主題管理：開機讀 localStorage、每次 theme 變動同步至 <html> class 與 data-theme
+// 主題管理:開機讀 localStorage(含舊 key 一次性遷移)、每次 theme 變動同步至 <html>
 export function ThemeManager() {
   const dispatch = useAppDispatch();
   const theme = useAppSelector((s) => s.theme.theme);
   const mounted = React.useRef(false);
 
-  // 初次掛載：從 localStorage 讀取偏好（若無則依系統 prefers-color-scheme 擇 light/dark）
   React.useEffect(() => {
     if (mounted.current) return;
     mounted.current = true;
     try {
-      const stored = localStorage.getItem("theme") as ThemeName | null;
-      if (stored && VALID.includes(stored)) {
+      const stored = localStorage.getItem(THEME_STORAGE_KEY) as
+        | ThemeName
+        | null;
+      if (stored && (ALL_THEME_IDS as string[]).includes(stored)) {
         dispatch(setTheme(stored));
+        return;
+      }
+      // 一次性遷移:舊版本以 'theme' 為 key
+      const legacy = localStorage.getItem(LEGACY_THEME_STORAGE_KEY) as
+        | ThemeName
+        | null;
+      if (legacy && (ALL_THEME_IDS as string[]).includes(legacy)) {
+        localStorage.setItem(THEME_STORAGE_KEY, legacy);
+        localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
+        dispatch(setTheme(legacy));
         return;
       }
     } catch {
@@ -31,7 +45,6 @@ export function ThemeManager() {
     }
   }, [dispatch]);
 
-  // 同步到 <html>：class="dark" / data-theme="cool|warm|purple"
   React.useEffect(() => {
     if (typeof document === "undefined") return;
     const html = document.documentElement;

@@ -6,8 +6,8 @@ import { DialogProvider } from "@/lib/dialog";
 import { ToasterProvider } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: "OpenRouter Dispatch",
-  description: "OpenRouter API 中控派發管理平台",
+  title: "Model Dispatcher",
+  description: "Model Dispatcher — OpenRouter API 中控派發管理平台",
 };
 
 // Root Layout：載入 ThemeManager、Redux Provider、Toaster、DialogProvider

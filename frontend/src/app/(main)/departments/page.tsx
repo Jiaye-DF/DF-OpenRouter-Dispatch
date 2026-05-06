@@ -279,7 +279,7 @@ export default function DepartmentsPage() {
               <Label htmlFor="dept-code">
                 代碼
                 {form.department_uid && (
-                  <span className="ml-2 text-xs text-muted-foreground">
+                  <span className="ml-2 text-sm text-muted-foreground">
                     （建立後不可修改）
                   </span>
                 )}

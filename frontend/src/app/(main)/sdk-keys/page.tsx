@@ -192,7 +192,7 @@ export default function SdkKeysPage() {
                   <TR key={k.sdk_api_key_uid}>
                     <TD>{deptName(k.department_uid)}</TD>
                     <TD>{k.name}</TD>
-                    <TD className="font-mono text-xs">{k.key_prefix}···</TD>
+                    <TD className="font-mono text-sm">{k.key_prefix}···</TD>
                     <TD>
                       <button
                         onClick={() => onToggleActive(k)}

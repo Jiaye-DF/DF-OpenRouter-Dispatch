@@ -87,7 +87,7 @@ export default function UsageLogsPage() {
         <CardContent className="pt-6 flex flex-col gap-4">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="flex flex-col gap-1">
-              <Label className="text-xs">部門</Label>
+              <Label className="text-sm">部門</Label>
               <select
                 className="h-9 rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
                 value={filters.department_uid}
@@ -104,7 +104,7 @@ export default function UsageLogsPage() {
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <Label className="text-xs">模型</Label>
+              <Label className="text-sm">模型</Label>
               <Input
                 className="h-9"
                 value={filters.model}
@@ -113,7 +113,7 @@ export default function UsageLogsPage() {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label className="text-xs">狀態</Label>
+              <Label className="text-sm">狀態</Label>
               <select
                 className="h-9 rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
                 value={filters.status}
@@ -127,7 +127,7 @@ export default function UsageLogsPage() {
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <Label className="text-xs">起始</Label>
+              <Label className="text-sm">起始</Label>
               <Input
                 type="datetime-local"
                 className="h-9"
@@ -136,7 +136,7 @@ export default function UsageLogsPage() {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label className="text-xs">結束</Label>
+              <Label className="text-sm">結束</Label>
               <Input
                 type="datetime-local"
                 className="h-9"
@@ -189,11 +189,11 @@ export default function UsageLogsPage() {
               <TBody>
                 {items.map((log) => (
                   <TR key={log.usage_log_uid}>
-                    <TD className="text-xs text-muted-foreground whitespace-nowrap">
+                    <TD className="text-sm text-muted-foreground whitespace-nowrap">
                       {new Date(log.created_at).toLocaleString()}
                     </TD>
                     <TD>{deptName(log.department_uid)}</TD>
-                    <TD className="font-mono text-xs">{log.model}</TD>
+                    <TD className="font-mono text-sm">{log.model}</TD>
                     <TD className="text-right">
                       {log.prompt_tokens.toLocaleString()}
                     </TD>

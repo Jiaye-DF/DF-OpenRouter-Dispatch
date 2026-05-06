@@ -87,7 +87,7 @@ export function Sidebar() {
         {role !== "admin" && (
           <div
             className={cn(
-              "mt-auto pt-4 pb-2 flex items-center gap-2 text-xs text-muted-foreground",
+              "mt-auto pt-4 pb-2 flex items-center gap-2 text-sm text-muted-foreground",
               collapsed ? "justify-center" : "px-3"
             )}
           >

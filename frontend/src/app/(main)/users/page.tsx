@@ -405,7 +405,7 @@ export default function UsersPage() {
             <DialogTitle>建立使用者</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-3 pt-4">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               一般使用者僅作為 SDK 呼叫的身分識別,無法登入平台。
             </p>
             <FormField label="姓名">
@@ -495,7 +495,7 @@ export default function UsersPage() {
                 onChange={(e) => setResetPwd(e.target.value)}
               />
             </FormField>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               送出後會顯示明文一次,請以帶外管道交付使用者。
             </p>
           </div>

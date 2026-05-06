@@ -98,7 +98,7 @@ export default function LoginPage() {
               disabled={submitting}
             />
             {errors.account && (
-              <p className="text-xs text-destructive">{errors.account.message}</p>
+              <p className="text-sm text-destructive">{errors.account.message}</p>
             )}
           </div>
           <div className="flex flex-col gap-1.5">
@@ -111,7 +111,7 @@ export default function LoginPage() {
               disabled={submitting}
             />
             {errors.password && (
-              <p className="text-xs text-destructive">{errors.password.message}</p>
+              <p className="text-sm text-destructive">{errors.password.message}</p>
             )}
           </div>
           <LoadingButton type="submit" loading={submitting} className="mt-2">

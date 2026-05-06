@@ -55,7 +55,7 @@ export default function ModelsAdminPage() {
   // 分頁(後端列表)
   const [page, setPage] = React.useState(1);
   const [total, setTotal] = React.useState(0);
-  const size = 100; // 模型總數約 370 筆,單頁載入足夠
+  const size = 20;
 
   // Drawer
   const [editing, setEditing] = React.useState<Model | null>(null);
@@ -68,6 +68,10 @@ export default function ModelsAdminPage() {
       const query: Record<string, string | number> = { page, size };
       if (availability === "inactive" || availability === "all") {
         query.include_inactive = 1;
+      }
+      // tier_filter 改走後端 query,避免 size=20 時跨頁過濾不到目標
+      if (tierFilter !== "all" && tierFilter !== "__none__") {
+        query.tier_key = tierFilter;
       }
       const [list, tierList] = await Promise.all([
         apiClient.get<Paginated<Model>>(API_ENDPOINTS.models, { query }),
@@ -87,7 +91,7 @@ export default function ModelsAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, availability, showDialog]);
+  }, [page, availability, tierFilter, showDialog]);
 
   React.useEffect(() => {
     if (role === "admin") load();
@@ -257,13 +261,19 @@ export default function ModelsAdminPage() {
               </span>
               <FilterChip
                 active={tierFilter === "all"}
-                onClick={() => setTierFilter("all")}
+                onClick={() => {
+                  setTierFilter("all");
+                  setPage(1);
+                }}
               >
                 全部
               </FilterChip>
               <FilterChip
                 active={tierFilter === "__none__"}
-                onClick={() => setTierFilter("__none__")}
+                onClick={() => {
+                  setTierFilter("__none__");
+                  setPage(1);
+                }}
               >
                 未分級
               </FilterChip>
@@ -271,7 +281,10 @@ export default function ModelsAdminPage() {
                 <FilterChip
                   key={t.tier_uid}
                   active={tierFilter === t.key}
-                  onClick={() => setTierFilter(t.key)}
+                  onClick={() => {
+                    setTierFilter(t.key);
+                    setPage(1);
+                  }}
                 >
                   {t.label_zh}
                 </FilterChip>
@@ -317,7 +330,7 @@ export default function ModelsAdminPage() {
                         <TD>
                           <div className="font-medium">{m.name}</div>
                         </TD>
-                        <TD className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                        <TD className="font-mono text-sm text-muted-foreground whitespace-nowrap">
                           {m.openrouter_model_id}
                         </TD>
                         <TD>
@@ -326,14 +339,14 @@ export default function ModelsAdminPage() {
                             tier={m.tier_key ? tierMap[m.tier_key] : undefined}
                           />
                         </TD>
-                        <TD className="text-right font-mono text-xs">
+                        <TD className="text-right font-mono text-sm">
                           {m.context_length?.toLocaleString() ?? "-"}
                         </TD>
-                        <TD className="text-xs">{m.modality ?? "-"}</TD>
-                        <TD className="text-right font-mono text-xs">
+                        <TD className="text-sm">{m.modality ?? "-"}</TD>
+                        <TD className="text-right font-mono text-sm">
                           {priceToMtokDisplay(m.price_prompt_per_token)}
                         </TD>
-                        <TD className="text-right font-mono text-xs">
+                        <TD className="text-right font-mono text-sm">
                           {priceToMtokDisplay(m.price_completion_per_token)}
                         </TD>
                         <TD onClick={(e) => e.stopPropagation()}>
@@ -360,7 +373,7 @@ export default function ModelsAdminPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="font-medium truncate">{m.name}</div>
-                        <div className="text-xs font-mono text-muted-foreground truncate">
+                        <div className="text-sm font-mono text-muted-foreground truncate">
                           {m.openrouter_model_id}
                         </div>
                       </div>
@@ -374,7 +387,7 @@ export default function ModelsAdminPage() {
                         />
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                       <TierBadge
                         tierKey={m.tier_key}
                         tier={m.tier_key ? tierMap[m.tier_key] : undefined}
@@ -384,7 +397,7 @@ export default function ModelsAdminPage() {
                         <span>ctx {m.context_length.toLocaleString()}</span>
                       )}
                     </div>
-                    <div className="text-xs font-mono text-muted-foreground">
+                    <div className="text-sm font-mono text-muted-foreground">
                       Prompt ${priceToMtokDisplay(m.price_prompt_per_token)} /
                       Mtok · Completion $
                       {priceToMtokDisplay(m.price_completion_per_token)} / Mtok
@@ -395,31 +408,29 @@ export default function ModelsAdminPage() {
             </>
           )}
 
-          {!loading && (
+          {!loading && total > 0 && (
             <div className="flex items-center justify-between text-sm text-muted-foreground pt-2">
               <span>
-                顯示 {visible.length} / 載入 {items.length} · 後端共 {total} 筆
+                第 {page} / {Math.max(1, Math.ceil(total / size))} 頁(共 {total} 筆;本頁顯示 {visible.length})
               </span>
-              {total > size && (
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => p - 1)}
-                  >
-                    上一頁
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page * size >= total}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    下一頁
-                  </Button>
-                </div>
-              )}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  上一頁
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page * size >= total}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  下一頁
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
@@ -437,7 +448,7 @@ export default function ModelsAdminPage() {
           {editing && (
             <div className="flex flex-col gap-4 pt-3 max-h-[70vh] overflow-y-auto">
               <Field label="OpenRouter ID">
-                <code className="text-xs font-mono break-all">
+                <code className="text-sm font-mono break-all">
                   {editing.openrouter_model_id}
                 </code>
               </Field>
@@ -503,12 +514,12 @@ export default function ModelsAdminPage() {
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-muted-foreground mt-2">
+                <p className="text-sm text-muted-foreground mt-2">
                   分級用於後續限制不同角色 / Skill 可使用的模型;當前僅儲存,未強制執行。
                 </p>
               </div>
 
-              <div className="text-xs text-muted-foreground">
+              <div className="text-sm text-muted-foreground">
                 最近同步:{new Date(editing.last_synced_at).toLocaleString("zh-TW", { hour12: false })}
               </div>
             </div>
@@ -540,7 +551,7 @@ function TierBadge({
 }) {
   if (!tierKey) {
     return (
-      <span className="inline-flex items-center rounded-full border border-border bg-muted text-muted-foreground px-2 py-0.5 text-xs font-medium">
+      <span className="inline-flex items-center rounded-full border border-border bg-muted text-muted-foreground px-2 py-0.5 text-sm font-medium">
         未分級
       </span>
     );
@@ -565,7 +576,7 @@ function TierBadge({
     dotColor = tailwindMap[colorRaw];
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-0.5 text-xs font-medium">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-0.5 text-sm font-medium">
       {dotColor && (
         <span
           aria-hidden
@@ -614,7 +625,7 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-sm text-muted-foreground">{label}</span>
       {children}
     </div>
   );

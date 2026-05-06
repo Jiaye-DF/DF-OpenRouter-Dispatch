@@ -290,7 +290,7 @@ export default function ProjectsPage() {
               <Label htmlFor="proj-dept">
                 所屬部門
                 {form.project_uid && (
-                  <span className="ml-2 text-xs text-muted-foreground">
+                  <span className="ml-2 text-sm text-muted-foreground">
                     （建立後不可修改）
                   </span>
                 )}
@@ -315,7 +315,7 @@ export default function ProjectsPage() {
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="proj-code">
                   代碼
-                  <span className="ml-2 text-xs text-muted-foreground">
+                  <span className="ml-2 text-sm text-muted-foreground">
                     （建立時由系統自動產生，不可修改）
                   </span>
                 </Label>

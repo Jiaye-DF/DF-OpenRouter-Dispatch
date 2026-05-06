@@ -58,7 +58,7 @@ export function ThemeSwitcher() {
               <section key={series.key} className="flex flex-col gap-3">
                 <header className="flex items-baseline gap-2">
                   <h3 className="text-base font-semibold">{series.labelZh}</h3>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-sm text-muted-foreground">
                     {series.labelEn}
                   </span>
                 </header>
@@ -112,7 +112,7 @@ function ThemeCard({
         </span>
         <div className="flex flex-col">
           <span className="text-sm font-medium">{item.labelZh}</span>
-          <span className="text-xs text-muted-foreground">{item.labelEn}</span>
+          <span className="text-sm text-muted-foreground">{item.labelEn}</span>
         </div>
       </div>
     </button>
@@ -126,7 +126,7 @@ function ThemeThumb({ colors }: { colors: ThemeItem["colors"] }) {
       aria-hidden
     >
       <div
-        className="flex flex-1 items-center justify-center text-xs font-medium"
+        className="flex flex-1 items-center justify-center text-sm font-medium"
         style={{ background: colors.background, color: colors.foreground }}
       >
         Aa

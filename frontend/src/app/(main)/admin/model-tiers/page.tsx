@@ -298,7 +298,7 @@ export default function ModelTiersPage() {
                   <TR key={t.tier_uid}>
                     <TD className="font-medium">{t.label_zh}</TD>
                     <TD className="text-muted-foreground">{t.label_en ?? "-"}</TD>
-                    <TD className="font-mono text-xs">{t.key}</TD>
+                    <TD className="font-mono text-sm">{t.key}</TD>
                     <TD>
                       <div className="flex items-center gap-2">
                         <span
@@ -308,15 +308,15 @@ export default function ModelTiersPage() {
                             backgroundColor: resolveColor(t.color) || "transparent",
                           }}
                         />
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-sm text-muted-foreground">
                           {t.color ?? "-"}
                         </span>
                       </div>
                     </TD>
-                    <TD className="text-right font-mono text-xs">
+                    <TD className="text-right font-mono text-sm">
                       {tokenToMtokInput(t.auto_match_min_price_per_mtok) || "-"}
                     </TD>
-                    <TD className="text-right font-mono text-xs">
+                    <TD className="text-right font-mono text-sm">
                       {tokenToMtokInput(t.auto_match_max_price_per_mtok) || "-"}
                     </TD>
                     <TD className="text-right">{t.sort_order}</TD>
@@ -371,7 +371,7 @@ export default function ModelTiersPage() {
                 placeholder="cheap / standard / expensive ..."
                 className="font-mono"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 建立後不可改;對應 models.tier_key。
               </p>
             </FormField>
@@ -404,7 +404,7 @@ export default function ModelTiersPage() {
                   }}
                 />
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 可填 Tailwind palette 名(gray / green / blue / orange ...)或 hex(#10b981)。
               </p>
             </FormField>
@@ -441,7 +441,7 @@ export default function ModelTiersPage() {
                 />
               </FormField>
             </div>
-            <p className="text-xs text-muted-foreground -mt-1">
+            <p className="text-sm text-muted-foreground -mt-1">
               留空代表不參與自動分級;區間語義為 [min, max),max 留空表示無上限。
             </p>
           </div>
@@ -478,7 +478,7 @@ export default function ModelTiersPage() {
             {tierInUse === null ? (
               <p>
                 將刪除「<b>{deleteTarget?.label_zh}</b>」(
-                <code className="font-mono text-xs">{deleteTarget?.key}</code>
+                <code className="font-mono text-sm">{deleteTarget?.key}</code>
                 )。確定嗎?
               </p>
             ) : (
@@ -488,11 +488,11 @@ export default function ModelTiersPage() {
                 </p>
                 <div className="rounded-xl border border-border bg-muted/40 p-3 max-h-48 overflow-y-auto">
                   {tierInUse.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       (後端未提供使用清單)
                     </p>
                   ) : (
-                    <ul className="font-mono text-xs space-y-1">
+                    <ul className="font-mono text-sm space-y-1">
                       {tierInUse.map((id) => (
                         <li key={id}>{id}</li>
                       ))}
@@ -501,7 +501,7 @@ export default function ModelTiersPage() {
                 </div>
                 <Link
                   href="/admin/models"
-                  className="text-primary hover:underline text-xs"
+                  className="text-primary hover:underline text-sm"
                 >
                   → 前往「模型管理」重新指派
                 </Link>

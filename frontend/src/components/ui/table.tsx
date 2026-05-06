@@ -58,7 +58,7 @@ export function TH({
   return (
     <th
       className={cn(
-        "text-left font-medium px-4 py-3 text-xs uppercase tracking-wide",
+        "text-left font-medium px-4 py-3 text-sm uppercase tracking-wide",
         className
       )}
       {...props}

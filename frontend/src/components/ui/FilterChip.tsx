@@ -21,7 +21,7 @@ export function FilterChip({
       type="button"
       aria-pressed={active}
       className={cn(
-        "inline-flex items-center justify-center rounded-full border px-3 py-1 text-xs font-medium transition-colors hover:cursor-pointer",
+        "inline-flex items-center justify-center rounded-full border px-3 py-1 text-sm font-medium transition-colors hover:cursor-pointer",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
         active
           ? "bg-primary text-primary-foreground border-primary"

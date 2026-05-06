@@ -233,7 +233,7 @@ export default function OpenRouterKeysPage() {
                   <TR key={k.openrouter_key_uid}>
                     <TD>{deptName(k.department_uid)}</TD>
                     <TD>{k.name}</TD>
-                    <TD className="font-mono text-xs whitespace-nowrap">
+                    <TD className="font-mono text-sm whitespace-nowrap">
                       {k.key_prefix}····{k.key_last4}
                     </TD>
                     <TD>
@@ -342,7 +342,7 @@ export default function OpenRouterKeysPage() {
                   onChange={(e) => setKeyPlain(e.target.value)}
                   placeholder="sk-or-..."
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   明文僅存於後端加密欄位；建立完成後僅回末 4 碼。
                 </p>
               </div>
@@ -406,7 +406,7 @@ function CreditsCell({ item }: { item: OpenRouterKey }) {
 
   if (used === null && limit === null && synced === null) {
     return (
-      <span className="text-xs text-muted-foreground">尚未同步</span>
+      <span className="text-sm text-muted-foreground">尚未同步</span>
     );
   }
 
@@ -419,7 +419,7 @@ function CreditsCell({ item }: { item: OpenRouterKey }) {
 
   return (
     <div className="flex flex-col gap-1 min-w-[160px]">
-      <div className="flex items-center gap-2 text-xs whitespace-nowrap">
+      <div className="flex items-center gap-2 text-sm whitespace-nowrap">
         <span className="font-mono">
           ${used !== null ? used.toFixed(2) : "-"}
           {" / "}

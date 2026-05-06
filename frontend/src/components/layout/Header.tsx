@@ -90,7 +90,7 @@ export function Header() {
               <div className="absolute right-0 mt-2 w-64 rounded-xl border border-border bg-card text-card-foreground shadow-lg z-50 animate-fade-in overflow-hidden">
                 <div className="px-4 py-3">
                   <div className="font-semibold">{actor.username}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
+                  <div className="text-sm text-muted-foreground mt-0.5">
                     {actor.account}
                     {actor.email ? ` · ${actor.email}` : ""}
                   </div>

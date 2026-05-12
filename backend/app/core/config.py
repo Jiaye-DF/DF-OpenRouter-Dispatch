@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     OPENROUTER_API_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_API_TIMEOUT: int = 60
 
+    # --- Internal LLM (v1.2) ---
+    # base_url / api_key / rpm_limit / min_interval 已移至 DB(`internal_keys` 表,per-Key 設定);
+    # 此處僅保留「系統層級、所有 Key 共用」的兩個 timeout。
+    INTERNAL_LLM_REQUEST_TIMEOUT: int = 120      # 單次呼叫 httpx timeout(秒,共用 httpx client)
+    INTERNAL_LLM_RATE_WAIT_TIMEOUT: int = 60     # 全部 Key 撞限額後最長等待秒數,超過 → 429 internal_busy
+
     # --- Dev Seed ---
     DEFAULT_OPENROUTER_KEY: str = ""
 

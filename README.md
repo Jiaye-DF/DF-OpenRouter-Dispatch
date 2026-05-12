@@ -20,7 +20,7 @@ OpenRouter API 中控派發管理平台（MVP v1.0）
 
 ## 預設帳號
 
-首次啟動時 Flyway + Backend Seed 會建立初始 admin（帳號 `INITIAL_ADMIN_ACCOUNT`、密碼 `INITIAL_ADMIN_PASSWORD`），掛於 `SYSTEM` 部門。
+首次啟動時 Alembic + Backend Seed 會建立初始 admin（帳號 `INITIAL_ADMIN_ACCOUNT`、密碼 `INITIAL_ADMIN_PASSWORD`），掛於 `SYSTEM` 部門。
 
 ## 文件
 

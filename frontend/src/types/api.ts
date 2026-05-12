@@ -77,6 +77,24 @@ export interface OpenRouterKey {
   credits_limit_usd?: string | null; // NULL 代表無上限
   credits_is_free_tier?: boolean | null;
   credits_synced_at?: string | null; // ISO 字串
+  // v1.2 速率限制(per-Key;0 = 不限)
+  rpm_limit: number;
+  min_request_interval_ms: number;
+}
+
+// Internal Key (v1.2;全平台共用,無 department)
+export interface InternalKey {
+  internal_key_uid: string;
+  name: string;
+  base_url: string;
+  has_api_key: boolean;
+  key_last4: string | null;
+  rpm_limit: number;
+  min_request_interval_ms: number;
+  is_active: boolean;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // SDK Key
@@ -143,7 +161,8 @@ export interface StatsTimeseriesPoint {
 // Decimal 欄位以字串傳輸,避免 JS 浮點誤差
 export interface Model {
   model_uid: string;
-  openrouter_model_id: string;
+  provider: "openrouter" | "internal";
+  model_key: string;
   name: string;
   description: string | null;
 

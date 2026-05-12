@@ -49,6 +49,8 @@ export default function OpenRouterKeysPage() {
   const [name, setName] = React.useState("");
   const [departmentUid, setDepartmentUid] = React.useState("");
   const [keyPlain, setKeyPlain] = React.useState("");
+  const [rpmLimit, setRpmLimit] = React.useState<string>("0");
+  const [minInterval, setMinInterval] = React.useState<string>("0");
   const [saving, setSaving] = React.useState(false);
 
   const [lastCreated, setLastCreated] = React.useState<string | null>(null);
@@ -100,12 +102,16 @@ export default function OpenRouterKeysPage() {
     setName("");
     setKeyPlain("");
     setDepartmentUid(depts[0]?.department_uid ?? "");
+    setRpmLimit("0");
+    setMinInterval("0");
     setMode({ kind: "create" });
   };
   const onOpenEdit = (k: OpenRouterKey) => {
     setName(k.name);
     setDepartmentUid(k.department_uid);
     setKeyPlain("");
+    setRpmLimit(String(k.rpm_limit));
+    setMinInterval(String(k.min_request_interval_ms));
     setMode({ kind: "edit", item: k });
   };
 
@@ -127,6 +133,8 @@ export default function OpenRouterKeysPage() {
             department_uid: departmentUid,
             name: name.trim(),
             key: keyPlain.trim(),
+            rpm_limit: Math.max(0, Number(rpmLimit) || 0),
+            min_request_interval_ms: Math.max(0, Number(minInterval) || 0),
           }
         );
         setMode(null);
@@ -144,7 +152,11 @@ export default function OpenRouterKeysPage() {
       try {
         await apiClient.patch(
           API_ENDPOINTS.openrouterKeyById(mode.item.openrouter_key_uid),
-          { name: name.trim() }
+          {
+            name: name.trim(),
+            rpm_limit: Math.max(0, Number(rpmLimit) || 0),
+            min_request_interval_ms: Math.max(0, Number(minInterval) || 0),
+          }
         );
         setMode(null);
         load();
@@ -224,6 +236,7 @@ export default function OpenRouterKeysPage() {
                   <TH>名稱</TH>
                   <TH>Key</TH>
                   <TH>餘額</TH>
+                  <TH>速率限制</TH>
                   <TH>狀態</TH>
                   <TH className="text-right">操作</TH>
                 </TR>
@@ -238,6 +251,9 @@ export default function OpenRouterKeysPage() {
                     </TD>
                     <TD>
                       <CreditsCell item={k} />
+                    </TD>
+                    <TD>
+                      <RateLimitCell item={k} />
                     </TD>
                     <TD>
                       <button
@@ -347,6 +363,31 @@ export default function OpenRouterKeysPage() {
                 </p>
               </div>
             )}
+            <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
+              <div className="flex flex-col gap-1.5">
+                <Label>每分鐘最大呼叫(RPM)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={rpmLimit}
+                  onChange={(e) => setRpmLimit(e.target.value)}
+                  placeholder="0 = 不限"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>最小請求間隔(ms)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={minInterval}
+                  onChange={(e) => setMinInterval(e.target.value)}
+                  placeholder="0 = 不限"
+                />
+              </div>
+              <p className="col-span-2 text-xs text-muted-foreground">
+                兩者疊加;Free Tier 建議 20 RPM、200ms;付費通常設 0(不限),由 OR 自行限流。
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -383,6 +424,18 @@ export default function OpenRouterKeysPage() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function RateLimitCell({ item }: { item: OpenRouterKey }) {
+  const rpm = item.rpm_limit > 0 ? `${item.rpm_limit} RPM` : "不限";
+  const interval =
+    item.min_request_interval_ms > 0 ? `${item.min_request_interval_ms}ms` : "—";
+  return (
+    <div className="text-sm whitespace-nowrap">
+      <div className="font-mono">{rpm}</div>
+      <div className="text-xs text-muted-foreground font-mono">間隔 {interval}</div>
+    </div>
   );
 }
 

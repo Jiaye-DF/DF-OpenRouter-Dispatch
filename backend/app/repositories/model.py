@@ -11,9 +11,9 @@ class ModelRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def find_by_openrouter_model_id(self, mid: str) -> Model | None:
+    async def find_by_key(self, mid: str) -> Model | None:
         stmt = select(Model).where(
-            Model.openrouter_model_id == mid,
+            Model.model_key == mid,
             Model.is_deleted.is_(False),
         )
         return (await self.db.execute(stmt)).scalar_one_or_none()
@@ -29,7 +29,7 @@ class ModelRepository:
         stmt = select(Model).where(
             Model.is_active.is_(True),
             Model.is_deleted.is_(False),
-        ).order_by(Model.openrouter_model_id.asc())
+        ).order_by(Model.model_key.asc())
         return list((await self.db.execute(stmt)).scalars().all())
 
     async def list_all(
@@ -57,7 +57,7 @@ class ModelRepository:
             stmt = stmt.where(Model.tier_key == tier_key)
             count_stmt = count_stmt.where(Model.tier_key == tier_key)
         stmt = (
-            stmt.order_by(Model.openrouter_model_id.asc())
+            stmt.order_by(Model.model_key.asc())
             .offset((page - 1) * size)
             .limit(size)
         )

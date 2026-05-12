@@ -17,6 +17,8 @@ async def create_openrouter_key(
     department_uid: UUID,
     name: str,
     raw_key: str,
+    rpm_limit: int = 0,
+    min_request_interval_ms: int = 0,
 ) -> OpenRouterKey:
     dept_repo = DepartmentRepository(db)
     dept = await dept_repo.get_by_uid(department_uid)
@@ -33,6 +35,8 @@ async def create_openrouter_key(
         key_ciphertext=ciphertext,
         key_prefix=prefix,
         key_last4=last4,
+        rpm_limit=rpm_limit,
+        min_request_interval_ms=min_request_interval_ms,
     )
     repo = OpenRouterKeyRepository(db)
     repo.add(row)

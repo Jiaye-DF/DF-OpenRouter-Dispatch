@@ -48,7 +48,7 @@ CREATE INDEX idx_api_keys_active ON api_keys (is_active, is_deleted);
 
 ## 4. `updated_at` 自動更新
 
-使用 Flyway 定義共用 trigger function：
+於 Alembic baseline migration(`backend/alembic/baseline_sql/V1__init_auth.sql`)定義共用 trigger function：
 
 ```sql
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
@@ -69,29 +69,47 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 ## 5. Migration
 
-- 所有 Schema 變更**必須**透過 Flyway Migration 腳本，**禁止**手動修改資料庫。
-- Migration 檔名遵循 `V{版號}__{描述}.sql`，單向前進，**禁止**修改既有檔案。
-- 每次功能若涉及 Schema 變更，**必須**同步提交對應 Flyway Migration 檔。
-- **禁止**對已合併到 `main` 的 Migration 做任何修改，需以新版號進行調整。
-- Migration 檔案位於 `migrations/`。
+- 所有 Schema 變更**必須**透過 Alembic Migration,**禁止**手動修改資料庫。
+- Migration 檔案位於 `backend/alembic/versions/`,檔名由 Alembic 產生(`<revision>_<slug>.py`)。
+- baseline 檔(`backend/alembic/versions/0001_baseline_flyway_v1_v11.py`)為原 Flyway V1~V11 的封存,內容仍為原始 SQL,放在 `backend/alembic/baseline_sql/` 並由 baseline migration 按版號順序執行。**baseline 檔案禁止修改**。
+- 從 baseline 之後的 migration 走 Alembic 標準 Python API(`op.create_table` / `op.add_column` / `op.execute` 等)。
+- 產生新 migration:
+  ```bash
+  cd backend
+  alembic revision -m "<描述>"                  # 手寫
+  alembic revision --autogenerate -m "<描述>"   # 由 SQLAlchemy model diff 產生
+  ```
+- 每次功能若涉及 Schema 變更,**必須**同步提交對應 Alembic Migration 檔。
+- **禁止**對已合併到 `main` 的 Migration 做任何修改(會造成 alembic_version 對不上 / production 重跑),需以新 revision 進行調整。
+- Migration 套用:
+  ```bash
+  alembic upgrade head     # 升到最新
+  alembic downgrade -1     # 回退一版(僅用於本機)
+  alembic current          # 查詢目前 revision
+  alembic history          # 查詢 revision 歷史
+  ```
 
 ## 6. 歷史遺留 Migration 的補救模式
 
-已合併至 `main` 的 Migration 一經發現不符本文件 § 1 必備欄位或其他規範時，**禁止**回頭修改原檔（Flyway checksum 會爆）；**必須**以新版號 `DROP + CREATE` 或 `ALTER` 的方式補救。流程：
+已合併至 `main` 的 Migration 一經發現不符本文件 § 1 必備欄位或其他規範時,**禁止**回頭修改原檔(production 已套用、alembic_version 已記錄,改檔會造成歷史不一致);**必須**以新 revision `DROP + CREATE` 或 `ALTER` 的方式補救。流程:
 
-1. **確認遺留檔不動**：原 V 檔保留於版控，作為歷史紀錄與稽核依據。
-2. **新增補救 Migration**（V{新版號}__redefine_{table}.sql 或 V{新版號}__fix_{table}.sql）：
-   - 若結構差異大（缺 `pid` / `<table>_uid` / `is_*` 等必備欄位）：以 `DROP TABLE IF EXISTS <table>;` + `CREATE TABLE ...` 重建。
-   - 若只是欄位缺漏：以 `ALTER TABLE ... ADD COLUMN ...` 補齊。
-3. **補救 Migration 檔頭必須加註解**說明：被補救的遺留檔版號、違反的章節、補救方式。範例：
+1. **確認遺留檔不動**:原 migration 檔保留於版控,作為歷史紀錄與稽核依據。
+2. **新增補救 Migration**(`alembic revision -m "redefine_<table>"` 或 `fix_<table>`):
+   - 若結構差異大(缺 `pid` / `<table>_uid` / `is_*` 等必備欄位):以 `op.execute("DROP TABLE IF EXISTS <table>")` + `op.create_table(...)` 重建。
+   - 若只是欄位缺漏:以 `op.add_column(...)` 補齊。
+3. **補救 Migration 檔頭必須加註解**說明:被補救的 revision、違反的章節、補救方式。範例:
 
-```sql
--- V3: 依 docs/Design-Base/30-database.md § 1 重新定義 api_keys。
--- V2 的 api_keys 缺 <entity>_uid / is_active，不符必備欄位。
--- 以 DROP + CREATE 方式補救，V2 檔保留於版控不得修改。
-DROP TABLE IF EXISTS api_keys;
-CREATE TABLE api_keys ( ... );
+```python
+"""redefine api_keys: 依 docs/Design-Base/30-database.md § 1 重新定義。
+
+被補救:0003_create_api_keys 的 api_keys 缺 <entity>_uid / is_active,不符必備欄位。
+以 DROP + CREATE 方式補救,0003 檔保留於版控不得修改。
+"""
+
+def upgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS api_keys")
+    op.create_table("api_keys", ...)
 ```
 
-4. **禁止**在本機直接 `flyway repair` 覆寫 checksum 來繞過遺留檔；若遺留檔已在正式環境執行過，**必須**走新版號補救，不得事後竄改。
-5. **補救後**：於補救 Migration 的 commit message 與對應 Task 文件中同步標註「補救 V{舊版號}」，便於追溯。
+4. **禁止**透過直接修改 `alembic_version` 表或刪除 revision 檔來繞過遺留檔;若遺留檔已在正式環境執行過,**必須**走新 revision 補救,不得事後竄改。
+5. **補救後**:於補救 Migration 的 commit message 與對應 Task 文件中同步標註「補救 <舊 revision>」,便於追溯。

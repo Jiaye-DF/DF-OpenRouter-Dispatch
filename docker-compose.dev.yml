@@ -25,10 +25,12 @@ services:
       - "8800:8000"
     volumes:
       - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/alembic.ini:/app/alembic.ini
     depends_on:
       postgres:
         condition: service_healthy
-      flyway:
+      alembic:
         condition: service_completed_successfully
 
   postgres:
@@ -44,12 +46,16 @@ services:
       timeout: 3s
       retries: 20
 
-  flyway:
-    image: flyway/flyway:10-alpine
-    command: -connectRetries=60 migrate
+  alembic:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
     env_file: .env
+    command: ["alembic", "upgrade", "head"]
     volumes:
-      - ./migrations:/flyway/sql
+      - ./backend/alembic:/app/alembic
+      - ./backend/alembic.ini:/app/alembic.ini
     depends_on:
       postgres:
         condition: service_healthy

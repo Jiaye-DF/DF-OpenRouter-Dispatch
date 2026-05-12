@@ -33,7 +33,7 @@ async def _wait_db_ready() -> None:
         except Exception as exc:  # noqa: BLE001
             logger.info("DB 尚未就緒（第 %d 次）: %s", i + 1, exc)
             await asyncio.sleep(_DB_READY_SLEEP)
-    raise RuntimeError("DB/Flyway 遲遲未就緒；放棄 seed")
+    raise RuntimeError("DB/Migration 遲遲未就緒；放棄 seed")
 
 
 async def run_seed() -> None:

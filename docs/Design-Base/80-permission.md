@@ -184,7 +184,7 @@ async def delete_user(
     ...
 
 
-@router.post("/model/openrouter/chat")
+@router.post("/model/chat")  # v1.2 canonical;舊 /model/openrouter/chat 為 deprecated alias
 async def proxy_chat(
     ctx: SdkCallerContext = Depends(require_sdk_caller),
 ):

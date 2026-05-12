@@ -30,9 +30,17 @@ const MESSAGES: Record<string, string> = {
   // 模型 / OpenRouter
   model_forbidden: "此模型未在白名單內。",
   model_not_found: "此模型不存在。",
+  model_key_duplicated: "模型 key 已存在,請更換。",
+  tier_not_found: "指定的模型分級不存在。",
   feature_not_supported: "此功能目前不支援。",
   rate_limited: "請求過於頻繁,請稍後再試。",
   openrouter_unavailable: "上游服務暫時無法使用,請稍後再試。",
+
+  // v1.2 本地模型
+  internal_busy: "本地模型目前繁忙,排隊已超時,請稍後再試。",
+  internal_unavailable: "本地模型服務暫時無法使用,請稍後再試。",
+  provider_misconfigured: "本地模型設定未完成,請聯絡系統管理員。",
+  provider_not_allowed: "此 provider 不允許手動建立,請改用同步流程。",
 
   // 預設
   操作失敗: "操作失敗,請稍後再試。",

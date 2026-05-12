@@ -1,6 +1,11 @@
-# 50 · OpenRouter 整合
+# 50 · 模型代理整合（Model Provider）
 
-本文件定義後端作為 OpenRouter API 代理層的整合規範：OpenRouter Key 管理、代理認證（SDK Key + User Token 雙因子）、路由策略、錯誤處理、重試、用量與稽核。
+本文件定義後端作為**模型代理層**的整合規範。v1.2 起支援多 provider：
+
+- **OpenRouter**（外網）：以多把 Key 組成 pool,撞速率限制時 failover 到下一把。
+- **Internal**（企業內地端 OpenAI-compatible server,vLLM / Ollama / TGI / LiteLLM 等）：單一 endpoint,撞速率限制時排隊等待。
+
+兩 provider 共用同一套白名單（`models.is_active`）、SDK Key + User Token 雙因子認證、用量稽核、tier 分級；**差異只在 client 實作與速率控管行為**（詳 § 4 與 § 12）。
 
 > OpenRouter 官方文件：https://openrouter.ai/docs
 
@@ -84,28 +89,31 @@ SDK（使用者應用）
   │  Headers:  X-SDK-Key, X-User-Token
   │  Body:     { model, text, images }
   ▼
-[backend] POST /api/v1/model/openrouter/chat
+[backend] POST /api/v1/model/chat                    (canonical,v1.2)
+          POST /api/v1/model/openrouter/chat         (deprecated alias,行為相同)
   │  1. 解析 X-SDK-Key → argon2 比對 sdk_api_keys → 得 department_uid (SDK)
   │  2. 解密 X-User-Token → payload → 驗 revocation → 取 department_uid (User)
   │  3. 若 SDK.department_uid != User.department_uid → 401 unauthorized
   │  4. 驗 model 白名單（DB `models.is_active`）；未通過則 403 model_forbidden
-  │  5. 依 department_uid 選一把 active openrouter_key（random）
-  │  6. 改寫 Request 為 OpenRouter chat/completions messages[].content[]
-  ├───────────────────▶ OpenRouter /api/v1/chat/completions
-  │                     （Authorization: Bearer <解密後 OpenRouter Key>）
-  │  7. 取得 Response；失敗（401）則嘗試下一把 Key
-  │  8. 回 Client 後以 BackgroundTasks 寫 usage_logs
+  │  5. 依 model.provider 分流:
+  │       openrouter:依 department_uid 隨機選一把 active Key,過 rate limiter
+  │                  (per-Key),撞限額切下一把(failover),全撞牆 → 429 rate_limited
+  │       internal:  過 rate limiter(per-Provider 全域),撞限額排隊;超過
+  │                  RATE_WAIT_TIMEOUT → 429 internal_busy
+  │  6. 改寫 Request → POST 對應 provider /chat/completions
+  │  7. 取得 Response;OR 失敗(401)切下一把 Key;internal 5xx → 502 internal_unavailable
+  │  8. 回 Client 後以 BackgroundTasks 寫 usage_logs(internal 的 openrouter_key_uid=NULL)
   ▼
 SDK
 ```
 
 ## 5. 代理端點規範
 
-- 代理端點路徑**必須**使用 `/api/v1/model/openrouter/<action>` 格式；`<action>` 為功能語意（例 `chat`），**不**直接對應 OpenRouter 原生 path。
-  - 例：模型對話 → `POST /api/v1/model/openrouter/chat`
-- Request 採**平台簡化 schema**（`{ model, text, images }`），由後端改寫為 OpenRouter 官方 `chat/completions` 格式（`messages[].content[]`）後上游送出。
-  - 本版本**不**做 OpenAI passthrough；後續版本若需擴充，得於同 `/model/openrouter/` 命名空間下新增 action。
-- 非代理端點（管理 UI 用）使用 `/api/v1/<resource>`，遵循 [20-backend.md § 3](./20-backend.md#3-路由與-api-命名)。
+- v1.2 起代理 canonical path 為 **`POST /api/v1/model/chat`**;所有 provider 共用,後端依 `model_key` 對應的 `models.provider` 自動分流。
+- 舊路徑 `POST /api/v1/model/openrouter/chat` 保留為 **deprecated alias**（內部 forward 到同 handler;Swagger 標 `deprecated: true`),**至少保留至 v1.4**。
+- Request 採**平台簡化 schema**（`{ model, text, images }`),由後端改寫為各 provider 的 chat/completions 格式;目前 OpenRouter 與 Internal 都是 OpenAI-compatible,改寫邏輯一致。
+- 本版本**不**做 OpenAI passthrough;後續版本若需擴充新 action,於同 `/model/` 命名空間下新增。
+- 非代理端點（管理 UI 用）使用 `/api/v1/<resource>`,遵循 [20-backend.md § 3](./20-backend.md#3-路由與-api-命名)。
 
 ## 6. 請求改寫與欄位過濾
 
@@ -114,7 +122,7 @@ SDK
 | 處理 | 說明 |
 | --- | --- |
 | Schema 展開 | `{ model, text, images }` → `messages:[{role:"user", content:[{type:"text", text}, {type:"image_url", image_url:{url}}]}]` |
-| 白名單檢查 | 依 `models.is_active` DB 查詢（`models WHERE openrouter_model_id=? AND is_active=TRUE AND is_deleted=FALSE`）；未通過或不存在均回 403 `model_forbidden`，不揭露差異 |
+| 白名單檢查 | 依 `models.is_active` DB 查詢（`models WHERE model_key=? AND is_active=TRUE AND is_deleted=FALSE`）；未通過或不存在均回 403 `model_forbidden`,不揭露差異 |
 | 影片輸入 | 本版本**禁止**（`videos` 若出現 → 400 `feature_not_supported`） |
 | 模型別名展開 | 可定義短別名對應 OpenRouter 實際模型字串（本版本不實作） |
 
@@ -162,6 +170,11 @@ Response 回傳給 Client 前：
 | 模型同步進行中 | 425 | `sync_in_progress` |
 | 模型同步距上次 < 10 min | 425 | `sync_throttled` |
 | 刪除 model_tier 仍被引用 | 400 | `tier_in_use` |
+| OR 所有 active Key 撞 RPM / 最小間隔 | 429 | `rate_limited` |
+| Internal 排隊超過 RATE_WAIT_TIMEOUT | 429 | `internal_busy`(`data.retry_after_seconds`) |
+| Internal server 連線失敗 / 5xx | 502 | `internal_unavailable` |
+| `models.provider=internal` 但 env 未設 base_url | 500 | `provider_misconfigured` |
+| POST `/api/v1/models` 傳 `provider=openrouter` | 400 | `provider_not_allowed`(openrouter 必須走同步) |
 
 OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`），但**禁止**回傳前端。
 
@@ -184,9 +197,19 @@ OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`）�
 
 ## 11. 設定與健康檢查
 
-- `OPENROUTER_API_BASE_URL` 預設 `https://openrouter.ai/api/v1`，**可**於 `.env` 覆寫以導向測試 / 私有 Gateway。
-- `OPENROUTER_API_TIMEOUT` 預設 60（秒）；串流使用獨立 `OPENROUTER_STREAM_TIMEOUT`（預設 300 秒，本版本未啟用）。
-- 後端**應**提供 `/api/v1/health/openrouter` 端點（僅限 admin），實呼低成本模型驗證金鑰與通路。
+### OpenRouter
+
+- `OPENROUTER_API_BASE_URL` 預設 `https://openrouter.ai/api/v1`,**可**於 `.env` 覆寫以導向測試 / 私有 Gateway。
+- `OPENROUTER_API_TIMEOUT` 預設 60（秒）;串流使用獨立 `OPENROUTER_STREAM_TIMEOUT`（預設 300 秒,本版本未啟用)。
+- 後端**應**提供 `/api/v1/health/openrouter` 端點（僅限 admin),實呼低成本模型驗證金鑰與通路。
+
+### Internal LLM(v1.2)
+
+- 連線參數(`base_url` / `api_key`)與速率限制(`rpm_limit` / `min_request_interval_ms`)放在 **DB `internal_keys` 表**,透過 `/admin/internal-keys` 後台管理;**每把 Key 獨立設定**,改值不需要重啟。
+- env 只留兩個系統層級設定:
+  - `INTERNAL_LLM_REQUEST_TIMEOUT` 預設 120(秒;httpx 共用 client timeout)
+  - `INTERNAL_LLM_RATE_WAIT_TIMEOUT` 預設 60(秒;全 Key 撞限額後最長等待)
+- v1.2 限 `UVICORN_WORKERS=1`(in-memory rate limiter 不跨 worker);multi-worker 需升級 Redis-backed limiter(v1.3)。
 
 ## 12. 禁止事項
 
@@ -204,8 +227,36 @@ OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`）�
 
 - **並發控制**:後端以 `pg_try_advisory_xact_lock(LOCK_KEY_MODELS_SYNC)` 取得交易鎖;失敗即回 425 `sync_in_progress`,**禁止**排隊等候。
 - **限流(throttle)**:檢查 `max(models.last_synced_at)`,距今 < 10 分鐘回 425 `sync_throttled`,response `data.retry_after_seconds` 提示前端倒數;前端**應**將上次成功時間寫入 `localStorage` 以利重新進頁面時續算冷卻。
-- **模型 UPSERT**:以任一把 `is_active=TRUE` 的 OpenRouter Key 呼叫 `GET /models`,對 `openrouter_model_id` 做 UPSERT — 新模型 `is_active=TRUE` 並依規則自動匹配 `tier_key`;既有僅更新元資料(`name` / `description` / `context_length` / `pricing` / `modality`),**不覆寫** `is_active` 與 `tier_key`;DB 有但 API 無者標記 `is_active=FALSE`(軟下架,保留歷史)。
+- **模型 UPSERT**:以任一把 `is_active=TRUE` 的 OpenRouter Key 呼叫 `GET /models`,對 `model_key` 做 UPSERT(v1.1 此欄稱 `openrouter_model_id`,v1.2 改名)— 新模型 `is_active=TRUE` 並依規則自動匹配 `tier_key`;既有僅更新元資料(`name` / `description` / `context_length` / `pricing` / `modality`),**不覆寫** `is_active` 與 `tier_key`;DB 有但 API 無者(僅針對 `provider='openrouter'` 的 row)標記 `is_active=FALSE`(軟下架,保留歷史)。
 - **餘額同步(best-effort)**:對每把 `is_active=TRUE` Key 以該 Key 自身呼叫 `GET /auth/key`,回填 `credits_used_usd` / `credits_limit_usd` / `credits_is_free_tier` / `credits_synced_at`;個別 Key 失敗**不**整批 rollback,僅累計 `credits_failed` 計數於 response。
 - **稽核**:寫入 `action="sync_models_and_credits"`,`detail` 包含 added / updated / deactivated / credits_synced / credits_failed。
 
 詳細流程、錯誤對照與 SQL 細節參見 [../Tasks/v1.1/propose-v1.1.0.md § 6](../Tasks/v1.1/propose-v1.1.0.md)。
+
+## 14. 速率限制(v1.2)
+
+平台代理層採**主動限速**,避免被動撞 OR 429 或打爆地端 GPU server。兩設定疊加,取較大等待時間:
+
+| 設定 | 儲存位置 | 適用範圍 |
+| --- | --- | --- |
+| `rpm_limit` | `openrouter_keys` 表 / env `INTERNAL_LLM_RPM_LIMIT` | 60 秒滾動視窗最大呼叫數;`0` = 不限 |
+| `min_request_interval_ms` | 同上 | 連續兩次呼叫最短間隔;`0` = 不限 |
+
+**撞限額行為**:
+
+- **OpenRouter**:per-Key 計數;撞限額**換下一把 active Key**(failover,不 sleep);全撞牆 → 429 `rate_limited`。
+- **Internal**:per-Provider 全域計數;撞限額**等待**至下一個 slot;等待超過 `INTERNAL_LLM_RATE_WAIT_TIMEOUT` → 429 `internal_busy`(回 `data.retry_after_seconds`)。
+
+實作位置:[`backend/app/services/rate_limit.py`](../../backend/app/services/rate_limit.py);詳細演算法見 [../Tasks/v1.2/propose-v1.2.0.md § 6](../Tasks/v1.2/propose-v1.2.0.md)。
+
+## 15. 內部 Provider(v1.2)
+
+支援 OpenAI-compatible 地端 server(vLLM / Ollama / TGI / LiteLLM 等):
+
+- **模型登記**:admin 透過 `POST /api/v1/models`(僅接受 `provider=internal`)手動建立;openrouter 模型仍須走同步流程。
+- **白名單檢查**:沿用 `models.is_active`,與 openrouter 模型共用同一張表。
+- **Client**:`backend/app/clients/internal/client.py`,OpenAI-compatible `/chat/completions`。
+- **連線設定(per-Key)**:`internal_keys` 表(`base_url` / `api_key`(AES 加密,可 NULL)/ `rpm_limit` / `min_request_interval_ms`);透過 `/admin/internal-keys` CRUD 管理。
+- **撞限額行為**:Failover + 全 Key 撞牆才 wait(對齊 OR;wait 階段隨機挑一把,超過 `INTERNAL_LLM_RATE_WAIT_TIMEOUT` 才 429)。
+- **多台 server**:v1.2 支援多台,但本版本假設所有 Key 提供同一套模型(model ↔ Key 細部分流留 v1.3)。
+- **Usage log**:`openrouter_key_uid=NULL`,`cost_usd=0`(本版本不估算 internal cost)。

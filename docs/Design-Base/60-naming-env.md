@@ -42,16 +42,12 @@ LOG_LEVEL=
 UVICORN_WORKERS=
 
 # --- Database ---
+# DATABASE_URL 範例(dev):postgresql+asyncpg://<user>:<pass>@postgres:5432/<db>
+# Alembic migration 會在 env.py 自動把 +asyncpg 改為 +psycopg(sync driver)。
 POSTGRES_DB=
 POSTGRES_USER=
 POSTGRES_PASSWORD=
 DATABASE_URL=
-
-# --- Flyway ---
-FLYWAY_URL=
-FLYWAY_USER=
-FLYWAY_PASSWORD=
-FLYWAY_LOCATIONS=
 
 # --- Auth / Security ---
 JWT_SECRET=
@@ -72,6 +68,10 @@ INITIAL_ADMIN_PASSWORD=
 OPENROUTER_API_BASE_URL=
 OPENROUTER_API_TIMEOUT=
 OPENROUTER_STREAM_TIMEOUT=
+
+# --- Internal LLM (v1.2;per-Key 連線與速率設定改於 /admin/internal-keys 後台 DB-driven) ---
+INTERNAL_LLM_REQUEST_TIMEOUT=
+INTERNAL_LLM_RATE_WAIT_TIMEOUT=
 
 # --- Frontend ---
 NEXT_PUBLIC_API_BASE_URL=

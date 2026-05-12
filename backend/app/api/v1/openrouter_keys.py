@@ -49,6 +49,8 @@ async def create_key(
         department_uid=body.department_uid,
         name=body.name,
         raw_key=body.key,
+        rpm_limit=body.rpm_limit,
+        min_request_interval_ms=body.min_request_interval_ms,
     )
     await write_audit(
         db,

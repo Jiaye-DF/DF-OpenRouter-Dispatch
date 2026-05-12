@@ -17,8 +17,12 @@ class Model(Base, TimestampMixin):
         PG_UUID(as_uuid=True), unique=True, nullable=False
     )
 
-    # OpenRouter 為事實來源,僅 sync 寫入
-    openrouter_model_id: Mapped[str] = mapped_column(
+    # 模型 provider:`openrouter`(由同步寫入)/ `internal`(admin 手動建立)
+    provider: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="openrouter", server_default="openrouter"
+    )
+    # 模型對外識別 key:openrouter 為 `openai/gpt-4o`,internal 為 admin 自訂
+    model_key: Mapped[str] = mapped_column(
         String(128), unique=True, nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)

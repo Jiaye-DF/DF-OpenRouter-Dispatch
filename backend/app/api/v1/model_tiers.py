@@ -132,7 +132,7 @@ async def delete_tier(
         raise AppError("not_found", code=404)
     using = await repo.is_in_use(row.key)
     if using:
-        ids = [m.openrouter_model_id for m in using[:10]]
+        ids = [m.model_key for m in using[:10]]
         raise AppError(
             "tier_in_use",
             code=400,

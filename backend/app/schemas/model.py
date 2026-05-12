@@ -27,7 +27,8 @@ class ModelRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     model_uid: UUID
-    openrouter_model_id: str
+    provider: str
+    model_key: str
     name: str
     description: str | None = None
 
@@ -54,9 +55,30 @@ class ModelRead(BaseModel):
 
 
 class ModelPatch(BaseModel):
-    """Admin 編輯模型 — 僅可改 is_active 與 tier_key;name/description/計費/規格皆唯讀,以 OR 為準。"""
+    """Admin 編輯模型。
+
+    - openrouter:僅可改 `is_active` 與 `tier_key`;其他欄位以同步資料為準(API 層忽略)。
+    - internal:可改 `is_active` / `tier_key` / `name` / `description` / `context_length` / `modality`。
+    """
 
     is_active: bool | None = None
+    tier_key: str | None = Field(default=None, max_length=32)
+    # 以下 internal-only;openrouter 編輯時忽略
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    context_length: int | None = Field(default=None, ge=0)
+    modality: str | None = Field(default=None, max_length=64)
+
+
+class ModelCreateRequest(BaseModel):
+    """手動建立模型(僅接受 provider='internal';openrouter 必須走同步)。"""
+
+    provider: str = Field(min_length=1, max_length=32)
+    model_key: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9_\-/.]+$")
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    context_length: int | None = Field(default=None, ge=0)
+    modality: str | None = Field(default="text->text", max_length=64)
     tier_key: str | None = Field(default=None, max_length=32)
 
 

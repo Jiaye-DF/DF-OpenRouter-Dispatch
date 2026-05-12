@@ -72,7 +72,7 @@ AI 在產出或修改 `docs/Tasks/v<major>.<minor>/tasks-v<major>.<minor>.<patch
 
 - **必須**以 `/api/v1` 為前綴。
 - 管理端**必須**使用 kebab-case 複數（例：`/api-keys`）。
-- 代理端**必須**使用 `/api/v1/model/openrouter/<action>` 格式（例：`/api/v1/model/openrouter/chat`），action 為功能語意。
+- 代理端**必須**使用 `/api/v1/model/<action>` 格式（v1.2 起;例:`/api/v1/model/chat`),action 為功能語意,**不**綁定特定 provider。舊 `/api/v1/model/openrouter/chat` 為 deprecated alias,保留至 v1.4。
 - 單一資源以 UID 作為 path parameter。
 
 ### 4.3 敏感欄位

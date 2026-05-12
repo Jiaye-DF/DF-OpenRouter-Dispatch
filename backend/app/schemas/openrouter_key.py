@@ -9,11 +9,15 @@ class OpenRouterKeyCreateRequest(BaseModel):
     department_uid: UUID
     name: str = Field(min_length=1, max_length=128)
     key: str = Field(min_length=16, max_length=512)
+    rpm_limit: int = Field(default=0, ge=0)
+    min_request_interval_ms: int = Field(default=0, ge=0)
 
 
 class OpenRouterKeyUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     is_active: bool | None = None
+    rpm_limit: int | None = Field(default=None, ge=0)
+    min_request_interval_ms: int | None = Field(default=None, ge=0)
 
 
 class OpenRouterKeyResponse(BaseModel):
@@ -31,3 +35,7 @@ class OpenRouterKeyResponse(BaseModel):
     credits_limit_usd: Decimal | None = None
     credits_is_free_tier: bool | None = None
     credits_synced_at: datetime | None = None
+
+    # v1.2 速率限制(0 = 不限)
+    rpm_limit: int
+    min_request_interval_ms: int

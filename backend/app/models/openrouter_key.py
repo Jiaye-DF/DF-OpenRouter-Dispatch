@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, DateTime, LargeBinary, Numeric, String
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, LargeBinary, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -32,4 +32,12 @@ class OpenRouterKey(Base, TimestampMixin):
     credits_is_free_tier: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     credits_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # v1.2 速率限制(per-Key);0 = 不限
+    rpm_limit: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    min_request_interval_ms: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
     )

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, X } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 import { PageTitle } from "@/components/common/PageTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -62,6 +62,18 @@ export default function ModelsAdminPage() {
   const [editTier, setEditTier] = React.useState<string>("");
   const [savingEdit, setSavingEdit] = React.useState(false);
 
+  // v1.2 手動新增本地模型 Dialog
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createForm, setCreateForm] = React.useState({
+    model_key: "",
+    name: "",
+    description: "",
+    context_length: "",
+    tier_key: "",
+    modality: "text->text",
+  });
+  const [creating, setCreating] = React.useState(false);
+
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -118,7 +130,7 @@ export default function ModelsAdminPage() {
         }
       }
       if (kw) {
-        const hay = `${it.name} ${it.openrouter_model_id}`.toLowerCase();
+        const hay = `${it.name} ${it.model_key}`.toLowerCase();
         if (!hay.includes(kw)) return false;
       }
       return true;
@@ -168,6 +180,52 @@ export default function ModelsAdminPage() {
     setEditTier(m.tier_key ?? "");
   };
 
+  const onCreateInternal = async () => {
+    if (!createForm.model_key.trim() || !createForm.name.trim()) {
+      showDialog({
+        type: "warning",
+        title: "欄位未填",
+        message: "請至少填入 Model Key 與名稱",
+      });
+      return;
+    }
+    setCreating(true);
+    try {
+      await apiClient.post<Model>(API_ENDPOINTS.models, {
+        provider: "internal",
+        model_key: createForm.model_key.trim(),
+        name: createForm.name.trim(),
+        description: createForm.description.trim() || null,
+        context_length: createForm.context_length
+          ? Number(createForm.context_length)
+          : null,
+        modality: createForm.modality || null,
+        tier_key: createForm.tier_key || null,
+      });
+      toast("本地模型已新增", "success");
+      setCreateOpen(false);
+      setCreateForm({
+        model_key: "",
+        name: "",
+        description: "",
+        context_length: "",
+        tier_key: "",
+        modality: "text->text",
+      });
+      load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showDialog({
+          type: "error",
+          title: "建立失敗",
+          message: err.localizedDetail,
+        });
+      }
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const onSaveEdit = async () => {
     if (!editing) return;
     setSavingEdit(true);
@@ -199,12 +257,18 @@ export default function ModelsAdminPage() {
     <>
       <PageTitle
         title="模型管理"
-        description="OpenRouter 模型主檔;同步、分級、啟停由此控管"
+        description="OpenRouter 模型(同步)+ 本地模型(手動新增);啟停、分級由此控管"
         actions={
-          <SyncButton
-            endpoint={API_ENDPOINTS.syncModels}
-            onSuccess={() => load()}
-          />
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4" />
+              手動新增本地模型
+            </Button>
+            <SyncButton
+              endpoint={API_ENDPOINTS.syncModels}
+              onSuccess={() => load()}
+            />
+          </div>
         }
       />
 
@@ -311,7 +375,8 @@ export default function ModelsAdminPage() {
                   <THead>
                     <TR>
                       <TH>名稱</TH>
-                      <TH>OpenRouter ID</TH>
+                      <TH>Provider</TH>
+                      <TH>Model Key</TH>
                       <TH>分級</TH>
                       <TH className="text-right">Context</TH>
                       <TH>Modality</TH>
@@ -330,8 +395,11 @@ export default function ModelsAdminPage() {
                         <TD>
                           <div className="font-medium">{m.name}</div>
                         </TD>
+                        <TD>
+                          <ProviderBadge provider={m.provider} />
+                        </TD>
                         <TD className="font-mono text-sm text-muted-foreground whitespace-nowrap">
-                          {m.openrouter_model_id}
+                          {m.model_key}
                         </TD>
                         <TD>
                           <TierBadge
@@ -372,9 +440,12 @@ export default function ModelsAdminPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium truncate">{m.name}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium truncate">{m.name}</div>
+                          <ProviderBadge provider={m.provider} />
+                        </div>
                         <div className="text-sm font-mono text-muted-foreground truncate">
-                          {m.openrouter_model_id}
+                          {m.model_key}
                         </div>
                       </div>
                       <div
@@ -447,10 +518,13 @@ export default function ModelsAdminPage() {
           </DialogHeader>
           {editing && (
             <div className="flex flex-col gap-4 pt-3 max-h-[70vh] overflow-y-auto">
-              <Field label="OpenRouter ID">
-                <code className="text-sm font-mono break-all">
-                  {editing.openrouter_model_id}
-                </code>
+              <Field label="Provider / Model Key">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <ProviderBadge provider={editing.provider} />
+                  <code className="text-sm font-mono break-all">
+                    {editing.model_key}
+                  </code>
+                </div>
               </Field>
               {editing.description && (
                 <Field label="說明">
@@ -538,7 +612,124 @@ export default function ModelsAdminPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 手動新增本地模型 Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>手動新增本地模型</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 pt-3">
+            <div className="flex flex-col gap-1.5">
+              <Label>Model Key *</Label>
+              <Input
+                value={createForm.model_key}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, model_key: e.target.value }))
+                }
+                placeholder="internal/llama3-70b"
+              />
+              <p className="text-xs text-muted-foreground">
+                小寫英數 / 連字符 / 斜線 / 點;建議慣例 `internal/&lt;name&gt;`
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>名稱 *</Label>
+              <Input
+                value={createForm.name}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, name: e.target.value }))
+                }
+                placeholder="Llama 3 70B (內部)"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>說明</Label>
+              <Input
+                value={createForm.description}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, description: e.target.value }))
+                }
+                placeholder="vLLM,4-bit 量化"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label>Context Length</Label>
+                <Input
+                  type="number"
+                  value={createForm.context_length}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({
+                      ...f,
+                      context_length: e.target.value,
+                    }))
+                  }
+                  placeholder="8192"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Modality</Label>
+                <Input
+                  value={createForm.modality}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({ ...f, modality: e.target.value }))
+                  }
+                  placeholder="text->text"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>分級</Label>
+              <select
+                value={createForm.tier_key}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, tier_key: e.target.value }))
+                }
+                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
+              >
+                <option value="">(未分級)</option>
+                {tiers.map((t) => (
+                  <option key={t.tier_uid} value={t.key}>
+                    {t.label_zh}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              ⚠ 速率限制屬於 Server 層級,不在此設定;Internal RPM 設定見 `.env` 的 `INTERNAL_LLM_RPM_LIMIT`
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCreateOpen(false)}
+              disabled={creating}
+            >
+              取消
+            </Button>
+            <LoadingButton onClick={onCreateInternal} loading={creating}>
+              建立
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
+  );
+}
+
+function ProviderBadge({ provider }: { provider: "openrouter" | "internal" }) {
+  if (provider === "internal") {
+    return (
+      <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-600 px-2 py-0.5 text-sm font-medium">
+        Internal
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-600 px-2 py-0.5 text-sm font-medium">
+      OpenRouter
+    </span>
   );
 }
 

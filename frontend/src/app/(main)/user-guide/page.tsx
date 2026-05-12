@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils/cn";
 const API_BASE = (
   process.env.NEXT_PUBLIC_API_BASE_URL || "https://<your-domain>"
 ).replace(/\/$/, "");
-const CHAT_URL = `${API_BASE}/api/v1/model/openrouter/chat`;
+const CHAT_URL = `${API_BASE}/api/v1/model/chat`;
 
 function CodeBlock({
   code,
@@ -181,8 +181,11 @@ const ERRORS: ErrorRow[] = [
   { status: 401, code: "unauthorized", desc: "SDK Key 或 User Token 無效 / 已被撤銷 / 兩者不屬同一部門" },
   { status: 403, code: "model_forbidden", desc: "模型未在白名單,或已被 admin 停用" },
   { status: 404, code: "model_not_found", desc: "OpenRouter 找不到此模型" },
-  { status: 429, code: "rate_limited", desc: "短時間呼叫過於頻繁,請稍後重試" },
+  { status: 429, code: "rate_limited", desc: "OpenRouter Key 短時間呼叫過於頻繁;建議指數退避重試" },
+  { status: 429, code: "internal_busy", desc: "本地模型排隊已超時(data.retry_after_seconds);依該秒數退避後重試" },
   { status: 502, code: "openrouter_unavailable", desc: "上游 OpenRouter 暫時不可用,所有可用 Key 都失敗" },
+  { status: 502, code: "internal_unavailable", desc: "本地模型 server 暫時不可用,稍後再試" },
+  { status: 500, code: "provider_misconfigured", desc: "本地模型設定未完成,請聯絡管理員" },
   { status: 500, code: "操作失敗", desc: "後端異常,請聯絡管理員並提供時間點" },
 ];
 
@@ -289,6 +292,12 @@ export default function UserGuidePage() {
           </p>
           <p className="font-medium mt-2">含圖片的 Request 範例:</p>
           <CodeBlock language="JSON" code={IMAGE_EXAMPLE} />
+          <div className="mt-4 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 text-sm">
+            <p className="font-medium text-purple-700 mb-1">本地模型(企業內部 server)</p>
+            <p className="text-muted-foreground">
+              呼叫方式<strong>完全相同</strong>(同 endpoint、同 header),只是 <code>model</code> 字串改成管理員給你的本地模型 id(慣例 <code>internal/&lt;name&gt;</code>)。本地模型可能因排隊或速率限制延後執行,若收到 <code>429 internal_busy</code> 並帶 <code>data.retry_after_seconds</code>,請依該秒數退避後重試。
+            </p>
+          </div>
         </Section>
 
         <Section id="response" title="Response 格式">

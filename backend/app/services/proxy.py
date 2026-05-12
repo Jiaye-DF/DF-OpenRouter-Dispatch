@@ -1,3 +1,12 @@
+"""Chat 代理 — 依 model.provider 分流(v1.2)。
+
+對齊 docs/Tasks/v1.2/propose-v1.2.0.md § 4 / § 6 / § 7。
+
+兩條路徑:
+- `openrouter`:per-Key 速率限制(從 `openrouter_keys` 表讀);撞限額 → failover 換下一把
+- `internal`:per-Provider 速率限制(從 env 讀);撞限額 → 等待至 `RATE_WAIT_TIMEOUT`,超過 → 429 internal_busy
+"""
+
 import asyncio
 import time
 from decimal import Decimal
@@ -8,7 +17,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
-from app.clients.openrouter.client import OpenRouterClient
+from app.clients.factory import ChatClientFactory
+from app.clients.internal.client import (
+    InternalAuthError,
+    InternalError,
+    InternalRateLimitError,
+    InternalUnavailableError,
+)
 from app.clients.openrouter.errors import (
     OpenRouterAuthError,
     OpenRouterError,
@@ -16,16 +31,19 @@ from app.clients.openrouter.errors import (
     OpenRouterModelNotFoundError,
     OpenRouterRateLimitError,
 )
+from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
 from app.models.model import Model
 from app.models.usage_log import UsageLog
 from app.services.openrouter_key import decrypt_key, pick_random_active
+from app.services.rate_limit import RateLimitExceeded, get_limiter
 
 logger = get_logger(__name__)
 
 _MAX_RETRIES = 5
+_INTERNAL_LIMITER_KEY = "INTERNAL"
 
 
 def _rewrite_request(model: str, text: str | None, images: list[str] | None) -> dict[str, Any]:
@@ -45,7 +63,6 @@ def _rewrite_request(model: str, text: str | None, images: list[str] | None) -> 
 def _build_request_log(
     model: str, text: str | None, images: list[str] | None
 ) -> dict[str, Any]:
-    # 完整保留原始 images(含 base64 本體),供管理端分析使用者實際提交內容
     return {"model": model, "text": text, "images": list(images or [])}
 
 
@@ -70,7 +87,7 @@ def _summarize_response(resp: dict[str, Any]) -> dict[str, Any]:
 async def _check_model_whitelist(db: AsyncSession, model: str) -> Model:
     """白名單由 DB 驅動;不存在 / 停用 / 軟刪除 一律 403 model_forbidden(避免列舉差異)。"""
     stmt = select(Model).where(
-        Model.openrouter_model_id == model,
+        Model.model_key == model,
         Model.is_active.is_(True),
         Model.is_deleted.is_(False),
     )
@@ -93,7 +110,7 @@ def schedule_usage_log(
     error_code: str | None,
     request_log: dict[str, Any],
 ) -> None:
-    """Fire-and-forget 寫入一筆 usage_logs（獨立 session，不受主 request 影響）。"""
+    """Fire-and-forget 寫入一筆 usage_logs(獨立 session,不受主 request 影響)。"""
 
     async def _task() -> None:
         async with SessionLocal() as session:
@@ -102,7 +119,7 @@ def schedule_usage_log(
                 prompt = int(usage.get("prompt_tokens") or 0)
                 completion = int(usage.get("completion_tokens") or 0)
                 total = int(usage.get("total_tokens") or (prompt + completion))
-                # OpenRouter 用 `cost`；保留 total_cost 作為 fallback。
+                # OpenRouter 用 `cost`;保留 total_cost 作為 fallback。internal 一般無 cost,預設 0。
                 cost = Decimal(str(usage.get("cost") or usage.get("total_cost") or 0))
                 gen_id = (resp or {}).get("id")
 
@@ -133,14 +150,13 @@ def schedule_usage_log(
     try:
         asyncio.create_task(_task())
     except RuntimeError:
-        # 沒有 running loop — 不應發生於 FastAPI context
-        logger.warning("schedule_usage_log 無 running loop，略過")
+        logger.warning("schedule_usage_log 無 running loop,略過")
 
 
 async def run_chat(
     db: AsyncSession,
     *,
-    client: OpenRouterClient,
+    client_factory: ChatClientFactory,
     department_uid: UUID,
     user_uid: UUID,
     model: str,
@@ -148,16 +164,52 @@ async def run_chat(
     images: list[str] | None,
     videos: list[str] | None,
 ) -> dict[str, Any]:
+    """依 model.provider 分流到對應路徑;白名單檢查由本 fn 統一執行。"""
     if videos:
         raise AppError("feature_not_supported", code=400)
     model_row = await _check_model_whitelist(db, model)
-    model_uid = model_row.model_uid
 
     payload = _rewrite_request(model, text, images)
     request_log = _build_request_log(model, text, images)
 
+    if model_row.provider == "internal":
+        return await _run_chat_internal(
+            client_factory=client_factory,
+            model_row=model_row,
+            department_uid=department_uid,
+            user_uid=user_uid,
+            payload=payload,
+            request_log=request_log,
+        )
+    return await _run_chat_openrouter(
+        db,
+        client_factory=client_factory,
+        model_row=model_row,
+        department_uid=department_uid,
+        user_uid=user_uid,
+        payload=payload,
+        request_log=request_log,
+    )
+
+
+async def _run_chat_openrouter(
+    db: AsyncSession,
+    *,
+    client_factory: ChatClientFactory,
+    model_row: Model,
+    department_uid: UUID,
+    user_uid: UUID,
+    payload: dict[str, Any],
+    request_log: dict[str, Any],
+) -> dict[str, Any]:
+    """OpenRouter 流程 — 每把 Key 經 rate limiter,撞限額 failover 換下一把。"""
+    client = client_factory.openrouter()
+    model = payload["model"]
+    model_uid = model_row.model_uid
+
     tried: set[UUID] = set()
     last_err: Exception | None = None
+    rate_limited_all = True  # 全部撞速率才回 rate_limited,否則回 openrouter_unavailable
     started = time.monotonic()
 
     for _ in range(_MAX_RETRIES):
@@ -167,17 +219,39 @@ async def run_chat(
         if key_row is None:
             break
         tried.add(key_row.openrouter_key_uid)
+
+        # rate limiter:不等待,撞速率即換下一把
+        limiter = await get_limiter(key_row.openrouter_key_uid)
+        try:
+            await limiter.acquire(
+                rpm_limit=key_row.rpm_limit,
+                min_interval_ms=key_row.min_request_interval_ms,
+                wait_timeout=0,
+            )
+        except RateLimitExceeded:
+            logger.warning(
+                "OR Key uid=%s 速率限制(rpm=%d / min=%dms);切下一把",
+                key_row.openrouter_key_uid,
+                key_row.rpm_limit,
+                key_row.min_request_interval_ms,
+            )
+            continue
+
+        # 拿到 slot 後,後續任何失敗皆視為「實際打過 OR」失敗,不再全 rate_limited
+        rate_limited_all = False
+
         try:
             raw_key = decrypt_key(key_row)
         except Exception as exc:  # noqa: BLE001
             last_err = exc
-            logger.exception("OpenRouter Key 解密失敗：%s", key_row.openrouter_key_uid)
+            logger.exception("OpenRouter Key 解密失敗:%s", key_row.openrouter_key_uid)
             continue
+
         try:
             resp_body = await client.chat_completion(payload, api_key=raw_key)
         except OpenRouterAuthError as exc:
             last_err = exc
-            logger.warning("OpenRouter 401；切換下一把 Key")
+            logger.warning("OpenRouter 401;切換下一把 Key")
             continue
         except OpenRouterModelNotFoundError as exc:
             schedule_usage_log(
@@ -223,7 +297,7 @@ async def run_chat(
             raise AppError("rate_limited", code=429) from exc
         except OpenRouterError as exc:
             last_err = exc
-            logger.exception("OpenRouter 其他錯誤；嘗試下一把")
+            logger.exception("OpenRouter 其他錯誤;嘗試下一把")
             continue
 
         # 成功
@@ -247,6 +321,8 @@ async def run_chat(
 
     # 全部失敗
     latency_ms = int((time.monotonic() - started) * 1000)
+    error_code = "rate_limited" if rate_limited_all else "openrouter_unavailable"
+    code = 429 if rate_limited_all else 502
     schedule_usage_log(
         department_uid=department_uid,
         user_uid=user_uid,
@@ -256,7 +332,124 @@ async def run_chat(
         resp=None,
         latency_ms=latency_ms,
         status="error",
-        error_code="openrouter_unavailable",
+        error_code=error_code,
         request_log=request_log,
     )
-    raise AppError("openrouter_unavailable", code=502) from last_err
+    raise AppError(error_code, code=code) from last_err
+
+
+async def _run_chat_internal(
+    *,
+    client_factory: ChatClientFactory,
+    model_row: Model,
+    department_uid: UUID,
+    user_uid: UUID,
+    payload: dict[str, Any],
+    request_log: dict[str, Any],
+) -> dict[str, Any]:
+    """Internal 流程 — 全域 rate limiter,撞限額等待至 timeout,超過 → 429 internal_busy。"""
+    settings = get_settings()
+    model = payload["model"]
+    model_uid = model_row.model_uid
+
+    client = client_factory.internal()
+    if client is None:
+        # env 沒設 base_url 但有 internal 模型被呼叫
+        raise AppError("provider_misconfigured", code=500)
+
+    started = time.monotonic()
+    limiter = await get_limiter(_INTERNAL_LIMITER_KEY)
+    try:
+        await limiter.acquire(
+            rpm_limit=settings.INTERNAL_LLM_RPM_LIMIT,
+            min_interval_ms=settings.INTERNAL_LLM_MIN_REQUEST_INTERVAL_MS,
+            wait_timeout=float(settings.INTERNAL_LLM_RATE_WAIT_TIMEOUT),
+        )
+    except RateLimitExceeded as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        schedule_usage_log(
+            department_uid=department_uid,
+            user_uid=user_uid,
+            openrouter_key_uid=None,
+            model=model,
+            model_uid=model_uid,
+            resp=None,
+            latency_ms=latency_ms,
+            status="error",
+            error_code="internal_busy",
+            request_log=request_log,
+        )
+        raise AppError(
+            "internal_busy",
+            code=429,
+            data={"retry_after_seconds": exc.retry_after_seconds},
+        ) from exc
+
+    try:
+        resp_body = await client.chat_completion(payload)
+    except InternalAuthError as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        schedule_usage_log(
+            department_uid=department_uid,
+            user_uid=user_uid,
+            openrouter_key_uid=None,
+            model=model,
+            model_uid=model_uid,
+            resp=None,
+            latency_ms=latency_ms,
+            status="error",
+            error_code="internal_unavailable",
+            request_log=request_log,
+        )
+        logger.warning("Internal LLM 401;檢查 INTERNAL_LLM_API_KEY")
+        raise AppError("internal_unavailable", code=502) from exc
+    except InternalRateLimitError as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        schedule_usage_log(
+            department_uid=department_uid,
+            user_uid=user_uid,
+            openrouter_key_uid=None,
+            model=model,
+            model_uid=model_uid,
+            resp=None,
+            latency_ms=latency_ms,
+            status="error",
+            error_code="internal_busy",
+            request_log=request_log,
+        )
+        # server 端速率,語意上等同 internal_busy(但已超出 limiter 控制)
+        raise AppError("internal_busy", code=429) from exc
+    except (InternalUnavailableError, InternalError) as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        schedule_usage_log(
+            department_uid=department_uid,
+            user_uid=user_uid,
+            openrouter_key_uid=None,
+            model=model,
+            model_uid=model_uid,
+            resp=None,
+            latency_ms=latency_ms,
+            status="error",
+            error_code="internal_unavailable",
+            request_log=request_log,
+        )
+        raise AppError("internal_unavailable", code=502) from exc
+
+    # 成功
+    latency_ms = int((time.monotonic() - started) * 1000)
+    schedule_usage_log(
+        department_uid=department_uid,
+        user_uid=user_uid,
+        openrouter_key_uid=None,
+        model=model,
+        model_uid=model_uid,
+        resp=resp_body,
+        latency_ms=latency_ms,
+        status="success",
+        error_code=None,
+        request_log=request_log,
+    )
+    sanitized = dict(resp_body)
+    for k in ("metadata", "provider_metadata"):
+        sanitized.pop(k, None)
+    return sanitized

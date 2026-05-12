@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     OPENROUTER_API_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_API_TIMEOUT: int = 60
 
+    # --- Internal LLM (v1.2) ---
+    INTERNAL_LLM_BASE_URL: str = ""              # 空 = 停用本地模型
+    INTERNAL_LLM_API_KEY: str = ""               # 可空(內網信任)
+    INTERNAL_LLM_REQUEST_TIMEOUT: int = 120      # 單次呼叫 httpx timeout(秒)
+    INTERNAL_LLM_RPM_LIMIT: int = 60             # 每分鐘最大呼叫數(0 = 不限)
+    INTERNAL_LLM_MIN_REQUEST_INTERVAL_MS: int = 0  # 連續呼叫最小間隔(毫秒;0 = 不限)
+    INTERNAL_LLM_RATE_WAIT_TIMEOUT: int = 60     # 撞限額時最長等待秒數,超過 → 429 internal_busy
+
     # --- Dev Seed ---
     DEFAULT_OPENROUTER_KEY: str = ""
 

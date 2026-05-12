@@ -108,7 +108,7 @@ def _parse_or_model(item: dict[str, Any]) -> dict[str, Any]:
     arch = item.get("architecture") or {}
     top = item.get("top_provider") or {}
     return {
-        "openrouter_model_id": item.get("id") or "",
+        "model_key": item.get("id") or "",
         "name": item.get("name") or item.get("id") or "",
         "description": item.get("description"),
         "context_length": _to_int(item.get("context_length") or top.get("context_length")),
@@ -189,16 +189,17 @@ async def _sync_models(
 
     for raw in or_models:
         parsed = _parse_or_model(raw)
-        mid = parsed["openrouter_model_id"]
+        mid = parsed["model_key"]
         if not mid:
             continue
         seen_ids.add(mid)
-        existing = await repo.find_by_openrouter_model_id(mid)
+        existing = await repo.find_by_key(mid)
         if existing is None:
             tier_key = match_tier(parsed["price_prompt_per_token"], tiers)
             row = Model(
                 model_uid=UUID(str(uuid7())),
-                openrouter_model_id=mid,
+                model_key=mid,
+                provider="openrouter",
                 name=parsed["name"],
                 description=parsed["description"],
                 context_length=parsed["context_length"],
@@ -244,7 +245,8 @@ async def _sync_models(
         stmt = select(Model).where(
             Model.is_deleted.is_(False),
             Model.is_active.is_(True),
-            Model.openrouter_model_id.notin_(seen_ids),
+            Model.provider == "openrouter",
+            Model.model_key.notin_(seen_ids),
         )
         rows = list((await db.execute(stmt)).scalars().all())
         for row in rows:

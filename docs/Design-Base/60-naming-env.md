@@ -42,16 +42,12 @@ LOG_LEVEL=
 UVICORN_WORKERS=
 
 # --- Database ---
+# DATABASE_URL 範例(dev):postgresql+asyncpg://<user>:<pass>@postgres:5432/<db>
+# Alembic migration 會在 env.py 自動把 +asyncpg 改為 +psycopg(sync driver)。
 POSTGRES_DB=
 POSTGRES_USER=
 POSTGRES_PASSWORD=
 DATABASE_URL=
-
-# --- Flyway ---
-FLYWAY_URL=
-FLYWAY_USER=
-FLYWAY_PASSWORD=
-FLYWAY_LOCATIONS=
 
 # --- Auth / Security ---
 JWT_SECRET=

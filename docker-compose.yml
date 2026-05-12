@@ -38,8 +38,10 @@ services:
     expose:
       - "8000"
     depends_on:
-      - postgres
-      - flyway
+      postgres:
+        condition: service_healthy
+      alembic:
+        condition: service_completed_successfully
 
   postgres:
     image: postgres:17-alpine
@@ -51,19 +53,22 @@ services:
       - "5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
-  flyway:
-    image: flyway/flyway:10-alpine
-    command: -connectRetries=60 migrate
+  alembic:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     environment:
-      - FLYWAY_URL=${FLYWAY_URL}
-      - FLYWAY_USER=${FLYWAY_USER}
-      - FLYWAY_PASSWORD=${FLYWAY_PASSWORD}
-      - FLYWAY_LOCATIONS=${FLYWAY_LOCATIONS}
-    volumes:
-      - ./migrations:/flyway/sql
+      - DATABASE_URL=${DATABASE_URL}
+    command: ["alembic", "upgrade", "head"]
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres-data:

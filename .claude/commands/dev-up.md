@@ -1,6 +1,6 @@
 # 一鍵啟動本機開發環境
 
-啟動 `docker-compose.dev.yml` 定義的所有服務（frontend、backend、postgres、flyway），用於本機開發與測試。
+啟動 `docker-compose.dev.yml` 定義的所有服務（frontend、backend、postgres、alembic），用於本機開發與測試。
 **全程自動執行，不需要詢問使用者確認。**
 
 ## 執行前置檢查
@@ -27,7 +27,7 @@
 4. 驗證關鍵端點是否可用（僅做輕量檢查，不阻塞太久）：
    - Backend Swagger：`curl -sSf http://localhost:8000/api/docs -o /dev/null` → 成功則顯示 ✅
    - Frontend：`curl -sSf http://localhost:3001 -o /dev/null` → 成功則顯示 ✅
-   - Flyway：檢查 `flyway` container 的 exit code 為 0（Migration 成功）
+   - Alembic：檢查 `alembic` container 的 exit code 為 0（Migration 成功）
 
 5. 顯示存取入口摘要：
 

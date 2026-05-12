@@ -4,7 +4,7 @@
 
 ## 1. 執行模型
 
-- **本機 / 開發**：整個專案（`frontend` / `backend` / `postgres` / `flyway`）全部以 `docker compose` 啟動，**禁止**在主機直接跑 Node / Python。
+- **本機 / 開發**：整個專案（`frontend` / `backend` / `postgres` / `alembic`）全部以 `docker compose` 啟動,**禁止**在主機直接跑 Node / Python。`alembic` 為 one-shot service,啟動時跑 `alembic upgrade head` 後結束;`backend` 透過 `depends_on: condition: service_completed_successfully` 等待 migration 完成。
 - **正式環境**：開發測試完成後，將 `docker-compose.yml` 部署至 **Coolify**。
 - Coolify 負責反向代理、TLS、域名綁定、環境變數注入與 Log 收集。
 - 環境分為 `dev` / `staging` / `prod`，各自使用獨立的 `.env` 與 Compose override 檔。
@@ -78,8 +78,10 @@ services:
     expose:
       - "8000"
     depends_on:
-      - postgres
-      - flyway
+      postgres:
+        condition: service_healthy
+      alembic:
+        condition: service_completed_successfully
 
   postgres:
     image: postgres:17-alpine
@@ -91,26 +93,29 @@ services:
       - "5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
-  flyway:
-    image: flyway/flyway:10-alpine
-    command: -connectRetries=60 migrate
+  alembic:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     environment:
-      - FLYWAY_URL=${FLYWAY_URL}
-      - FLYWAY_USER=${FLYWAY_USER}
-      - FLYWAY_PASSWORD=${FLYWAY_PASSWORD}
-      - FLYWAY_LOCATIONS=${FLYWAY_LOCATIONS}
-    volumes:
-      - ./migrations:/flyway/sql
+      - DATABASE_URL=${DATABASE_URL}
+    command: ["alembic", "upgrade", "head"]
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres-data:
     name: ${COMPOSE_PROJECT_NAME}-postgres-data
 ```
 
-> `flyway` service 的 `command:` 為 Flyway CLI 參數（非 shell 變數），不違反「`command` 禁用 `${VAR}`」規則。所有連線資訊皆透過 `environment:` 注入。
+> `alembic` service 的 `command:` 為陣列形式的 CLI 參數(非 shell 變數),不違反「`command` 禁用 `${VAR}`」規則。Alembic 透過 `DATABASE_URL` 連線,並在 `backend/alembic/env.py` 內自動把 `+asyncpg` 改為 `+psycopg` 走 sync driver(plpgsql `$$` block 與 multi-statement SQL 需要 sync 連線才能正確執行)。
 
 ## 5. 環境變數注入策略
 
@@ -129,7 +134,7 @@ volumes:
 2. Push 至 Git（`main` 或部署分支）。
 3. Coolify 偵測變更 → 拉取 → Build → 部署。
 4. 監控 Coolify 的**部署 Log** 與**應用程式 Log**，確認：
-   - Flyway Migration 無錯誤
+   - Alembic Migration 無錯誤(`alembic` service exit code = 0)
    - Backend 啟動後 Swagger 可存取
    - Frontend 可呼叫 Backend `/api/v1/...`
    - OpenRouter Proxy 試打一次低成本模型確認通路

@@ -1,6 +1,7 @@
 from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.department import Department
+from app.models.internal_key import InternalKey
 from app.models.model import Model
 from app.models.model_tier import ModelTier
 from app.models.openrouter_key import OpenRouterKey
@@ -15,6 +16,7 @@ __all__ = [
     "AuditLog",
     "Base",
     "Department",
+    "InternalKey",
     "Model",
     "ModelTier",
     "OpenRouterKey",

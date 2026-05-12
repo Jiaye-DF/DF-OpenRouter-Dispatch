@@ -24,6 +24,10 @@ export const API_ENDPOINTS = {
   openrouterKeys: "/api/v1/openrouter-keys",
   openrouterKeyById: (uid: string) => `/api/v1/openrouter-keys/${uid}`,
 
+  // Internal Keys (v1.2)
+  internalKeys: "/api/v1/internal-keys",
+  internalKeyById: (uid: string) => `/api/v1/internal-keys/${uid}`,
+
   // SDK Keys
   sdkKeys: "/api/v1/sdk-keys",
   sdkKeyById: (uid: string) => `/api/v1/sdk-keys/${uid}`,

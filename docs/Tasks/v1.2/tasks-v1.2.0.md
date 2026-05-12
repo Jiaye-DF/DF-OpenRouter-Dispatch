@@ -1,5 +1,7 @@
 # Tasks v1.2.0
 
+> **增量(2026-05-12)**:Internal Provider 設計從 env-only 升級為 **DB-driven `internal_keys` 表 + per-Key 設定**,延伸出 `/admin/internal-keys` 後台頁。詳見母本 propose § 16。
+
 ## 版本資訊
 
 - 前置依賴:v1.1.0(Models 管理 — DB 驅動白名單、模型分級、OR 餘額同步、AppError data 結構化)
@@ -111,9 +113,29 @@
   - Internal `RPM_LIMIT=2`,連 3 次第 3 次延遲執行成功
   - Internal 等待 > `RATE_WAIT_TIMEOUT` → 429 `internal_busy` + `retry_after_seconds`
   - Internal server 5xx → 502 `internal_unavailable`
-  - Env 未設 `INTERNAL_LLM_BASE_URL` 但有 internal model 被呼叫 → 500 `provider_misconfigured`
+  - 無 active internal_keys 但有 internal model 被呼叫 → 500 `provider_misconfigured`
   - 同步流程不動 internal 模型(`provider='internal'` 的 row `last_synced_at` 不變)
 - [ ] Swagger `/api/docs`:兩條 chat path 皆可見(`/model/openrouter/chat` 標 deprecated)
+
+### Internal Keys 增量(2026-05-12)— 已完成
+
+**Schema / 後端**:
+
+- [x] Alembic `0003_internal_keys`:`internal_keys` 表(無 `department_uid`)+ CHECK + trigger
+- [x] `models/internal_key.py`、`schemas/internal_key.py`、`repositories/internal_key.py`、`services/internal_key.py`
+- [x] `/api/v1/internal-keys` CRUD 5 端點(僅 admin);response 不含明文 `api_key`
+- [x] `clients/internal/client.py` refactor:base_url + api_key 由建構子注入;`get_internal_httpx_client` 共用 httpx 單例
+- [x] `clients/factory.py` 提供 `internal_httpx()`;proxy 自行構造 `InternalClient`
+- [x] `proxy.py` `_run_chat_internal`:Phase 1 failover + Phase 2 wait
+- [x] `core/config.py` 移除 4 個 env;保留 `INTERNAL_LLM_REQUEST_TIMEOUT` / `INTERNAL_LLM_RATE_WAIT_TIMEOUT`
+- [x] `.env.example` 與 `.env` 同步
+
+**前端**:
+
+- [x] `types/api.ts` 加 `InternalKey`
+- [x] `lib/api/endpoints.ts` 加 `internalKeys` / `internalKeyById`
+- [x] `/admin/internal-keys` 頁(CRUD + RPM/interval + base_url + api_key 安全處理)
+- [x] Sidebar「金鑰」分組加入 `Internal Keys`
 
 ## 功能設計
 

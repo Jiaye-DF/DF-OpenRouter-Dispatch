@@ -82,6 +82,21 @@ export interface OpenRouterKey {
   min_request_interval_ms: number;
 }
 
+// Internal Key (v1.2;全平台共用,無 department)
+export interface InternalKey {
+  internal_key_uid: string;
+  name: string;
+  base_url: string;
+  has_api_key: boolean;
+  key_last4: string | null;
+  rpm_limit: number;
+  min_request_interval_ms: number;
+  is_active: boolean;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // SDK Key
 export interface SdkKey {
   sdk_api_key_uid: string;

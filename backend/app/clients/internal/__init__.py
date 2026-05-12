@@ -9,7 +9,7 @@ from app.clients.internal.client import (
     InternalError,
     InternalRateLimitError,
     InternalUnavailableError,
-    get_internal_client,
+    get_internal_httpx_client,
 )
 
 __all__ = [
@@ -18,5 +18,5 @@ __all__ = [
     "InternalError",
     "InternalRateLimitError",
     "InternalUnavailableError",
-    "get_internal_client",
+    "get_internal_httpx_client",
 ]

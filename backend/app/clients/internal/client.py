@@ -1,6 +1,9 @@
 """Internal LLM Client — OpenAI-compatible (`/chat/completions`)。
 
-對齊 docs/Tasks/v1.2/propose-v1.2.0.md § 5.3 / § 6 / § 7。
+v1.2 增量:base_url 與 api_key 改由 DB(`internal_keys` 表)逐次注入;
+原 env-based `get_internal_client` Dependency 已移除。
+
+對齊 docs/Tasks/v1.2/propose-v1.2.0.md § 6 / § 7。
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ class InternalUnavailableError(InternalError):
 
 
 class InternalClient:
-    """OpenAI-compatible chat completions client。"""
+    """OpenAI-compatible chat completions client(per-Key)。"""
 
     def __init__(self, client: httpx.AsyncClient, base_url: str, api_key: str | None) -> None:
         self._client = client
@@ -56,7 +59,7 @@ class InternalClient:
                 headers=headers,
             )
         except httpx.HTTPError as exc:
-            logger.exception("Internal LLM HTTP 連線失敗")
+            logger.exception("Internal LLM HTTP 連線失敗 base_url=%s", self._base_url)
             raise InternalUnavailableError(502, str(exc)) from exc
 
         if resp.status_code == 401:
@@ -74,25 +77,18 @@ class InternalClient:
             raise InternalUnavailableError(502, "invalid JSON response") from exc
 
 
-_singleton_client: httpx.AsyncClient | None = None
+_singleton_httpx_client: httpx.AsyncClient | None = None
 
 
-async def get_internal_client():
-    """FastAPI Dependency — 共用 httpx.AsyncClient 單例。
+async def get_internal_httpx_client() -> httpx.AsyncClient:
+    """FastAPI Dependency — 共用 httpx.AsyncClient 單例(timeout 從 env 讀)。
 
-    base_url 未設 → yield None,呼叫端應拒絕 provider=internal 的呼叫(provider_misconfigured)。
+    proxy.py 取得 client 後,逐次以 (base_url, api_key) 構造 InternalClient。
     """
-    global _singleton_client
+    global _singleton_httpx_client
     settings = get_settings()
-    if not settings.INTERNAL_LLM_BASE_URL:
-        yield None
-        return
-    if _singleton_client is None:
-        _singleton_client = httpx.AsyncClient(
+    if _singleton_httpx_client is None:
+        _singleton_httpx_client = httpx.AsyncClient(
             timeout=httpx.Timeout(settings.INTERNAL_LLM_REQUEST_TIMEOUT),
         )
-    yield InternalClient(
-        _singleton_client,
-        settings.INTERNAL_LLM_BASE_URL,
-        settings.INTERNAL_LLM_API_KEY or None,
-    )
+    return _singleton_httpx_client

@@ -4,6 +4,7 @@ from app.api.v1 import (
     auth,
     departments,
     health,
+    internal_keys,
     model_chat,
     model_tiers,
     models,
@@ -23,6 +24,7 @@ api_v1_router.include_router(user_tokens.router)
 api_v1_router.include_router(departments.router)
 api_v1_router.include_router(projects.router)
 api_v1_router.include_router(openrouter_keys.router)
+api_v1_router.include_router(internal_keys.router)
 api_v1_router.include_router(sdk_keys.router)
 api_v1_router.include_router(model_chat.router)             # canonical: /model/chat
 api_v1_router.include_router(model_chat.deprecated_router)  # alias: /model/openrouter/chat

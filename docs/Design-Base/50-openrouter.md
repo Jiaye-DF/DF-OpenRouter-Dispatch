@@ -205,10 +205,10 @@ OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`）�
 
 ### Internal LLM(v1.2)
 
-- `INTERNAL_LLM_BASE_URL`:留空 = 停用本地模型;設值後形如 `http://vllm.corp.local:8000/v1`。
-- `INTERNAL_LLM_API_KEY`:可空(內網信任)或地端 server 設定的 token。
-- `INTERNAL_LLM_REQUEST_TIMEOUT` 預設 120(秒)。
-- `INTERNAL_LLM_RPM_LIMIT` 預設 60(0 = 不限);`INTERNAL_LLM_MIN_REQUEST_INTERVAL_MS` 預設 0;`INTERNAL_LLM_RATE_WAIT_TIMEOUT` 預設 60(秒)。
+- 連線參數(`base_url` / `api_key`)與速率限制(`rpm_limit` / `min_request_interval_ms`)放在 **DB `internal_keys` 表**,透過 `/admin/internal-keys` 後台管理;**每把 Key 獨立設定**,改值不需要重啟。
+- env 只留兩個系統層級設定:
+  - `INTERNAL_LLM_REQUEST_TIMEOUT` 預設 120(秒;httpx 共用 client timeout)
+  - `INTERNAL_LLM_RATE_WAIT_TIMEOUT` 預設 60(秒;全 Key 撞限額後最長等待)
 - v1.2 限 `UVICORN_WORKERS=1`(in-memory rate limiter 不跨 worker);multi-worker 需升級 Redis-backed limiter(v1.3)。
 
 ## 12. 禁止事項
@@ -256,6 +256,7 @@ OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`）�
 - **模型登記**:admin 透過 `POST /api/v1/models`(僅接受 `provider=internal`)手動建立;openrouter 模型仍須走同步流程。
 - **白名單檢查**:沿用 `models.is_active`,與 openrouter 模型共用同一張表。
 - **Client**:`backend/app/clients/internal/client.py`,OpenAI-compatible `/chat/completions`。
-- **連線設定**:`INTERNAL_LLM_BASE_URL` / `INTERNAL_LLM_API_KEY`(env;單台 server)。
-- **多台 server**:v1.2 不支援(留 v1.3 `internal_providers` 表)。
+- **連線設定(per-Key)**:`internal_keys` 表(`base_url` / `api_key`(AES 加密,可 NULL)/ `rpm_limit` / `min_request_interval_ms`);透過 `/admin/internal-keys` CRUD 管理。
+- **撞限額行為**:Failover + 全 Key 撞牆才 wait(對齊 OR;wait 階段隨機挑一把,超過 `INTERNAL_LLM_RATE_WAIT_TIMEOUT` 才 429)。
+- **多台 server**:v1.2 支援多台,但本版本假設所有 Key 提供同一套模型(model ↔ Key 細部分流留 v1.3)。
 - **Usage log**:`openrouter_key_uid=NULL`,`cost_usd=0`(本版本不估算 internal cost)。

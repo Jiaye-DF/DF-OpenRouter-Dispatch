@@ -8,6 +8,7 @@
 """
 
 import asyncio
+import random
 import time
 from decimal import Decimal
 from typing import Any
@@ -20,6 +21,7 @@ from uuid_utils import uuid7
 from app.clients.factory import ChatClientFactory
 from app.clients.internal.client import (
     InternalAuthError,
+    InternalClient,
     InternalError,
     InternalRateLimitError,
     InternalUnavailableError,
@@ -35,15 +37,17 @@ from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
+from app.models.internal_key import InternalKey
 from app.models.model import Model
 from app.models.usage_log import UsageLog
+from app.repositories.internal_key import InternalKeyRepository
+from app.services.internal_key import decrypt_key as decrypt_internal_key
 from app.services.openrouter_key import decrypt_key, pick_random_active
 from app.services.rate_limit import RateLimitExceeded, get_limiter
 
 logger = get_logger(__name__)
 
 _MAX_RETRIES = 5
-_INTERNAL_LIMITER_KEY = "INTERNAL"
 
 
 def _rewrite_request(model: str, text: str | None, images: list[str] | None) -> dict[str, Any]:
@@ -174,6 +178,7 @@ async def run_chat(
 
     if model_row.provider == "internal":
         return await _run_chat_internal(
+            db,
             client_factory=client_factory,
             model_row=model_row,
             department_uid=department_uid,
@@ -338,7 +343,24 @@ async def _run_chat_openrouter(
     raise AppError(error_code, code=code) from last_err
 
 
+async def _internal_call_once(
+    *,
+    client_factory: ChatClientFactory,
+    key_row: InternalKey,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """以一把 InternalKey 構造 InternalClient 並發出呼叫。"""
+    raw_key = decrypt_internal_key(key_row)
+    client = InternalClient(
+        client_factory.internal_httpx(),
+        key_row.base_url,
+        raw_key,
+    )
+    return await client.chat_completion(payload)
+
+
 async def _run_chat_internal(
+    db: AsyncSession,
     *,
     client_factory: ChatClientFactory,
     model_row: Model,
@@ -347,93 +369,146 @@ async def _run_chat_internal(
     payload: dict[str, Any],
     request_log: dict[str, Any],
 ) -> dict[str, Any]:
-    """Internal 流程 — 全域 rate limiter,撞限額等待至 timeout,超過 → 429 internal_busy。"""
+    """Internal 流程(v1.2 增量,DB-driven per-Key):
+
+    1. 拿全平台 active internal_keys
+    2. **Phase 1 failover**:對每把 Key acquire(wait_timeout=0);拿到的直接打,撞限額 / 連線錯 → 換下一把
+    3. **Phase 2 wait**:全部 Key 撞限額 → 對其中一把(隨機)acquire(wait_timeout=RATE_WAIT_TIMEOUT),
+       拿到了就打;再失敗 → 429 internal_busy
+    """
     settings = get_settings()
     model = payload["model"]
     model_uid = model_row.model_uid
+    started = time.monotonic()
 
-    client = client_factory.internal()
-    if client is None:
-        # env 沒設 base_url 但有 internal 模型被呼叫
+    repo = InternalKeyRepository(db)
+    keys = await repo.list_active()
+    if not keys:
+        # 沒有任何 active key — 等同 provider 未設定
         raise AppError("provider_misconfigured", code=500)
 
-    started = time.monotonic()
-    limiter = await get_limiter(_INTERNAL_LIMITER_KEY)
-    try:
-        await limiter.acquire(
-            rpm_limit=settings.INTERNAL_LLM_RPM_LIMIT,
-            min_interval_ms=settings.INTERNAL_LLM_MIN_REQUEST_INTERVAL_MS,
-            wait_timeout=float(settings.INTERNAL_LLM_RATE_WAIT_TIMEOUT),
-        )
-    except RateLimitExceeded as exc:
-        latency_ms = int((time.monotonic() - started) * 1000)
-        schedule_usage_log(
-            department_uid=department_uid,
-            user_uid=user_uid,
-            openrouter_key_uid=None,
-            model=model,
-            model_uid=model_uid,
-            resp=None,
-            latency_ms=latency_ms,
-            status="error",
-            error_code="internal_busy",
-            request_log=request_log,
-        )
-        raise AppError(
-            "internal_busy",
-            code=429,
-            data={"retry_after_seconds": exc.retry_after_seconds},
-        ) from exc
+    last_err: Exception | None = None
+    rate_limited_all = True  # 全部僅因速率限制失敗 → 才走 Phase 2 wait
+    tried_uids: set[UUID] = set()
 
+    # Phase 1:全 failover(wait_timeout=0)
+    shuffled = random.sample(keys, len(keys))
+    for key_row in shuffled:
+        tried_uids.add(key_row.internal_key_uid)
+        limiter = await get_limiter(("INTERNAL", key_row.internal_key_uid))
+        try:
+            await limiter.acquire(
+                rpm_limit=key_row.rpm_limit,
+                min_interval_ms=key_row.min_request_interval_ms,
+                wait_timeout=0,
+            )
+        except RateLimitExceeded:
+            logger.warning(
+                "Internal Key uid=%s 速率限制(rpm=%d / min=%dms);切下一把",
+                key_row.internal_key_uid,
+                key_row.rpm_limit,
+                key_row.min_request_interval_ms,
+            )
+            continue
+
+        # 拿到 slot
+        rate_limited_all = False
+        result = await _try_internal_call(
+            client_factory=client_factory,
+            key_row=key_row,
+            payload=payload,
+            request_log=request_log,
+            started=started,
+            department_uid=department_uid,
+            user_uid=user_uid,
+            model=model,
+            model_uid=model_uid,
+        )
+        if result is not None:
+            return result
+        # _try_internal_call 已記 log;繼續換下一把
+        last_err = AppError("internal_unavailable", code=502)
+
+    # Phase 2:全撞牆 → 隨機選一把 wait
+    if rate_limited_all and keys:
+        chosen = random.choice(keys)
+        limiter = await get_limiter(("INTERNAL", chosen.internal_key_uid))
+        try:
+            await limiter.acquire(
+                rpm_limit=chosen.rpm_limit,
+                min_interval_ms=chosen.min_request_interval_ms,
+                wait_timeout=float(settings.INTERNAL_LLM_RATE_WAIT_TIMEOUT),
+            )
+        except RateLimitExceeded as exc:
+            latency_ms = int((time.monotonic() - started) * 1000)
+            schedule_usage_log(
+                department_uid=department_uid,
+                user_uid=user_uid,
+                openrouter_key_uid=None,
+                model=model,
+                model_uid=model_uid,
+                resp=None,
+                latency_ms=latency_ms,
+                status="error",
+                error_code="internal_busy",
+                request_log=request_log,
+            )
+            raise AppError(
+                "internal_busy",
+                code=429,
+                data={"retry_after_seconds": exc.retry_after_seconds},
+            ) from exc
+
+        # wait 到了 slot,嘗試呼叫
+        result = await _try_internal_call(
+            client_factory=client_factory,
+            key_row=chosen,
+            payload=payload,
+            request_log=request_log,
+            started=started,
+            department_uid=department_uid,
+            user_uid=user_uid,
+            model=model,
+            model_uid=model_uid,
+        )
+        if result is not None:
+            return result
+
+    # 全失敗(且不全是速率因素 / 或 Phase 2 也失敗)
+    raise AppError("internal_unavailable", code=502) from last_err
+
+
+async def _try_internal_call(
+    *,
+    client_factory: ChatClientFactory,
+    key_row: InternalKey,
+    payload: dict[str, Any],
+    request_log: dict[str, Any],
+    started: float,
+    department_uid: UUID,
+    user_uid: UUID,
+    model: str,
+    model_uid: UUID,
+) -> dict[str, Any] | None:
+    """用單一 Key 嘗試呼叫;成功 → 寫 success log + 回 sanitized body;
+    失敗 → 寫 error log + 回 None(供呼叫端決定 failover 或 abort)。
+
+    InternalAuthError / Unavailable 都當成「換下一把」可接受。
+    """
     try:
-        resp_body = await client.chat_completion(payload)
-    except InternalAuthError as exc:
-        latency_ms = int((time.monotonic() - started) * 1000)
-        schedule_usage_log(
-            department_uid=department_uid,
-            user_uid=user_uid,
-            openrouter_key_uid=None,
-            model=model,
-            model_uid=model_uid,
-            resp=None,
-            latency_ms=latency_ms,
-            status="error",
-            error_code="internal_unavailable",
-            request_log=request_log,
+        resp_body = await _internal_call_once(
+            client_factory=client_factory, key_row=key_row, payload=payload
         )
-        logger.warning("Internal LLM 401;檢查 INTERNAL_LLM_API_KEY")
-        raise AppError("internal_unavailable", code=502) from exc
-    except InternalRateLimitError as exc:
-        latency_ms = int((time.monotonic() - started) * 1000)
-        schedule_usage_log(
-            department_uid=department_uid,
-            user_uid=user_uid,
-            openrouter_key_uid=None,
-            model=model,
-            model_uid=model_uid,
-            resp=None,
-            latency_ms=latency_ms,
-            status="error",
-            error_code="internal_busy",
-            request_log=request_log,
-        )
-        # server 端速率,語意上等同 internal_busy(但已超出 limiter 控制)
-        raise AppError("internal_busy", code=429) from exc
-    except (InternalUnavailableError, InternalError) as exc:
-        latency_ms = int((time.monotonic() - started) * 1000)
-        schedule_usage_log(
-            department_uid=department_uid,
-            user_uid=user_uid,
-            openrouter_key_uid=None,
-            model=model,
-            model_uid=model_uid,
-            resp=None,
-            latency_ms=latency_ms,
-            status="error",
-            error_code="internal_unavailable",
-            request_log=request_log,
-        )
-        raise AppError("internal_unavailable", code=502) from exc
+    except InternalAuthError:
+        logger.warning("Internal Key uid=%s 401;檢查 api_key", key_row.internal_key_uid)
+        return None
+    except InternalRateLimitError:
+        # server 端 429:這把當前過載,記 log 但讓上層繼續試其他 key
+        logger.warning("Internal Key uid=%s server-side 429", key_row.internal_key_uid)
+        return None
+    except (InternalUnavailableError, InternalError):
+        logger.exception("Internal Key uid=%s 呼叫失敗", key_row.internal_key_uid)
+        return None
 
     # 成功
     latency_ms = int((time.monotonic() - started) * 1000)

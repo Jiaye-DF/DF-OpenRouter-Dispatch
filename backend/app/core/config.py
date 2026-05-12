@@ -36,12 +36,10 @@ class Settings(BaseSettings):
     OPENROUTER_API_TIMEOUT: int = 60
 
     # --- Internal LLM (v1.2) ---
-    INTERNAL_LLM_BASE_URL: str = ""              # 空 = 停用本地模型
-    INTERNAL_LLM_API_KEY: str = ""               # 可空(內網信任)
-    INTERNAL_LLM_REQUEST_TIMEOUT: int = 120      # 單次呼叫 httpx timeout(秒)
-    INTERNAL_LLM_RPM_LIMIT: int = 60             # 每分鐘最大呼叫數(0 = 不限)
-    INTERNAL_LLM_MIN_REQUEST_INTERVAL_MS: int = 0  # 連續呼叫最小間隔(毫秒;0 = 不限)
-    INTERNAL_LLM_RATE_WAIT_TIMEOUT: int = 60     # 撞限額時最長等待秒數,超過 → 429 internal_busy
+    # base_url / api_key / rpm_limit / min_interval 已移至 DB(`internal_keys` 表,per-Key 設定);
+    # 此處僅保留「系統層級、所有 Key 共用」的兩個 timeout。
+    INTERNAL_LLM_REQUEST_TIMEOUT: int = 120      # 單次呼叫 httpx timeout(秒,共用 httpx client)
+    INTERNAL_LLM_RATE_WAIT_TIMEOUT: int = 60     # 全部 Key 撞限額後最長等待秒數,超過 → 429 internal_busy
 
     # --- Dev Seed ---
     DEFAULT_OPENROUTER_KEY: str = ""

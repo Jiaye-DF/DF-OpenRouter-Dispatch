@@ -259,14 +259,19 @@ export default function ModelsAdminPage() {
         title="模型管理"
         description="OpenRouter 模型(同步)+ 本地模型(手動新增);啟停、分級由此控管"
         actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setCreateOpen(true)}>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="outline"
+              className="whitespace-nowrap"
+              onClick={() => setCreateOpen(true)}
+            >
               <Plus className="h-4 w-4" />
-              手動新增本地模型
+              新增本地模型
             </Button>
             <SyncButton
               endpoint={API_ENDPOINTS.syncModels}
               onSuccess={() => load()}
+              className="whitespace-nowrap"
             />
           </div>
         }

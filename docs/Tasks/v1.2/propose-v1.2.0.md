@@ -1,5 +1,7 @@
 # Propose v1.2.0 · 本地模型支援 + 速率限制 + 代理 endpoint 收斂
 
+> **增量(2026-05-12)**:原版本 Internal 用 env 設定(`INTERNAL_LLM_BASE_URL` / `_API_KEY` / `_RPM_LIMIT` / `_MIN_REQUEST_INTERVAL_MS`)單台 server;依使用者回饋「每把 Key 設定可以不同」,**改為 DB-driven `internal_keys` 表 + per-Key 設定**,提前實現原 § 15 v1.3 的「多地端 server」項目。詳見 § 16 增量決議。
+
 > 此為 **proposal**(規劃草案),確認後即轉為正式 [`tasks-v1.2.0.md`](./tasks-v1.2.0.md)。
 >
 > 對應母本:[v1.1 已落地的 Models 管理](../v1.1/propose-v1.1.0.md)。
@@ -379,6 +381,82 @@ INTERNAL_LLM_RATE_WAIT_TIMEOUT=60               # 撞限額時最長等待秒數
 
 | 版本 | 主題 |
 | --- | --- |
-| v1.3 候選 | 多地端 server(`internal_providers` 表)+ Redis-backed rate limiter(解除單 worker 限制) |
+| v1.3 候選 | Redis-backed rate limiter(解除單 worker 限制);模型-Server 細部分流(某模型只在某把 Key 上跑) |
 | v1.4 候選 | Streaming proxy(SSE) |
 | v1.x 候選 | 部門 ↔ provider 對應、Internal cost 估算、觀察性(`usage_logs.rate_wait_ms`) |
+
+## 16. 增量決議(2026-05-12)
+
+原 v1.2 Internal 採 env 設定單台 server。使用者回饋:「需要寫在 UI 上,因為可能延伸成每把 Key 都不一樣的設定」。於是把原 v1.3 的「多地端 server」項目提前實作,改為:
+
+### 設計變動
+
+| 項目 | 原設計 | 改後 |
+| --- | --- | --- |
+| Internal base_url / api_key | env(`INTERNAL_LLM_BASE_URL` / `_API_KEY`) | DB(`internal_keys` 表) |
+| Internal RPM / 最小間隔 | env(全域) | DB(per-Key) |
+| 路由策略 | 單一 endpoint,撞限額直接等 | **Failover + 全撞牆才 wait**(對齊 OR;wait 階段隨機選一把) |
+| Admin 管理 | 改 env + restart | `/admin/internal-keys` 後台直接 CRUD,不需重啟 |
+| 部門範圍 | 不適用 | **全平台共用**(`internal_keys` 無 `department_uid`) |
+
+### 新增 schema(取代原 § 8 的部分 env)
+
+```sql
+CREATE TABLE internal_keys (
+    pid                       BIGSERIAL    PRIMARY KEY,
+    internal_key_uid          UUID         NOT NULL UNIQUE,
+    name                      VARCHAR(128) NOT NULL,
+    base_url                  VARCHAR(512) NOT NULL,
+    key_ciphertext            BYTEA,                     -- 可 NULL(內網信任)
+    key_last4                 VARCHAR(8),
+    rpm_limit                 INT NOT NULL DEFAULT 0,    -- 0 = 不限
+    min_request_interval_ms   INT NOT NULL DEFAULT 0,    -- 0 = 不限
+    is_active                 BOOLEAN NOT NULL DEFAULT TRUE,
+    is_deleted                BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at, updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (rpm_limit >= 0),
+    CHECK (min_request_interval_ms >= 0)
+);
+```
+
+Migration:`backend/alembic/versions/0003_internal_keys.py`。
+
+### proxy 流程(`_run_chat_internal`)
+
+```
+1. 拿 active internal_keys(空 → 500 provider_misconfigured)
+2. Phase 1 — 全 failover(隨機順序,acquire wait_timeout=0):
+   - 拿到 slot 的就打;成功 → 寫 success usage_log → 回
+   - 撞速率限制 → 換下一把
+   - server 5xx / 401 / 連線失敗 → 換下一把(rate_limited_all=false)
+3. Phase 2 — 全 Key 撞牆(rate_limited_all=true)→ 隨機選一把 acquire(timeout=RATE_WAIT_TIMEOUT):
+   - 拿到 slot → 打;成功回,失敗 → 502 internal_unavailable
+   - 等待逾時 → 429 internal_busy(data.retry_after_seconds)
+4. Phase 1 全失敗但非全速率(server 都 5xx 之類)→ 502 internal_unavailable
+```
+
+### Env 變動
+
+- **移除**:`INTERNAL_LLM_BASE_URL` / `INTERNAL_LLM_API_KEY` / `INTERNAL_LLM_RPM_LIMIT` / `INTERNAL_LLM_MIN_REQUEST_INTERVAL_MS`(改 DB)
+- **保留**:`INTERNAL_LLM_REQUEST_TIMEOUT`(httpx 共用 client timeout)、`INTERNAL_LLM_RATE_WAIT_TIMEOUT`(全撞牆等待秒數)
+
+### 新增端點
+
+| Method | Path | 認證 | 說明 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/internal-keys` | Admin | 列表(分頁) |
+| POST | `/api/v1/internal-keys` | Admin | 新增 |
+| GET | `/api/v1/internal-keys/{uid}` | Admin | 單筆 |
+| PATCH | `/api/v1/internal-keys/{uid}` | Admin | 編輯;`api_key` 傳值即換,omit 不動 |
+| DELETE | `/api/v1/internal-keys/{uid}` | Admin | 軟刪除 |
+
+Response 不含明文 `api_key`,僅含 `has_api_key` 旗標 + `key_last4`。
+
+### 前端
+
+新增 `/admin/internal-keys`(mirror `/admin/openrouter-keys` 結構,但無 department + 無餘額欄位 + base_url 欄位)。Sidebar「金鑰」分組底下加入。
+
+### 假設與簡化(本增量延後處理)
+
+- **所有 Internal Key 共用模型集**:本增量假設 admin 確保所有地端 server 都提供同一套模型;若某模型只在某台跑,目前無法表達(隨機挑選會中獎)。模型 ↔ Key 對應表延後至 v1.3。
+- **多 worker 仍 in-memory**:rate limiter 用 `(provider, key_uid)` 為粒度,但仍是單 process 內計數;multi-worker 需升級 Redis 版(v1.3)。

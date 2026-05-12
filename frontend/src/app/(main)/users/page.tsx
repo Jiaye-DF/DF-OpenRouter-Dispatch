@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/EmptyState";
+import { PageHint } from "@/components/common/PageHint";
 import { useDialog } from "@/lib/dialog";
 import { useConfirm } from "@/components/common/ConfirmDialog";
 import { apiClient, ApiError } from "@/lib/api/client";
@@ -73,6 +74,7 @@ export default function UsersPage() {
   const [revealOpen, setRevealOpen] = React.useState(false);
   const [revealTitle, setRevealTitle] = React.useState("");
   const [revealValue, setRevealValue] = React.useState("");
+  const [revealCopied, setRevealCopied] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -248,10 +250,22 @@ export default function UsersPage() {
 
   const onRevokeToken = async (user: User) => {
     const ok = await confirm({
-      title: "撤銷 Token",
-      message: `將撤銷 ${user.username} 先前核發之所有 User Token，需重新產生。`,
+      title: `撤銷 ${user.username} 的所有 Token`,
+      message: (
+        <span>
+          將立即作廢 <b>{user.username}</b> 名下所有現存 User Token。
+          <br />
+          該使用者下次呼叫代理端點會收到 <code className="text-xs">401 unauthorized</code>,
+          需重新產生並交付。
+          <br />
+          <span className="text-muted-foreground text-xs">
+            通常用於懷疑外洩或員工離職;若僅是補發新 token,可直接「產生 Token」(舊的不會自動失效,
+            如需汰換才需要撤銷)。
+          </span>
+        </span>
+      ),
       destructive: true,
-      confirmText: "撤銷",
+      confirmText: "撤銷全部 Token",
     });
     if (!ok) return;
     try {
@@ -275,7 +289,7 @@ export default function UsersPage() {
     <>
       <PageTitle
         title="使用者管理"
-        description="建立使用者、產生或撤銷 User Token"
+        description="建立 SDK 使用者、產生或撤銷 User Token"
         actions={
           <Button onClick={() => setMode({ kind: "create" })}>
             <Plus className="h-4 w-4" />
@@ -283,6 +297,18 @@ export default function UsersPage() {
           </Button>
         }
       />
+      <PageHint title="User Token 怎麼用?">
+        <p>
+          User Token 是配合 <strong>SDK Key</strong> 雙因子認證的另一半,代表「
+          <strong>哪一位使用者</strong>在呼叫」,呼叫代理端點時放入 <code className="text-xs font-mono">X-User-Token</code> header。
+        </p>
+        <p className="text-muted-foreground text-xs mt-1">
+          <strong>產生</strong>:點列右側 <Ticket className="inline h-3 w-3 mx-0.5" /> 圖示
+          → Dialog 一次性顯示明文 → 請<strong>立即複製</strong>並以安全管道交付使用者。
+          <strong>撤銷</strong>:點 <ShieldOff className="inline h-3 w-3 mx-0.5 text-destructive" /> 圖示
+          → 該使用者名下<strong>所有現存 token 立即失效</strong>(非單張),通常用於外洩處置。
+        </p>
+      </PageHint>
       <Card>
         <CardContent className="pt-6">
           {loading ? (
@@ -343,19 +369,21 @@ export default function UsersPage() {
                           <>
                             <Button
                               variant="ghost"
-                              size="icon"
-                              aria-label="產生 Token"
+                              size="sm"
+                              title="產生 User Token(一次性顯示)"
                               onClick={() => onGenToken(u)}
                             >
                               <Ticket className="h-4 w-4" />
+                              <span className="hidden lg:inline ml-1">產生 Token</span>
                             </Button>
                             <Button
                               variant="ghost"
-                              size="icon"
-                              aria-label="撤銷 Token"
+                              size="sm"
+                              title="撤銷此使用者所有 Token"
                               onClick={() => onRevokeToken(u)}
                             >
                               <ShieldOff className="h-4 w-4 text-destructive" />
+                              <span className="hidden lg:inline ml-1 text-destructive">撤銷全部</span>
                             </Button>
                           </>
                         )}
@@ -515,29 +543,49 @@ export default function UsersPage() {
       </Dialog>
 
       {/* 一次性顯示明文（密碼 / Token） */}
-      <Dialog open={revealOpen} onOpenChange={setRevealOpen}>
+      <Dialog
+        open={revealOpen}
+        onOpenChange={(o) => {
+          setRevealOpen(o);
+          if (!o) setRevealCopied(false);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{revealTitle}</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-3 pt-4">
-            <p className="text-sm text-destructive">
-              請立即複製,關閉後無法再取得。
-            </p>
+            <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              ⚠ 明文僅顯示這一次,關閉後無法再取得。請<strong>立即複製</strong>並以
+              安全管道(企業內部 IM / 加密 Email)交付使用者。
+            </div>
             <div className="rounded-xl border border-border bg-muted/40 p-3 font-mono text-sm break-all">
               {revealValue}
             </div>
+            {!revealCopied && (
+              <p className="text-xs text-muted-foreground">
+                建議先按下「複製明文」確認剪貼簿有內容,再關閉視窗。
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button
-              variant="outline"
+              variant={revealCopied ? "outline" : "default"}
               onClick={() => {
-                navigator.clipboard.writeText(revealValue).catch(() => {});
+                navigator.clipboard
+                  .writeText(revealValue)
+                  .then(() => setRevealCopied(true))
+                  .catch(() => {});
               }}
             >
-              複製
+              {revealCopied ? "✓ 已複製,可再複製一次" : "複製明文"}
             </Button>
-            <Button onClick={() => setRevealOpen(false)}>關閉</Button>
+            <Button
+              variant={revealCopied ? "default" : "outline"}
+              onClick={() => setRevealOpen(false)}
+            >
+              {revealCopied ? "完成,關閉" : "關閉(未複製)"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -257,16 +257,17 @@ export default function ModelsAdminPage() {
     <>
       <PageTitle
         title="模型管理"
-        description="OpenRouter 模型(同步)+ 本地模型(手動新增);啟停、分級由此控管"
+        description="模型白名單 — OpenRouter 走「同步」自動拉取;地端模型走「手動新增」"
         actions={
           <div className="flex shrink-0 items-center gap-2">
             <Button
               variant="outline"
               className="whitespace-nowrap"
               onClick={() => setCreateOpen(true)}
+              title="僅用於新增 provider=internal 的地端模型"
             >
               <Plus className="h-4 w-4" />
-              新增本地模型
+              手動新增地端模型
             </Button>
             <SyncButton
               endpoint={API_ENDPOINTS.syncModels}
@@ -618,13 +619,20 @@ export default function ModelsAdminPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 手動新增本地模型 Dialog */}
+      {/* 手動新增地端模型 Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>手動新增本地模型</DialogTitle>
+            <DialogTitle>手動新增地端模型(provider=internal)</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-4 pt-3">
+            <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 px-3 py-2 text-xs text-foreground/80 leading-relaxed">
+              本功能<strong>僅</strong>用於新增 <code className="font-mono">provider=internal</code>
+              的地端模型(如 vLLM / Ollama 上跑的 Llama / Qwen 等);
+              OpenRouter 模型請使用右上「同步」按鈕自動拉取。
+              <br />
+              建立後需於 <strong>Internal Keys</strong> 頁登記至少一台 active server 才能實際呼叫。
+            </div>
             <div className="flex flex-col gap-1.5">
               <Label>Model Key *</Label>
               <Input
@@ -701,8 +709,9 @@ export default function ModelsAdminPage() {
                 ))}
               </select>
             </div>
-            <p className="text-xs text-muted-foreground">
-              ⚠ 速率限制屬於 Server 層級,不在此設定;Internal RPM 設定見 `.env` 的 `INTERNAL_LLM_RPM_LIMIT`
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              ⚠ 速率限制屬 Server 層級,不在此設定。
+              每台地端 server 的 RPM / 最小間隔請於 <strong>Internal Keys</strong> 頁的對應 Key 上設定。
             </p>
           </div>
           <DialogFooter>

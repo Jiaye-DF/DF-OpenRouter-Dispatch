@@ -8,26 +8,32 @@ import {
   BookOpen,
   Box,
   Building2,
+  Cloud,
   FolderKanban,
   KeyRound,
   Layers,
   LayoutDashboard,
   ScrollText,
+  Server,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useAppSelector } from "@/store/hooks";
 
-// Sidebar:三狀態(expanded / collapsed / hidden);依角色顯示;按主題分組
+// Sidebar 三狀態(expanded / collapsed / hidden);依角色顯示;按主題分組
+// 金鑰刻意拆「對外呼叫(平台→模型)」與「對內接受(SDK→平台)」兩個 section,
+// 區分方向,避免新人把三種 Key 看成同一類東西
 interface NavItem {
   href: string;
   label: string;
+  subtitle?: string; // 副標(expanded 時顯示小字;collapsed 時併入 tooltip)
   icon: React.ComponentType<{ className?: string }>;
   adminOnly?: boolean;
 }
 
 interface NavSection {
   label?: string; // 若 omit 視為「概覽」(無標題)
+  hint?: string; // section 副標(grouping 用途說明)
   items: NavItem[];
 }
 
@@ -59,21 +65,36 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    label: "金鑰",
+    label: "模型來源金鑰",
+    hint: "對外呼叫 · 平台→模型",
     items: [
       {
         href: "/openrouter-keys",
         label: "OpenRouter Keys",
-        icon: KeyRound,
+        subtitle: "雲端 · OpenRouter",
+        icon: Cloud,
         adminOnly: true,
       },
       {
         href: "/internal-keys",
         label: "Internal Keys",
+        subtitle: "地端 · OpenAI-compatible",
+        icon: Server,
+        adminOnly: true,
+      },
+    ],
+  },
+  {
+    label: "存取金鑰",
+    hint: "對內接受 · SDK→平台",
+    items: [
+      {
+        href: "/sdk-keys",
+        label: "SDK Keys",
+        subtitle: "SDK 端呼叫本平台用",
         icon: KeyRound,
         adminOnly: true,
       },
-      { href: "/sdk-keys", label: "SDK Keys", icon: KeyRound, adminOnly: true },
     ],
   },
   {
@@ -114,13 +135,27 @@ export function Sidebar() {
               (collapsed ? (
                 <div className="mx-2 my-2 h-px bg-border" aria-hidden />
               ) : (
-                <div className="px-3 pt-4 pb-1 text-xs font-medium tracking-wider text-muted-foreground/70 uppercase">
-                  {sec.label ?? ""}
+                <div className="px-3 pt-4 pb-1">
+                  <div className="text-xs font-medium tracking-wider text-muted-foreground/70 uppercase">
+                    {sec.label ?? ""}
+                  </div>
+                  {sec.hint && (
+                    <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+                      {sec.hint}
+                    </div>
+                  )}
                 </div>
               ))}
             {!collapsed && idx === 0 && sec.label && (
-              <div className="px-3 pb-1 text-xs font-medium tracking-wider text-muted-foreground/70 uppercase">
-                {sec.label}
+              <div className="px-3 pb-1">
+                <div className="text-xs font-medium tracking-wider text-muted-foreground/70 uppercase">
+                  {sec.label}
+                </div>
+                {sec.hint && (
+                  <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+                    {sec.hint}
+                  </div>
+                )}
               </div>
             )}
             <div className="flex flex-col gap-1">
@@ -129,11 +164,16 @@ export function Sidebar() {
                 const active =
                   pathname === item.href ||
                   pathname?.startsWith(`${item.href}/`);
+                const tooltip = collapsed
+                  ? item.subtitle
+                    ? `${item.label} · ${item.subtitle}`
+                    : item.label
+                  : undefined;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    title={collapsed ? item.label : undefined}
+                    title={tooltip}
                     className={cn(
                       "flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors",
                       "hover:bg-muted hover:cursor-pointer",
@@ -143,7 +183,14 @@ export function Sidebar() {
                   >
                     <Icon className="h-5 w-5 shrink-0" />
                     {!collapsed && (
-                      <span className="truncate">{item.label}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate">{item.label}</div>
+                        {item.subtitle && (
+                          <div className="truncate text-[10px] text-muted-foreground/70 leading-tight">
+                            {item.subtitle}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </Link>
                 );

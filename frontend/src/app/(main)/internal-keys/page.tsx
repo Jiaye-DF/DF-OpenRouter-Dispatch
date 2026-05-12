@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/EmptyState";
+import { PageHint } from "@/components/common/PageHint";
 import { useDialog } from "@/lib/dialog";
 import { useConfirm } from "@/components/common/ConfirmDialog";
 import { apiClient, ApiError } from "@/lib/api/client";
@@ -189,7 +190,7 @@ export default function InternalKeysPage() {
     <>
       <PageTitle
         title="Internal Keys"
-        description="企業內部 OpenAI-compatible server(vLLM / Ollama / TGI 等);全平台共用,代理呼叫本地模型時自啟用 Key 中隨機挑選 + failover"
+        description="對外金鑰 · 地端 — 本平台用來呼叫企業內部 LLM server 的連線設定"
         actions={
           <Button className="whitespace-nowrap" onClick={onOpenCreate}>
             <Plus className="h-4 w-4" />
@@ -197,6 +198,18 @@ export default function InternalKeysPage() {
           </Button>
         }
       />
+      <PageHint title="這把 Key 是做什麼用的?">
+        <p>
+          <strong>方向</strong>:本平台 → 地端 OpenAI-compatible server
+          (vLLM / Ollama / TGI / LiteLLM 等)。每把 Key 代表「<strong>一台地端機器的連線設定</strong>」
+          (base_url + 可選 api_key + 該機器的速率限制)。
+        </p>
+        <p className="text-muted-foreground text-xs mt-1">
+          <strong>與 OpenRouter Keys 兩個差異</strong>:
+          (1) <strong>全平台共用</strong>,不綁部門;
+          (2) 撞速率限制時除 failover 外還會等待至 timeout,因為地端 server 是稀缺資源。
+        </p>
+      </PageHint>
       <Card>
         <CardContent className="pt-6">
           {loading ? (
@@ -371,8 +384,13 @@ export default function InternalKeysPage() {
                   placeholder="0 = 不限"
                 />
               </div>
-              <p className="col-span-2 text-xs text-muted-foreground">
-                兩者疊加。撞限額時自動 failover 換下一把;全 Key 撞牆才進入等待。
+              <p className="col-span-2 text-xs text-muted-foreground leading-relaxed">
+                <strong>兩者疊加</strong>:實際等待 = max(RPM 視窗剩餘、最小間隔剩餘)。
+                <br />
+                例:RPM=30、間隔=0 → 每分鐘 ≤30 次。
+                <br />
+                <strong>撞限額行為</strong>:Phase 1 自動 failover 換下一把;
+                全部 Key 都撞牆才進入 Phase 2 等待(等 `INTERNAL_LLM_RATE_WAIT_TIMEOUT` 秒)。
               </p>
             </div>
           </div>

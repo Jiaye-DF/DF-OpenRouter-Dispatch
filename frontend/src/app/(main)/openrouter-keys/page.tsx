@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/EmptyState";
+import { PageHint } from "@/components/common/PageHint";
 import { useDialog } from "@/lib/dialog";
 import { useConfirm } from "@/components/common/ConfirmDialog";
 import { apiClient, ApiError } from "@/lib/api/client";
@@ -210,7 +211,7 @@ export default function OpenRouterKeysPage() {
     <>
       <PageTitle
         title="OpenRouter Keys"
-        description="掛於部門，代理呼叫時自部門的啟用 Key 中隨機挑選"
+        description="對外金鑰 · 雲端 — 本平台用來呼叫 OpenRouter API 的金鑰"
         actions={
           <Button onClick={onOpenCreate}>
             <Plus className="h-4 w-4" />
@@ -218,6 +219,17 @@ export default function OpenRouterKeysPage() {
           </Button>
         }
       />
+      <PageHint title="這把 Key 是做什麼用的?">
+        <p>
+          <strong>方向</strong>:本平台 → OpenRouter(雲端付費 API)。每把 Key 綁
+          <strong>部門</strong>;代理呼叫時自該部門的啟用 Key 中隨機挑選,撞速率限制
+          自動換下一把(failover)。
+        </p>
+        <p className="text-muted-foreground text-xs mt-1">
+          與「Internal Keys(地端模型)」、「SDK Keys(對內接受 SDK 呼叫)」是不同概念。
+          餘額由「模型管理 · 同步」自動更新。
+        </p>
+      </PageHint>
       <Card>
         <CardContent className="pt-6">
           {loading ? (
@@ -384,8 +396,13 @@ export default function OpenRouterKeysPage() {
                   placeholder="0 = 不限"
                 />
               </div>
-              <p className="col-span-2 text-xs text-muted-foreground">
-                兩者疊加;Free Tier 建議 20 RPM、200ms;付費通常設 0(不限),由 OR 自行限流。
+              <p className="col-span-2 text-xs text-muted-foreground leading-relaxed">
+                <strong>兩者疊加</strong>:實際等待時間 = max(RPM 視窗剩餘、最小間隔剩餘)。
+                <br />
+                例:RPM=60、間隔=200ms → 每分鐘 ≤60 次,且任兩次間隔 ≥200ms。
+                <br />
+                <strong>建議值</strong>:Free Tier 設 20 RPM + 200ms;付費通常設 0(不限),
+                讓 OR 自行限流即可。
               </p>
             </div>
           </div>

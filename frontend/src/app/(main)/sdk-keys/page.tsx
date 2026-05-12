@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/EmptyState";
+import { PageHint } from "@/components/common/PageHint";
 import { useDialog } from "@/lib/dialog";
 import { useConfirm } from "@/components/common/ConfirmDialog";
 import { apiClient, ApiError } from "@/lib/api/client";
@@ -153,7 +154,7 @@ export default function SdkKeysPage() {
     <>
       <PageTitle
         title="SDK Keys"
-        description="SDK 呼叫代理端點時 Header 必帶；明文僅建立時一次性顯示"
+        description="存取金鑰 · 對內 — 開放給 SDK 端呼叫本平台代理端點"
         actions={
           <Button
             onClick={() => {
@@ -166,6 +167,17 @@ export default function SdkKeysPage() {
           </Button>
         }
       />
+      <PageHint title="這把 Key 是做什麼用的?">
+        <p>
+          <strong>方向</strong>:SDK 端 → 本平台。代表「<strong>哪個部門的程式在呼叫</strong>」,
+          每把 Key 綁部門;SDK 端呼叫 <code className="text-xs font-mono">/api/v1/model/chat</code>
+          時放入 <code className="text-xs font-mono">X-SDK-Key</code> header,搭配 <code className="text-xs font-mono">X-User-Token</code> 雙因子認證。
+        </p>
+        <p className="text-muted-foreground text-xs mt-1">
+          與「OpenRouter Keys / Internal Keys」(對外呼叫模型)是相反方向。
+          明文僅建立時一次性顯示,請妥善保管並以安全管道交付使用者。
+        </p>
+      </PageHint>
       <Card>
         <CardContent className="pt-6">
           {loading ? (

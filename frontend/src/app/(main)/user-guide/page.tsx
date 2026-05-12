@@ -214,19 +214,23 @@ export default function UserGuidePage() {
             <div className="rounded-xl border border-border p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Badge>X-SDK-Key</Badge>
-                <span className="text-xs text-muted-foreground">部門層級</span>
+                <span className="text-xs text-muted-foreground">部門層級 · 存取金鑰</span>
               </div>
               <p className="text-sm">
-                以部門為單位發放,代表「哪個部門的程式在呼叫」。格式類似 <code className="font-mono text-xs">ordsk_xxxxxxxxxxxx_xxxxxxxx…</code>。
+                以部門為單位發放,代表「<strong>哪個部門的程式在呼叫</strong>」。
+                由 admin 於後台「存取金鑰 / SDK Keys」建立,格式類似
+                <code className="font-mono text-xs"> ordsk_xxxxxxxxxxxx_xxxx…</code>。
               </p>
             </div>
             <div className="rounded-xl border border-border p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Badge>X-User-Token</Badge>
-                <span className="text-xs text-muted-foreground">使用者層級</span>
+                <span className="text-xs text-muted-foreground">使用者層級 · 加密 payload</span>
               </div>
               <p className="text-sm">
-                以個別使用者為單位發放,代表「哪個人在呼叫」。為加密字串,內含使用者識別與發行時間,撤銷後立即失效。
+                以個別使用者為單位發放,代表「<strong>哪個人在呼叫</strong>」。
+                由 admin 於「使用者管理」頁針對 role=user 的使用者產生,
+                為加密字串、內含使用者識別與發行時間。
               </p>
             </div>
           </div>

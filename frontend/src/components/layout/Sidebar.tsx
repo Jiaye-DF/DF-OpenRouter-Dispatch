@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  BookOpen,
   Box,
   Building2,
   FolderKanban,
@@ -40,6 +41,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   { href: "/sdk-keys", label: "SDK Keys", icon: KeyRound, adminOnly: true },
   { href: "/usage-logs", label: "用量紀錄", icon: ScrollText },
+  { href: "/user-guide", label: "使用者使用說明", icon: BookOpen },
 ];
 
 export function Sidebar() {

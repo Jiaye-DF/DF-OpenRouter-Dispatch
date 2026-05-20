@@ -8,9 +8,22 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { cn } from "@/lib/utils/cn";
 
-// API Base URL 顯示用;範例程式碼裡直接用使用者實際看到的 base
+// 測試 / 正式環境的 API Base URL —— 待網址確認後填入下方常數即可,
+// 「呼叫環境」表格與範例程式碼會自動套用(範例以正式環境為準)。
+const TEST_API_BASE = ""; // 測試環境,例:https://test-api.example.com
+const PROD_API_BASE = ""; // 正式環境,例:https://api.example.com
+
+// 「呼叫環境」表格顯示用
+const API_ENVIRONMENTS: { label: string; base: string }[] = [
+  { label: "測試環境", base: TEST_API_BASE },
+  { label: "正式環境", base: PROD_API_BASE },
+];
+
+// 範例程式碼顯示用的 base:正式優先 → 測試 → 佔位字串
 const API_BASE = (
-  process.env.NEXT_PUBLIC_API_BASE_URL || "https://<your-domain>"
+  PROD_API_BASE ||
+  TEST_API_BASE ||
+  "https://<正式站網址>"
 ).replace(/\/$/, "");
 const CHAT_URL = `${API_BASE}/api/v1/model/chat`;
 
@@ -243,6 +256,31 @@ export default function UserGuidePage() {
         </Section>
 
         <Section id="endpoint" title="端點與認證 Header">
+          <p>
+            本平台提供<strong>測試</strong>與<strong>正式</strong>兩個環境,請依用途選用對應的 Base URL;以下範例皆以正式環境為準。
+          </p>
+          <div className="overflow-x-auto">
+            <Table>
+              <THead>
+                <TR>
+                  <TH>環境</TH>
+                  <TH>Base URL</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {API_ENVIRONMENTS.map((e) => (
+                  <TR key={e.label}>
+                    <TD>{e.label}</TD>
+                    <TD className="font-mono text-xs">
+                      {e.base || (
+                        <span className="text-muted-foreground">(待補)</span>
+                      )}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </div>
           <p>所有呼叫皆透過下面這支端點:</p>
           <CodeBlock language="HTTP" code={`POST ${CHAT_URL}\nContent-Type: application/json\nX-SDK-Key: <SDK Key 明文>\nX-User-Token: <User Token 明文>`} />
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">

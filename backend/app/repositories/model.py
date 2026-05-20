@@ -1,7 +1,7 @@
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.model import Model
@@ -32,38 +32,13 @@ class ModelRepository:
         ).order_by(Model.model_key.asc())
         return list((await self.db.execute(stmt)).scalars().all())
 
-    async def list_all(
-        self,
-        *,
-        page: int = 1,
-        size: int = 50,
-        include_inactive: bool = False,
-        modality: str | None = None,
-        tier_key: str | None = None,
-    ) -> tuple[list[Model], int]:
+    async def list_all(self, *, include_inactive: bool = False) -> list[Model]:
+        """一次回傳全部模型(不分頁);分頁與其餘篩選交由前端處理。"""
         stmt = select(Model).where(Model.is_deleted.is_(False))
-        count_stmt = (
-            select(func.count())
-            .select_from(Model)
-            .where(Model.is_deleted.is_(False))
-        )
         if not include_inactive:
             stmt = stmt.where(Model.is_active.is_(True))
-            count_stmt = count_stmt.where(Model.is_active.is_(True))
-        if modality is not None:
-            stmt = stmt.where(Model.modality == modality)
-            count_stmt = count_stmt.where(Model.modality == modality)
-        if tier_key is not None:
-            stmt = stmt.where(Model.tier_key == tier_key)
-            count_stmt = count_stmt.where(Model.tier_key == tier_key)
-        stmt = (
-            stmt.order_by(Model.model_key.asc())
-            .offset((page - 1) * size)
-            .limit(size)
-        )
-        items = list((await self.db.execute(stmt)).scalars().all())
-        total = int((await self.db.execute(count_stmt)).scalar_one())
-        return items, total
+        stmt = stmt.order_by(Model.model_key.asc())
+        return list((await self.db.execute(stmt)).scalars().all())
 
     def add(self, row: Model) -> None:
         self.db.add(row)

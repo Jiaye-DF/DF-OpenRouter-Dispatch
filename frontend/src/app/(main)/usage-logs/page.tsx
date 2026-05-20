@@ -5,22 +5,50 @@ import { PageTitle } from "@/components/common/PageTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { FilterChip } from "@/components/ui/FilterChip";
+import { Combobox } from "@/components/ui/Combobox";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useDialog } from "@/lib/dialog";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
-import type { Department, Paginated, UsageLog } from "@/types/api";
+import type { Department, Model, Paginated, UsageLog } from "@/types/api";
 
-// 用量紀錄頁：支援部門 / 模型 / 狀態 / 時間 篩選
+// 用量紀錄頁:部門 / 狀態 chip、模型 Combobox、時間區間快捷篩選
+
+function fmtDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// n 日前的日期字串(n=0 為今天)
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - n);
+  return fmtDate(d);
+}
+
+const RANGE_PRESETS = [3, 7, 30] as const;
+
+const STATUS_OPTIONS = [
+  { value: "", label: "全部" },
+  { value: "success", label: "成功" },
+  { value: "error", label: "失敗" },
+] as const;
+
+const statusLabel = (s: string) =>
+  s === "success" ? "成功" : s === "error" ? "失敗" : s;
 
 export default function UsageLogsPage() {
   const { showDialog } = useDialog();
   const [items, setItems] = React.useState<UsageLog[]>([]);
   const [depts, setDepts] = React.useState<Department[]>([]);
+  const [models, setModels] = React.useState<Model[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [page, setPage] = React.useState(1);
   const [total, setTotal] = React.useState(0);
@@ -30,8 +58,8 @@ export default function UsageLogsPage() {
     department_uid: "",
     model: "",
     status: "",
-    from: "",
-    to: "",
+    from: daysAgo(2), // 預設最近 3 日
+    to: daysAgo(0),
   });
 
   const load = React.useCallback(async () => {
@@ -41,8 +69,8 @@ export default function UsageLogsPage() {
       if (filters.department_uid) query.department_uid = filters.department_uid;
       if (filters.model) query.model = filters.model;
       if (filters.status) query.status = filters.status;
-      if (filters.from) query.from = filters.from;
-      if (filters.to) query.to = filters.to;
+      if (filters.from) query.from = `${filters.from}T00:00:00`;
+      if (filters.to) query.to = `${filters.to}T23:59:59`;
       const data = await apiClient.get<Paginated<UsageLog>>(
         API_ENDPOINTS.usageLogs,
         { query }
@@ -63,17 +91,50 @@ export default function UsageLogsPage() {
   }, [load]);
 
   React.useEffect(() => {
-    // 部門僅載入一次
+    // 部門 / 模型 清單僅載入一次,供篩選元件使用
     apiClient
       .get<Paginated<Department>>(API_ENDPOINTS.departments, {
         query: { page: 1, size: 200 },
       })
       .then((d) => setDepts(d.items))
       .catch(() => {});
+    apiClient
+      .get<Paginated<Model>>(API_ENDPOINTS.models)
+      .then((d) => setModels(d.items))
+      .catch(() => {});
   }, []);
 
   const deptName = (uid: string) =>
     depts.find((d) => d.department_uid === uid)?.name ?? uid;
+
+  const modelOptions = React.useMemo(
+    () => [
+      { value: "", label: "全部模型" },
+      ...models.map((m) => ({ value: m.model_key, label: m.model_key })),
+    ],
+    [models]
+  );
+
+  // 篩選變更一律回到第 1 頁;load 依賴 filters / page 變化自動重新查詢
+  const update = (patch: Partial<typeof filters>) => {
+    setFilters((f) => ({ ...f, ...patch }));
+    setPage(1);
+  };
+
+  const setRange = (days: number) =>
+    update({ from: daysAgo(days - 1), to: daysAgo(0) });
+
+  const isPreset = (days: number) =>
+    filters.from === daysAgo(days - 1) && filters.to === daysAgo(0);
+
+  const reset = () =>
+    update({
+      department_uid: "",
+      model: "",
+      status: "",
+      from: daysAgo(2),
+      to: daysAgo(0),
+    });
 
   const totalPages = Math.max(1, Math.ceil(total / size));
 
@@ -85,82 +146,102 @@ export default function UsageLogsPage() {
       />
       <Card>
         <CardContent className="pt-6 flex flex-col gap-4">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="flex flex-col gap-1">
-              <Label className="text-sm">部門</Label>
-              <select
-                className="h-9 rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
-                value={filters.department_uid}
-                onChange={(e) =>
-                  setFilters({ ...filters, department_uid: e.target.value })
-                }
+          {/* 篩選區 — 依面向分列 */}
+          <div className="flex flex-col gap-3 border-b border-border pb-4">
+            {/* 部門 */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-20 shrink-0 text-sm text-muted-foreground">
+                部門：
+              </span>
+              <FilterChip
+                active={!filters.department_uid}
+                onClick={() => update({ department_uid: "" })}
               >
-                <option value="">全部</option>
-                {depts.map((d) => (
-                  <option key={d.department_uid} value={d.department_uid}>
-                    {d.name}
-                  </option>
+                全部
+              </FilterChip>
+              {depts.map((d) => (
+                <FilterChip
+                  key={d.department_uid}
+                  active={filters.department_uid === d.department_uid}
+                  onClick={() => update({ department_uid: d.department_uid })}
+                >
+                  {d.name}
+                </FilterChip>
+              ))}
+            </div>
+
+            {/* 狀態 + 模型 — 同列水平排列 */}
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-20 shrink-0 text-sm text-muted-foreground">
+                  狀態：
+                </span>
+                {STATUS_OPTIONS.map((o) => (
+                  <FilterChip
+                    key={o.value || "all"}
+                    active={filters.status === o.value}
+                    onClick={() => update({ status: o.value })}
+                  >
+                    {o.label}
+                  </FilterChip>
                 ))}
-              </select>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  模型：
+                </span>
+                <Combobox
+                  className="w-64"
+                  options={modelOptions}
+                  value={filters.model}
+                  onChange={(v) => update({ model: v })}
+                  placeholder="全部模型"
+                  searchPlaceholder="搜尋模型..."
+                  emptyText="查無模型"
+                />
+              </div>
             </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-sm">模型</Label>
+
+            {/* 時間 */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-20 shrink-0 text-sm text-muted-foreground">
+                按時間：
+              </span>
+              {RANGE_PRESETS.map((n) => (
+                <FilterChip
+                  key={n}
+                  active={isPreset(n)}
+                  onClick={() => setRange(n)}
+                >
+                  近 {n} 日
+                </FilterChip>
+              ))}
+              <span className="ml-1 text-sm text-muted-foreground">起</span>
               <Input
-                className="h-9"
-                value={filters.model}
-                onChange={(e) => setFilters({ ...filters, model: e.target.value })}
-                placeholder="anthropic/..."
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-sm">狀態</Label>
-              <select
-                className="h-9 rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
-                value={filters.status}
-                onChange={(e) =>
-                  setFilters({ ...filters, status: e.target.value })
-                }
-              >
-                <option value="">全部</option>
-                <option value="success">success</option>
-                <option value="error">error</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-sm">起始</Label>
-              <Input
-                type="datetime-local"
-                className="h-9"
+                type="date"
+                className="h-9 w-auto"
                 value={filters.from}
-                onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+                max={filters.to}
+                onChange={(e) => update({ from: e.target.value })}
               />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-sm">結束</Label>
+              <span className="text-sm text-muted-foreground">迄</span>
               <Input
-                type="datetime-local"
-                className="h-9"
+                type="date"
+                className="h-9 w-auto"
                 value={filters.to}
-                onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+                min={filters.from}
+                max={daysAgo(0)}
+                onChange={(e) => update({ to: e.target.value })}
               />
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={reset}
+              >
+                重設
+              </Button>
             </div>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button
-              variant="outline"
-              onClick={() =>
-                setFilters({
-                  department_uid: "",
-                  model: "",
-                  status: "",
-                  from: "",
-                  to: "",
-                })
-              }
-            >
-              清除
-            </Button>
-            <Button onClick={() => { setPage(1); load(); }}>套用篩選</Button>
           </div>
 
           {loading ? (
@@ -211,7 +292,7 @@ export default function UsageLogsPage() {
                       <Badge
                         variant={log.status === "success" ? "success" : "destructive"}
                       >
-                        {log.status}
+                        {statusLabel(log.status)}
                       </Badge>
                     </TD>
                   </TR>

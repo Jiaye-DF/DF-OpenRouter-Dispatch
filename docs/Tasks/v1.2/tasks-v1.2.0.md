@@ -24,7 +24,7 @@
 
 ### Migration
 
-- [ ] Alembic revision `0002_*` 一次完成下列 DDL:
+- [x] Alembic revision `0002_*` 一次完成下列 DDL:
   - `models` 加 `provider VARCHAR(32) NOT NULL DEFAULT 'openrouter'`
   - `models` rename column `openrouter_model_id` → `model_key`(同步 rename unique index)
   - `models` 加 `CREATE INDEX idx_models_provider ON models (provider) WHERE is_deleted = FALSE`
@@ -35,56 +35,56 @@
 ### Backend
 
 #### Schema 同步
-- [ ] `app/models/model.py`:`provider` 屬性、`openrouter_model_id` 改名 `model_key`(SQLAlchemy)
-- [ ] `app/models/openrouter_key.py`:`rpm_limit` / `min_request_interval_ms` 屬性
-- [ ] `app/schemas/model.py`:
+- [x] `app/models/model.py`:`provider` 屬性、`openrouter_model_id` 改名 `model_key`(SQLAlchemy)
+- [x] `app/models/openrouter_key.py`:`rpm_limit` / `min_request_interval_ms` 屬性
+- [x] `app/schemas/model.py`:
   - `ModelRead` 加 `provider` / `model_key`(取代 `openrouter_model_id`)
   - 新增 `ModelCreateRequest`(provider 限 `internal`)
   - `ModelPatch` 依 provider 條件性開放欄位驗證(同步 `app/api/v1/models.py` PATCH 端點)
-- [ ] `app/schemas/openrouter_key.py`:`OpenRouterKeyResponse` / `OpenRouterKeyCreateRequest` / `OpenRouterKeyUpdateRequest` 加 RPM/interval
-- [ ] `app/repositories/model.py`:`find_by_openrouter_model_id` → `find_by_key`
-- [ ] `app/services/sync.py`:upsert 加 `WHERE provider='openrouter'`,internal 列不動
+- [x] `app/schemas/openrouter_key.py`:`OpenRouterKeyResponse` / `OpenRouterKeyCreateRequest` / `OpenRouterKeyUpdateRequest` 加 RPM/interval
+- [x] `app/repositories/model.py`:`find_by_openrouter_model_id` → `find_by_key`
+- [x] `app/services/sync.py`:upsert 加 `WHERE provider='openrouter'`,internal 列不動
 
 #### 新模組
-- [ ] `app/clients/internal/__init__.py` + `client.py`:OpenAI-compatible client(`chat_completion()` + `httpx.HTTPError` 包裝為 `InternalError`)
-- [ ] `app/clients/factory.py`:`get_chat_client(provider)` 依 provider 回 OR/internal client
-- [ ] `app/services/rate_limit.py`:
+- [x] `app/clients/internal/__init__.py` + `client.py`:OpenAI-compatible client(`chat_completion()` + `httpx.HTTPError` 包裝為 `InternalError`)
+- [x] `app/clients/factory.py`:`get_chat_client(provider)` 依 provider 回 OR/internal client
+- [x] `app/services/rate_limit.py`:
   - `RateLimitExceeded(Exception)` 含 `retry_after_seconds`
   - `KeyRateLimiter`(`acquire(wait_timeout)` 行為見 [propose § 6.2](./propose-v1.2.0.md#62-演算法in-memoryasyncio))
   - module-level registry `get(key, rpm_limit, min_interval_ms)` → 取或建 limiter
-- [ ] `app/services/proxy.py` `run_chat` refactor:
+- [x] `app/services/proxy.py` `run_chat` refactor:
   - 依 `model_row.provider` 分流
   - `internal`:`rate_limiter.get(INTERNAL_KEY, env_rpm, env_min_interval).acquire(wait_timeout=env_RATE_WAIT)`;捕 `RateLimitExceeded` → raise `AppError("internal_busy", 429, data={"retry_after_seconds": ...})`
   - `openrouter`:迴圈內 `acquire(wait_timeout=0)`,捕到就換下一把 Key;全撞牆 → raise `AppError("rate_limited", 429)`
   - usage_log 對 internal:`openrouter_key_uid=None`、`cost_usd=0`
 
 #### 設定
-- [ ] `app/core/config.py` 加 6 個 `INTERNAL_LLM_*` 設定欄位
-- [ ] `.env.example` 新增 `# --- Internal LLM ---` 區塊與 6 個 key
+- [x] `app/core/config.py` 加 `INTERNAL_LLM_*` 設定欄位(增量後收斂為 2 個:`REQUEST_TIMEOUT` / `RATE_WAIT_TIMEOUT`,其餘 4 個移至 `internal_keys` 表)
+- [x] `.env.example` 新增 `# --- Internal LLM ---` 區塊(增量後僅保留 2 個 key + 說明註解)
 
 #### API
-- [ ] `app/api/v1/model_openrouter.py` rename `model_chat.py`,prefix 改 `/model`,路徑 `/chat`(canonical)
-- [ ] 同檔保留 deprecated alias router:`prefix="/model/openrouter"`,內部 forward 到同一 handler;Swagger 加 `deprecated=True`
-- [ ] `app/api/v1/models.py` 新 `POST /api/v1/models`(僅 admin;body provider 必為 `internal`,否則 `provider_not_allowed`)
-- [ ] `app/api/v1/models.py` `PATCH` 依 provider 動態驗證可改欄位(internal:`name`/`description`/`context_length`/`tier_key`/`is_active`;openrouter 沿用 v1.1 只准 `tier_key`/`is_active`)
-- [ ] `app/api/v1/openrouter_keys.py` `PATCH` 接受 `rpm_limit` / `min_request_interval_ms`
-- [ ] 所有新端點 response 走 `success_response()` / `failure_response()`
+- [x] `app/api/v1/model_openrouter.py` rename `model_chat.py`,prefix 改 `/model`,路徑 `/chat`(canonical)
+- [x] 同檔保留 deprecated alias router:`prefix="/model/openrouter"`,內部 forward 到同一 handler;Swagger 加 `deprecated=True`
+- [x] `app/api/v1/models.py` 新 `POST /api/v1/models`(僅 admin;body provider 必為 `internal`,否則 `provider_not_allowed`)
+- [x] `app/api/v1/models.py` `PATCH` 依 provider 動態驗證可改欄位(internal:`name`/`description`/`context_length`/`tier_key`/`is_active`;openrouter 沿用 v1.1 只准 `tier_key`/`is_active`)
+- [x] `app/api/v1/openrouter_keys.py` `PATCH` 接受 `rpm_limit` / `min_request_interval_ms`
+- [x] 所有新端點 response 走 `success_response()` / `failure_response()`
 
 ### Frontend
 
-- [ ] `frontend/src/types/api.ts`:
+- [x] `frontend/src/types/api.ts`:
   - `Model` 加 `provider: "openrouter" | "internal"`、`model_key`(取代 `openrouter_model_id`)
   - `OpenRouterKey` 加 `rpm_limit` / `min_request_interval_ms`
-- [ ] `frontend/src/lib/api/endpoints.ts` 加 `models` POST、調整 chat endpoint 為 `/api/v1/model/chat`(若 SDK 端有用到)
-- [ ] `frontend/src/lib/api/error-map.ts` 加 `internal_busy` / `internal_unavailable` / `provider_misconfigured` / `provider_not_allowed` 中文化
-- [ ] `/admin/models` 頁面:
+- [x] `frontend/src/lib/api/endpoints.ts` 加 `models` POST、調整 chat endpoint 為 `/api/v1/model/chat`(若 SDK 端有用到)
+- [x] `frontend/src/lib/api/error-map.ts` 加 `internal_busy` / `internal_unavailable` / `provider_misconfigured` / `provider_not_allowed` 中文化
+- [x] `/admin/models` 頁面:
   - 列表加 `provider` 徽章欄(openrouter 藍 / internal 紫)
   - 工具列新增「**手動新增本地模型**」按鈕 + Dialog(`model_key` / `name` / `description` / `context_length` / `tier_key` / `modality`)
   - 編輯 Drawer 依 provider 切換可編輯欄位
-- [ ] `/admin/openrouter-keys` 頁面:
+- [x] `/admin/openrouter-keys` 頁面:
   - 列表加 `RPM` / `最小間隔` 欄(`0` 顯示「不限」)
   - 新增 / 編輯 Dialog 加對應 2 個 number 欄位(placeholder「0 = 不限」+ tooltip 解釋疊加)
-- [ ] `/user-guide` 頁面:
+- [x] `/user-guide` 頁面:
   - endpoint 範例改為 `POST /api/v1/model/chat`
   - 加「本地模型」段落(同 header,僅 `model` 字串不同)
   - 錯誤對照表加 `internal_busy` / `rate_limited`(指數退避建議)
@@ -92,15 +92,15 @@
 ### Design-Base 文件同步
 
 - [ ] [20-backend.md § 3](../../Design-Base/20-backend.md):新增「**代理端 path 收斂**」段落,允許 `/api/v1/model/<action>` 形式(deprecated alias 政策)
-- [ ] [50-openrouter.md](../../Design-Base/50-openrouter.md):範圍擴大為「Model Provider」(或新增 51-internal.md);新增「速率限制」與「Internal Provider」小節
-- [ ] [50-openrouter.md § 9](../../Design-Base/50-openrouter.md#9-錯誤對應):加 `internal_busy` / `internal_unavailable` / `provider_misconfigured` / `provider_not_allowed`
-- [ ] [80-permission.md § 5](../../Design-Base/80-permission.md#5-代理端proxy存取規則):path 從 `/model/openrouter/chat` 改為 `/model/chat`(舊路徑說明 deprecated alias)
-- [ ] [90-task-spec.md § 4.2](../../Design-Base/90-task-spec.md):API 路徑規則放寬,代理端允許 `/api/v1/model/<action>`(不再強制 `model/openrouter/`)
-- [ ] [60-naming-env.md § 2.1](../../Design-Base/60-naming-env.md):分區註解範例加 `# --- Internal LLM ---`
+- [x] [50-openrouter.md](../../Design-Base/50-openrouter.md):範圍擴大為「Model Provider」(或新增 51-internal.md);新增「速率限制」與「Internal Provider」小節
+- [x] [50-openrouter.md § 9](../../Design-Base/50-openrouter.md#9-錯誤對應):加 `internal_busy` / `internal_unavailable` / `provider_misconfigured` / `provider_not_allowed`
+- [x] [80-permission.md § 5](../../Design-Base/80-permission.md#5-代理端proxy存取規則):path 從 `/model/openrouter/chat` 改為 `/model/chat`(舊路徑說明 deprecated alias)
+- [x] [90-task-spec.md § 4.2](../../Design-Base/90-task-spec.md):API 路徑規則放寬,代理端允許 `/api/v1/model/<action>`(不再強制 `model/openrouter/`)
+- [x] [60-naming-env.md § 2.1](../../Design-Base/60-naming-env.md):分區註解範例加 `# --- Internal LLM ---`
 
 ### 測試
 
-- [ ] **單元測試** `tests/services/test_rate_limit.py`:
+- [x] **單元測試** `tests/services/test_rate_limit.py`:
   - 連續 N+1 次 acquire(N=rpm_limit),第 N+1 次需等待至視窗釋出
   - `min_request_interval_ms=200` 時連續兩次間隔不少於 200ms
   - 等待 > `wait_timeout` → `RateLimitExceeded` + 正確 `retry_after_seconds`
@@ -115,7 +115,7 @@
   - Internal server 5xx → 502 `internal_unavailable`
   - 無 active internal_keys 但有 internal model 被呼叫 → 500 `provider_misconfigured`
   - 同步流程不動 internal 模型(`provider='internal'` 的 row `last_synced_at` 不變)
-- [ ] Swagger `/api/docs`:兩條 chat path 皆可見(`/model/openrouter/chat` 標 deprecated)
+- [x] Swagger `/api/docs`:兩條 chat path 皆可見(`/model/openrouter/chat` 標 deprecated)
 
 ### Internal Keys 增量(2026-05-12)— 已完成
 

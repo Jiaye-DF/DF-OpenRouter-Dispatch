@@ -4,9 +4,14 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       target: dev
+    # 每次容器啟動先清除 Next.js 建置快取(.next),避免 stale cache
+    command: ["sh", "-c", "rm -rf .next && npm run dev"]
     env_file: .env
     environment:
       - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+      # Windows / Docker bind mount 下檔案監看收不到 inotify 事件,
+      # 開啟輪詢讓 hot-reload 可靠生效。
+      - WATCHPACK_POLLING=true
     ports:
       - "3300:3000"
     volumes:

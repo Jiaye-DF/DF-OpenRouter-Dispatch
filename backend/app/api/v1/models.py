@@ -30,31 +30,21 @@ _OPENROUTER_PATCHABLE = {"is_active", "tier_key"}
 _INTERNAL_PATCHABLE = {"is_active", "tier_key", "name", "description", "context_length", "modality"}
 
 
-@router.get("", summary="模型列表(預設僅 active)")
+@router.get("", summary="模型列表(一次回傳全部;分頁與篩選由前端處理)")
 async def list_models(
     actor: UserDep,
     db: DbDep,
-    page: int = Query(1, ge=1),
-    size: int = Query(50, ge=1, le=200),
     include_inactive: int = Query(0, ge=0, le=1),
-    modality: str | None = None,
-    tier_key: str | None = None,
 ):
     # include_inactive 僅 admin 可用,一般使用者強制看 active
     only_active = not (bool(include_inactive) and actor.is_admin)
     repo = ModelRepository(db)
-    items, total = await repo.list_all(
-        page=page,
-        size=size,
-        include_inactive=not only_active,
-        modality=modality,
-        tier_key=tier_key,
-    )
+    items = await repo.list_all(include_inactive=not only_active)
     data = Page[ModelRead](
         items=[ModelRead.model_validate(x) for x in items],
-        total=total,
-        page=page,
-        size=size,
+        total=len(items),
+        page=1,
+        size=len(items),
     )
     return success_response(data=data.model_dump(mode="json"), detail="success")
 

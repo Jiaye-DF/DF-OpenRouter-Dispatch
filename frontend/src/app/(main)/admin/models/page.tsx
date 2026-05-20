@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Search, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { PageTitle } from "@/components/common/PageTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/EmptyState";
 import { FilterChip } from "@/components/ui/FilterChip";
+import { Combobox } from "@/components/ui/Combobox";
 import { SyncButton } from "@/components/admin/SyncButton";
 import { useDialog } from "@/lib/dialog";
 import { useToast } from "@/components/ui/toaster";
@@ -29,7 +30,9 @@ import { useAppSelector } from "@/store/hooks";
 
 type AvailabilityFilter = "all" | "active" | "inactive";
 
-// 將 USD/token 顯示為 USD/M tokens(乘以 1_000_000),保留 4 位小數
+const PAGE_SIZE = 20;
+
+// 將 USD/token 顯示為每百萬 tokens 的價格(乘以 1_000_000),保留 4 位小數
 function priceToMtokDisplay(perToken: string | null): string {
   if (perToken === null || perToken === undefined) return "-";
   const n = Number(perToken);
@@ -38,31 +41,41 @@ function priceToMtokDisplay(perToken: string | null): string {
   return (n * 1_000_000).toFixed(4);
 }
 
+// 卡片價格文字:無價格顯示「未提供」,有價格則為「$X/Mtoken」(M = 每百萬)
+function cardPriceText(perToken: string | null): string {
+  const display = priceToMtokDisplay(perToken);
+  return display === "-" ? "未提供" : `$${display}/Mtoken`;
+}
+
+// 上下文長度:tokens 數除以 1024、四捨五入,以「ktokens」為單位顯示
+function contextLengthDisplay(contextLength: number): string {
+  return `${Math.round(contextLength / 1024)}ktokens`;
+}
+
 export default function ModelsAdminPage() {
   const role = useAppSelector((s) => s.auth.actor?.role);
   const { showDialog } = useDialog();
   const { toast } = useToast();
 
+  // 後端一次回傳全部模型;分頁、搜尋、篩選一律前端處理
   const [items, setItems] = React.useState<Model[]>([]);
   const [tiers, setTiers] = React.useState<ModelTier[]>([]);
   const [loading, setLoading] = React.useState(true);
 
   // 工具列狀態
-  const [search, setSearch] = React.useState("");
+  const [selectedModelUid, setSelectedModelUid] = React.useState(""); // Combobox 搜尋:選中即定位該模型
   const [availability, setAvailability] = React.useState<AvailabilityFilter>("active");
-  const [tierFilter, setTierFilter] = React.useState<string>("all"); // 'all' / tier.key
+  const [tierFilter, setTierFilter] = React.useState<string>("all"); // 'all' / '__none__' / tier.key
 
-  // 分頁(後端列表)
+  // 前端分頁
   const [page, setPage] = React.useState(1);
-  const [total, setTotal] = React.useState(0);
-  const size = 20;
 
   // Drawer
   const [editing, setEditing] = React.useState<Model | null>(null);
   const [editTier, setEditTier] = React.useState<string>("");
   const [savingEdit, setSavingEdit] = React.useState(false);
 
-  // v1.2 手動新增本地模型 Dialog
+  // v1.2 新增本地模型 Dialog
   const [createOpen, setCreateOpen] = React.useState(false);
   const [createForm, setCreateForm] = React.useState({
     model_key: "",
@@ -77,20 +90,13 @@ export default function ModelsAdminPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const query: Record<string, string | number> = { page, size };
-      if (availability === "inactive" || availability === "all") {
-        query.include_inactive = 1;
-      }
-      // tier_filter 改走後端 query,避免 size=20 時跨頁過濾不到目標
-      if (tierFilter !== "all" && tierFilter !== "__none__") {
-        query.tier_key = tierFilter;
-      }
       const [list, tierList] = await Promise.all([
-        apiClient.get<Paginated<Model>>(API_ENDPOINTS.models, { query }),
+        apiClient.get<Paginated<Model>>(API_ENDPOINTS.models, {
+          query: { include_inactive: 1 },
+        }),
         apiClient.get<ModelTier[]>(API_ENDPOINTS.modelTiers),
       ]);
       setItems(list.items);
-      setTotal(list.total);
       setTiers(tierList);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -103,7 +109,7 @@ export default function ModelsAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, availability, tierFilter, showDialog]);
+  }, [showDialog]);
 
   React.useEffect(() => {
     if (role === "admin") load();
@@ -116,26 +122,40 @@ export default function ModelsAdminPage() {
     return m;
   }, [tiers]);
 
-  // 前端過濾(搜尋 + tier + availability of in-list items)
+  // Combobox 選項:全部模型 + 各模型(label = 名稱,只以名稱搜尋)
+  const modelOptions = React.useMemo(
+    () => [
+      { value: "", label: "全部模型" },
+      ...[...items]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((m) => ({ value: m.model_uid, label: m.name })),
+    ],
+    [items]
+  );
+
+  // 前端過濾:選中模型則只顯示該筆,否則依可用性 + 分級篩選
   const visible = React.useMemo(() => {
-    const kw = search.trim().toLowerCase();
+    if (selectedModelUid) {
+      return items.filter((it) => it.model_uid === selectedModelUid);
+    }
     return items.filter((it) => {
       if (availability === "active" && !it.is_active) return false;
       if (availability === "inactive" && it.is_active) return false;
-      if (tierFilter !== "all") {
-        if (tierFilter === "__none__") {
-          if (it.tier_key) return false;
-        } else if (it.tier_key !== tierFilter) {
-          return false;
-        }
-      }
-      if (kw) {
-        const hay = `${it.name} ${it.model_key}`.toLowerCase();
-        if (!hay.includes(kw)) return false;
+      if (tierFilter === "__none__") {
+        if (it.tier_key) return false;
+      } else if (tierFilter !== "all" && it.tier_key !== tierFilter) {
+        return false;
       }
       return true;
     });
-  }, [items, search, availability, tierFilter]);
+  }, [items, selectedModelUid, availability, tierFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const pageSafe = Math.min(page, totalPages);
+  const pageItems = visible.slice(
+    (pageSafe - 1) * PAGE_SIZE,
+    pageSafe * PAGE_SIZE
+  );
 
   if (role !== "admin") {
     return (
@@ -257,17 +277,19 @@ export default function ModelsAdminPage() {
     <>
       <PageTitle
         title="模型管理"
-        description="模型白名單 — OpenRouter 走「同步」自動拉取;地端模型走「手動新增」"
+        description="模型白名單 — OpenRouter 走「同步」自動拉取;本地模型走「手動新增」"
         actions={
           <div className="flex shrink-0 items-center gap-2">
+            {/* 暫時停用:本地模型功能尚未開放,先關閉新增入口(待整備後移除 disabled) */}
             <Button
               variant="outline"
               className="whitespace-nowrap"
               onClick={() => setCreateOpen(true)}
-              title="僅用於新增 provider=internal 的地端模型"
+              disabled
+              title="本地模型新增功能暫停開放"
             >
               <Plus className="h-4 w-4" />
-              手動新增地端模型
+              新增本地模型
             </Button>
             <SyncButton
               endpoint={API_ENDPOINTS.syncModels}
@@ -280,86 +302,102 @@ export default function ModelsAdminPage() {
 
       <Card>
         <CardContent className="pt-6 flex flex-col gap-4">
-          {/* 搜尋 + Filter chips */}
+          {/* 搜尋 Combobox + Filter chips */}
           <div className="flex flex-col gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="搜尋模型名稱或 ID(client-side filter)"
-                className="pl-9"
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-20 shrink-0 text-sm text-muted-foreground">
+                搜尋：
+              </span>
+              <Combobox
+                className="w-full sm:w-96"
+                options={modelOptions}
+                value={selectedModelUid}
+                onChange={(v) => {
+                  setSelectedModelUid(v);
+                  setPage(1);
+                }}
+                placeholder="輸入模型名稱搜尋..."
+                searchPlaceholder="輸入模型名稱..."
+                emptyText="查無模型"
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="shrink-0 text-sm text-muted-foreground">
-                按可用性:
-              </span>
-              <FilterChip
-                active={availability === "all"}
-                onClick={() => {
-                  setAvailability("all");
-                  setPage(1);
-                }}
-              >
-                全部
-              </FilterChip>
-              <FilterChip
-                active={availability === "active"}
-                onClick={() => {
-                  setAvailability("active");
-                  setPage(1);
-                }}
-              >
-                已啟用
-              </FilterChip>
-              <FilterChip
-                active={availability === "inactive"}
-                onClick={() => {
-                  setAvailability("inactive");
-                  setPage(1);
-                }}
-              >
-                已停用
-              </FilterChip>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="shrink-0 text-sm text-muted-foreground">
-                按分級:
-              </span>
-              <FilterChip
-                active={tierFilter === "all"}
-                onClick={() => {
-                  setTierFilter("all");
-                  setPage(1);
-                }}
-              >
-                全部
-              </FilterChip>
-              <FilterChip
-                active={tierFilter === "__none__"}
-                onClick={() => {
-                  setTierFilter("__none__");
-                  setPage(1);
-                }}
-              >
-                未分級
-              </FilterChip>
-              {tiers.map((t) => (
+            {/* 可用性 + 分級 — 同列水平排列 */}
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-20 shrink-0 text-sm text-muted-foreground">
+                  可用性：
+                </span>
                 <FilterChip
-                  key={t.tier_uid}
-                  active={tierFilter === t.key}
+                  active={availability === "all"}
                   onClick={() => {
-                    setTierFilter(t.key);
+                    setAvailability("all");
                     setPage(1);
                   }}
                 >
-                  {t.label_zh}
+                  全部
                 </FilterChip>
-              ))}
+                <FilterChip
+                  active={availability === "active"}
+                  onClick={() => {
+                    setAvailability("active");
+                    setPage(1);
+                  }}
+                >
+                  已啟用
+                </FilterChip>
+                <FilterChip
+                  active={availability === "inactive"}
+                  onClick={() => {
+                    setAvailability("inactive");
+                    setPage(1);
+                  }}
+                >
+                  已停用
+                </FilterChip>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  分級：
+                </span>
+                <FilterChip
+                  active={tierFilter === "all"}
+                  onClick={() => {
+                    setTierFilter("all");
+                    setPage(1);
+                  }}
+                >
+                  全部
+                </FilterChip>
+                <FilterChip
+                  active={tierFilter === "__none__"}
+                  onClick={() => {
+                    setTierFilter("__none__");
+                    setPage(1);
+                  }}
+                >
+                  未分級
+                </FilterChip>
+                {tiers.map((t) => (
+                  <FilterChip
+                    key={t.tier_uid}
+                    active={tierFilter === t.key}
+                    onClick={() => {
+                      setTierFilter(t.key);
+                      setPage(1);
+                    }}
+                  >
+                    {t.label_zh}
+                  </FilterChip>
+                ))}
+              </div>
             </div>
+
+            {selectedModelUid && (
+              <p className="text-sm text-muted-foreground">
+                已鎖定單一模型;清為「全部模型」後可依可用性 / 分級瀏覽。
+              </p>
+            )}
           </div>
 
           {loading ? (
@@ -381,18 +419,18 @@ export default function ModelsAdminPage() {
                   <THead>
                     <TR>
                       <TH>名稱</TH>
-                      <TH>Provider</TH>
+                      <TH>來源</TH>
                       <TH>Model Key</TH>
                       <TH>分級</TH>
-                      <TH className="text-right">Context</TH>
-                      <TH>Modality</TH>
-                      <TH className="text-right">Prompt $/Mtok</TH>
-                      <TH className="text-right">Completion $/Mtok</TH>
+                      <TH className="text-right">上下文長度</TH>
+                      <TH>模態</TH>
+                      <TH className="text-right">輸入價格(US$ / 每百萬 tokens)</TH>
+                      <TH className="text-right">輸出價格(US$ / 每百萬 tokens)</TH>
                       <TH>狀態</TH>
                     </TR>
                   </THead>
                   <TBody>
-                    {visible.map((m) => (
+                    {pageItems.map((m) => (
                       <TR
                         key={m.model_uid}
                         className="hover:cursor-pointer"
@@ -414,9 +452,13 @@ export default function ModelsAdminPage() {
                           />
                         </TD>
                         <TD className="text-right font-mono text-sm">
-                          {m.context_length?.toLocaleString() ?? "-"}
+                          {m.context_length != null
+                            ? contextLengthDisplay(m.context_length)
+                            : "-"}
                         </TD>
-                        <TD className="text-sm">{m.modality ?? "-"}</TD>
+                        <TD className="text-sm">
+                          {m.modality ? m.modality.replace("->", " → ") : "-"}
+                        </TD>
                         <TD className="text-right font-mono text-sm">
                           {priceToMtokDisplay(m.price_prompt_per_token)}
                         </TD>
@@ -437,7 +479,7 @@ export default function ModelsAdminPage() {
 
               {/* < xl 卡片 */}
               <div className="xl:hidden flex flex-col gap-3">
-                {visible.map((m) => (
+                {pageItems.map((m) => (
                   <button
                     key={m.model_uid}
                     type="button"
@@ -464,20 +506,39 @@ export default function ModelsAdminPage() {
                         />
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                      <TierBadge
-                        tierKey={m.tier_key}
-                        tier={m.tier_key ? tierMap[m.tier_key] : undefined}
-                      />
-                      {m.modality && <span>{m.modality}</span>}
-                      {m.context_length != null && (
-                        <span>ctx {m.context_length.toLocaleString()}</span>
-                      )}
-                    </div>
-                    <div className="text-sm font-mono text-muted-foreground">
-                      Prompt ${priceToMtokDisplay(m.price_prompt_per_token)} /
-                      Mtok · Completion $
-                      {priceToMtokDisplay(m.price_completion_per_token)} / Mtok
+                    <div className="flex flex-col gap-1.5 text-sm">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">分級:</span>
+                          <TierBadge
+                            tierKey={m.tier_key}
+                            tier={m.tier_key ? tierMap[m.tier_key] : undefined}
+                          />
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">模態:</span>{" "}
+                          {m.modality
+                            ? m.modality.replace("->", " → ")
+                            : "未指定"}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                        <div>
+                          <span className="text-muted-foreground">
+                            上下文長度:
+                          </span>{" "}
+                          {m.context_length != null
+                            ? contextLengthDisplay(m.context_length)
+                            : "未指定"}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">
+                            輸入/輸出:
+                          </span>{" "}
+                          {cardPriceText(m.price_prompt_per_token)},{" "}
+                          {cardPriceText(m.price_completion_per_token)}
+                        </div>
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -485,24 +546,24 @@ export default function ModelsAdminPage() {
             </>
           )}
 
-          {!loading && total > 0 && (
+          {!loading && visible.length > 0 && (
             <div className="flex items-center justify-between text-sm text-muted-foreground pt-2">
               <span>
-                第 {page} / {Math.max(1, Math.ceil(total / size))} 頁(共 {total} 筆;本頁顯示 {visible.length})
+                第 {pageSafe} / {totalPages} 頁(共 {visible.length} 筆;本頁顯示 {pageItems.length})
               </span>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
+                  disabled={pageSafe <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   上一頁
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={page * size >= total}
+                  disabled={pageSafe >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
                   下一頁
@@ -540,42 +601,50 @@ export default function ModelsAdminPage() {
                 </Field>
               )}
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Context Length">
+                <Field label="上下文長度">
                   <span className="font-mono text-sm">
-                    {editing.context_length?.toLocaleString() ?? "-"}
+                    {editing.context_length != null
+                      ? contextLengthDisplay(editing.context_length)
+                      : "未指定"}
                   </span>
                 </Field>
-                <Field label="Max Completion">
+                <Field label="最大輸出長度">
                   <span className="font-mono text-sm">
-                    {editing.max_completion_tokens?.toLocaleString() ?? "-"}
+                    {editing.max_completion_tokens != null
+                      ? `${editing.max_completion_tokens.toLocaleString()} tokens`
+                      : "未指定"}
                   </span>
                 </Field>
-                <Field label="Modality">
-                  <span className="text-sm">{editing.modality ?? "-"}</span>
+                <Field label="模態">
+                  <span className="text-sm">
+                    {editing.modality
+                      ? editing.modality.replace("->", " → ")
+                      : "未指定"}
+                  </span>
                 </Field>
-                <Field label="Tokenizer">
-                  <span className="text-sm">{editing.tokenizer ?? "-"}</span>
+                <Field label="斷詞器 (Tokenizer)">
+                  <span className="text-sm">{editing.tokenizer ?? "未指定"}</span>
                 </Field>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Prompt 價(USD/Mtok)">
+                <Field label="輸入價格(US$ / 每百萬 tokens)">
                   <span className="font-mono text-sm">
                     {priceToMtokDisplay(editing.price_prompt_per_token)}
                   </span>
                 </Field>
-                <Field label="Completion 價(USD/Mtok)">
+                <Field label="輸出價格(US$ / 每百萬 tokens)">
                   <span className="font-mono text-sm">
                     {priceToMtokDisplay(editing.price_completion_per_token)}
                   </span>
                 </Field>
-                <Field label="Image 價(USD/image)">
+                <Field label="圖片價格(US$ / 每張)">
                   <span className="font-mono text-sm">
-                    {editing.price_image_per_image ?? "-"}
+                    {editing.price_image_per_image ?? "未提供"}
                   </span>
                 </Field>
-                <Field label="Request 價(USD/req)">
+                <Field label="請求價格(US$ / 每次)">
                   <span className="font-mono text-sm">
-                    {editing.price_request_flat ?? "-"}
+                    {editing.price_request_flat ?? "未提供"}
                   </span>
                 </Field>
               </div>
@@ -619,20 +688,13 @@ export default function ModelsAdminPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 手動新增地端模型 Dialog */}
+      {/* 新增本地模型 Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>手動新增地端模型(provider=internal)</DialogTitle>
+            <DialogTitle>新增本地模型</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-4 pt-3">
-            <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 px-3 py-2 text-xs text-foreground/80 leading-relaxed">
-              本功能<strong>僅</strong>用於新增 <code className="font-mono">provider=internal</code>
-              的地端模型(如 vLLM / Ollama 上跑的 Llama / Qwen 等);
-              OpenRouter 模型請使用右上「同步」按鈕自動拉取。
-              <br />
-              建立後需於 <strong>Internal Keys</strong> 頁登記至少一台 active server 才能實際呼叫。
-            </div>
+          <div className="flex flex-col gap-3 pt-3">
             <div className="flex flex-col gap-1.5">
               <Label>Model Key *</Label>
               <Input
@@ -642,29 +704,35 @@ export default function ModelsAdminPage() {
                 }
                 placeholder="internal/llama3-70b"
               />
-              <p className="text-xs text-muted-foreground">
-                小寫英數 / 連字符 / 斜線 / 點;建議慣例 `internal/&lt;name&gt;`
-              </p>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>名稱 *</Label>
-              <Input
-                value={createForm.name}
-                onChange={(e) =>
-                  setCreateForm((f) => ({ ...f, name: e.target.value }))
-                }
-                placeholder="Llama 3 70B (內部)"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>說明</Label>
-              <Input
-                value={createForm.description}
-                onChange={(e) =>
-                  setCreateForm((f) => ({ ...f, description: e.target.value }))
-                }
-                placeholder="vLLM,4-bit 量化"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label>名稱 *</Label>
+                <Input
+                  value={createForm.name}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({ ...f, name: e.target.value }))
+                  }
+                  placeholder="Llama 3 70B (內部)"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>分級</Label>
+                <select
+                  value={createForm.tier_key}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({ ...f, tier_key: e.target.value }))
+                  }
+                  className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
+                >
+                  <option value="">(未分級)</option>
+                  {tiers.map((t) => (
+                    <option key={t.tier_uid} value={t.key}>
+                      {t.label_zh}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
@@ -693,26 +761,15 @@ export default function ModelsAdminPage() {
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>分級</Label>
-              <select
-                value={createForm.tier_key}
+              <Label>說明</Label>
+              <Input
+                value={createForm.description}
                 onChange={(e) =>
-                  setCreateForm((f) => ({ ...f, tier_key: e.target.value }))
+                  setCreateForm((f) => ({ ...f, description: e.target.value }))
                 }
-                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
-              >
-                <option value="">(未分級)</option>
-                {tiers.map((t) => (
-                  <option key={t.tier_uid} value={t.key}>
-                    {t.label_zh}
-                  </option>
-                ))}
-              </select>
+                placeholder="vLLM,4-bit 量化"
+              />
             </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              ⚠ 速率限制屬 Server 層級,不在此設定。
-              每台地端 server 的 RPM / 最小間隔請於 <strong>Internal Keys</strong> 頁的對應 Key 上設定。
-            </p>
           </div>
           <DialogFooter>
             <Button

@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/EmptyState";
+import { PageHint } from "@/components/common/PageHint";
 import { useDialog } from "@/lib/dialog";
 import { useToast } from "@/components/ui/toaster";
 import { apiClient, ApiError } from "@/lib/api/client";
@@ -48,6 +49,17 @@ function mtokInputToToken(mtok: string): string | null {
   if (!Number.isFinite(n)) return null;
   // 12 位小數對齊 NUMERIC(20, 12)
   return (n / 1_000_000).toFixed(12);
+}
+
+// 自動匹配價格區間文字:[下限, 上限),上限留空 = 無上限,兩者皆空 = 不參與
+function autoMatchRange(t: ModelTier): string {
+  const min = tokenToMtokInput(t.auto_match_min_price_per_mtok);
+  const max = tokenToMtokInput(t.auto_match_max_price_per_mtok);
+  if (!min && !max) return "不參與自動匹配";
+  const lo = min || "0";
+  if (!max) return `${lo} 以上`;
+  if (min === max) return `僅 ${lo}`;
+  return `${lo} ~ ${max}`;
 }
 
 interface FormState {
@@ -258,7 +270,7 @@ export default function ModelTiersPage() {
     <>
       <PageTitle
         title="模型分級"
-        description="同步時依價格自動匹配;Key 建立後不可改"
+        description="為模型建立分級標籤;分級 Key 建立後不可修改"
         actions={
           <Button onClick={onOpenCreate}>
             <Plus className="h-4 w-4" />
@@ -268,6 +280,12 @@ export default function ModelTiersPage() {
       />
       <Card>
         <CardContent className="pt-6">
+          <PageHint title="什麼是「自動匹配」?">
+            從 OpenRouter 同步模型時,系統會依模型的<strong>輸入價格</strong>
+            (US$ / 每百萬 tokens)落在哪一個分級設定的「價格區間」,
+            自動把該模型歸入對應分級。手動建立的本地模型不受影響;
+            各分級的價格區間可在下方點「編輯」調整。
+          </PageHint>
           {loading ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -283,14 +301,15 @@ export default function ModelTiersPage() {
             <Table>
               <THead>
                 <TR>
-                  <TH>中文名稱</TH>
-                  <TH>英文名稱</TH>
-                  <TH>Key</TH>
-                  <TH>顏色</TH>
-                  <TH className="text-right">自動匹配 min(USD/Mtok)</TH>
-                  <TH className="text-right">自動匹配 max(USD/Mtok)</TH>
-                  <TH className="text-right">排序</TH>
-                  <TH className="text-right">操作</TH>
+                  <TH className="whitespace-nowrap">中文名稱</TH>
+                  <TH className="whitespace-nowrap">英文名稱</TH>
+                  <TH className="whitespace-nowrap">Key</TH>
+                  <TH className="whitespace-nowrap">顏色</TH>
+                  <TH className="whitespace-nowrap">
+                    自動匹配價格區間(US$ / 每百萬 tokens)
+                  </TH>
+                  <TH className="text-right whitespace-nowrap">排序</TH>
+                  <TH className="text-right whitespace-nowrap">操作</TH>
                 </TR>
               </THead>
               <TBody>
@@ -313,11 +332,8 @@ export default function ModelTiersPage() {
                         </span>
                       </div>
                     </TD>
-                    <TD className="text-right font-mono text-sm">
-                      {tokenToMtokInput(t.auto_match_min_price_per_mtok) || "-"}
-                    </TD>
-                    <TD className="text-right font-mono text-sm">
-                      {tokenToMtokInput(t.auto_match_max_price_per_mtok) || "-"}
+                    <TD className="font-mono text-sm whitespace-nowrap">
+                      {autoMatchRange(t)}
                     </TD>
                     <TD className="text-right">{t.sort_order}</TD>
                     <TD className="text-right">
@@ -418,7 +434,7 @@ export default function ModelTiersPage() {
               />
             </FormField>
             <div className="grid grid-cols-2 gap-3">
-              <FormField label="自動匹配 min(USD/Mtok)">
+              <FormField label="價格區間下限(US$ / 每百萬 tokens)">
                 <Input
                   type="number"
                   step="0.000001"
@@ -426,10 +442,10 @@ export default function ModelTiersPage() {
                   onChange={(e) =>
                     setForm({ ...form, auto_min: e.target.value })
                   }
-                  placeholder="USD/百萬 tokens"
+                  placeholder="例如:0"
                 />
               </FormField>
-              <FormField label="自動匹配 max(USD/Mtok)">
+              <FormField label="價格區間上限(US$ / 每百萬 tokens)">
                 <Input
                   type="number"
                   step="0.000001"
@@ -437,12 +453,13 @@ export default function ModelTiersPage() {
                   onChange={(e) =>
                     setForm({ ...form, auto_max: e.target.value })
                   }
-                  placeholder="USD/百萬 tokens"
+                  placeholder="留空 = 無上限"
                 />
               </FormField>
             </div>
-            <p className="text-sm text-muted-foreground -mt-1">
-              留空代表不參與自動分級;區間語義為 [min, max),max 留空表示無上限。
+            <p className="text-sm text-muted-foreground -mt-1 leading-relaxed">
+              同步模型時,模型的輸入價格落在此區間者會自動歸入本分級。
+              下限「含」、上限「不含」;上限留空代表無上限;兩者皆留空代表不參與自動匹配。
             </p>
           </div>
           <DialogFooter>

@@ -72,7 +72,19 @@ JSON body 欄位如下:
 | `images` | string[] | 否 | 圖片 URL 或 `data:image/...;base64,...` 字串陣列 |
 | `videos` | string[] | 否 | 暫不支援,送出即回 `400 feature_not_supported` |
 
-可用的 `model` 清單由管理員集中維護;若呼叫時收到 `403 model_forbidden`,請向管理員確認該模型是否已啟用。
+可用的 `model` 清單由管理員集中維護。你可隨時查詢已啟用的模型清單(見下方 §5.1),從中複製 `model_key` 填入此欄位;若呼叫時收到 `403 model_forbidden`,請向管理員確認該模型是否已啟用。
+
+### 5.1 查詢可用模型清單
+
+以 GET 取得目前**已啟用**的完整模型清單:
+
+```http
+GET https://<正式站網址>/api/v1/models
+```
+
+- 此端點**不需任何憑證**,可直接於瀏覽器開啟。
+- 回應 `data.items[]` 每筆的 `model_key` 即為呼叫 §4 端點時 `model` 欄位要填入的值;`name` 為模型顯示名稱。
+- 僅回傳已啟用(白名單內)的模型,清單與管理員後台維護結果同步。
 
 **含圖片的 Request 範例:**
 

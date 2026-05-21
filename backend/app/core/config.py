@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     # --- App ---
     APP_ENV: str = "dev"
+    APP_NAME: str = "backend"
     LOG_LEVEL: str = "INFO"
 
     # --- Backend / Uvicorn ---
@@ -43,6 +44,12 @@ class Settings(BaseSettings):
 
     # --- Dev Seed ---
     DEFAULT_OPENROUTER_KEY: str = ""
+
+    # --- Seq Log ---
+    # SEQ_INGESTION_URL 留空則只走 console(本機開發 / CI 不對外連線);
+    # 正式環境由 compose 注入 http://seq。SEQ_API_KEY 可留空。
+    SEQ_INGESTION_URL: str = ""
+    SEQ_API_KEY: str = ""
 
     @property
     def cors_origins_list(self) -> list[str]:

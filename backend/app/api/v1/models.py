@@ -12,7 +12,7 @@ from uuid_utils import uuid7
 
 from app.clients.openrouter.client import OpenRouterClient, get_openrouter_client
 from app.core.audit import write_audit
-from app.core.deps import AdminDep, ClientIpDep, DbDep, UserDep
+from app.core.deps import AdminDep, ClientIpDep, DbDep, OptionalUserDep, UserDep
 from app.core.exceptions import AppError
 from app.core.response import success_response
 from app.models.model import Model
@@ -30,14 +30,19 @@ _OPENROUTER_PATCHABLE = {"is_active", "tier_key"}
 _INTERNAL_PATCHABLE = {"is_active", "tier_key", "name", "description", "context_length", "modality"}
 
 
-@router.get("", summary="模型列表(一次回傳全部;分頁與篩選由前端處理)")
+@router.get(
+    "",
+    summary="模型列表(公開;一次回傳全部,分頁與篩選由前端處理)",
+    description="無須驗證即可取得已啟用模型清單,供 SDK 使用者複製 model_key。"
+    "登入的 admin 可額外帶 include_inactive=1 取得未啟用模型。",
+)
 async def list_models(
-    actor: UserDep,
+    actor: OptionalUserDep,
     db: DbDep,
     include_inactive: int = Query(0, ge=0, le=1),
 ):
-    # include_inactive 僅 admin 可用,一般使用者強制看 active
-    only_active = not (bool(include_inactive) and actor.is_admin)
+    # include_inactive 僅登入的 admin 可用;未登入 / 一般使用者一律只看 active
+    only_active = not (bool(include_inactive) and actor is not None and actor.is_admin)
     repo = ModelRepository(db)
     items = await repo.list_all(include_inactive=not only_active)
     data = Page[ModelRead](

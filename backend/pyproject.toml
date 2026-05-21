@@ -18,6 +18,7 @@ dependencies = [
     "cryptography>=43.0",
     "uuid-utils>=0.10",
     "python-multipart>=0.0.12",
+    "seqlog>=0.4.3",
 ]
 
 [project.optional-dependencies]

@@ -90,8 +90,8 @@ services:
       ACCEPT_EULA: "Y"
       SERVICE_URL_SEQ_80:
       SEQ_FIRSTRUN_ADMINUSERNAME: admin
-      # 冒號後留空:由後端於部署時產生隨機密碼寫入 Coolify Env Vars 注入
-      SEQ_FIRSTRUN_ADMINPASSWORD:
+      # 由 Coolify Environment Variables 注入(後端部署時產生隨機密碼寫入)
+      SEQ_FIRSTRUN_ADMINPASSWORD: ${SEQ_FIRSTRUN_ADMINPASSWORD}
     expose:
       - "80"
     volumes:

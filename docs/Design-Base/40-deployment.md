@@ -117,6 +117,18 @@ services:
       postgres:
         condition: service_healthy
 
+  adminer:
+    image: adminer:4.8.1-standalone
+    environment:
+      SERVICE_URL_ADMINER_8080:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DEFAULT_DB_DRIVER: pgsql
+      ADMINER_DESIGN: pepa-linha
+    expose:
+      - "8080"
+    depends_on:
+      - postgres
+
   seq:
     image: datalust/seq:latest
     restart: unless-stopped
@@ -141,6 +153,8 @@ volumes:
 > `alembic` service 的 `command:` 為陣列形式的 CLI 參數(非 shell 變數),不違反「`command` 禁用 `${VAR}`」規則。Alembic 透過 `DATABASE_URL` 連線,並在 `backend/alembic/env.py` 內自動把 `+asyncpg` 改為 `+psycopg` 走 sync driver(plpgsql `$$` block 與 multi-statement SQL 需要 sync 連線才能正確執行)。
 
 > `seq` 為標準集中式 Log 服務:`SEQ_FIRSTRUN_ADMINPASSWORD:` 冒號後留空,由後端於部署時產生隨機密碼寫入 Coolify Environment Variables 注入;**不**對 `seq` 設 healthcheck(`datalust/seq` 鏡像未必有 `curl` / `wget`,易卡死),改以 `depends_on` 串聯。應用程式透過 `SEQ_INGESTION_URL`(compose 內走 `http://seq`)以 SDK 推送 CLEF log;未設此變數時 logger 應 fallback 至 console。詳見 [Docker-Compose-Spec-v1.3](https://github.com/Jiaye-DF/AI-Spec/blob/main/Coolify-Deploy/Docker-Compose-Spec-v1.3.md)。
+
+> `adminer` 為資料庫管理 Web UI:`ADMINER_DEFAULT_SERVER` 填 DB service 名(`postgres`),登入帳密即 DB 帳密。其無內建存取限制、知道網址即可嘗試登入,**正式環境必須**於 Coolify 加 Basic Auth / IP 白名單,或平時停用此 service;image **必須**綁版本(禁用 `adminer:latest`),且不可將其 `SERVICE_URL` 外流。
 
 ## 5. 環境變數注入策略
 

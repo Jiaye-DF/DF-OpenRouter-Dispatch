@@ -75,6 +75,18 @@ services:
       postgres:
         condition: service_healthy
 
+  adminer:
+    image: adminer:4.8.1-standalone
+    environment:
+      SERVICE_URL_ADMINER_8080:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DEFAULT_DB_DRIVER: pgsql
+      ADMINER_DESIGN: pepa-linha
+    expose:
+      - "8080"
+    depends_on:
+      - postgres
+
   seq:
     image: datalust/seq:latest
     restart: unless-stopped

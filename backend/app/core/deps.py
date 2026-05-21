@@ -66,6 +66,22 @@ def require_admin(
     return actor
 
 
+async def optional_user(
+    request: Request,
+    db: DbDep,
+    settings: SettingsDep,
+) -> Actor | None:
+    """有有效登入態則回 Actor,否則回 None(不擲錯)。
+
+    供「公開可呼叫、但登入後可享進階行為」的端點使用,例如公開模型列表
+    需辨識 admin 才開放 include_inactive。
+    """
+    try:
+        return await require_user(request, db, settings)
+    except AppError:
+        return None
+
+
 async def require_sdk_caller(
     request: Request,
     db: DbDep,
@@ -79,6 +95,7 @@ async def require_sdk_caller(
 
 UserDep = Annotated[Actor, Depends(require_user)]
 AdminDep = Annotated[Actor, Depends(require_admin)]
+OptionalUserDep = Annotated[Actor | None, Depends(optional_user)]
 SdkCallerDep = Annotated[SdkCallerContext, Depends(require_sdk_caller)]
 
 

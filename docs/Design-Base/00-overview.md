@@ -64,7 +64,8 @@ DF-OpenRouter-Dispatch/
 │   ├── package.json
 │   └── Dockerfile
 ├── migrations/                # 資料庫 Migration
-├── docker-compose.yml         # 服務編排
+├── docker-compose-prod.yml    # Coolify 正式部署編排
+├── docker-compose.dev.yml     # 本機開發服務編排
 ├── .env.example               # 環境變數範本
 └── README.md                  # 專案說明與 API 端點總覽
 ```
@@ -76,6 +77,7 @@ DF-OpenRouter-Dispatch/
 | `frontend` | Next.js Web UI，呼叫 `backend` | 3000 |
 | `backend` | FastAPI（由 Uvicorn 驅動），代理 OpenRouter API、處理商業邏輯與稽核 | 8000 |
 | `postgres` | PostgreSQL 17，儲存金鑰、配額、用量、稽核 Log | 5432（內網） |
+| `seq` | Seq 集中式 Log 收集與查詢（標準監控服務） | 80 |
 
 ## 請求與資料流
 

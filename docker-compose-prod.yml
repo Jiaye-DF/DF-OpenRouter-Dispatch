@@ -37,6 +37,7 @@ services:
       OPENROUTER_API_TIMEOUT: ${OPENROUTER_API_TIMEOUT}
       DEFAULT_OPENROUTER_KEY: ${DEFAULT_OPENROUTER_KEY}
       SEQ_INGESTION_URL: http://seq
+      SEQ_API_KEY: ${SEQ_API_KEY}
     expose:
       - "8000"
     depends_on:

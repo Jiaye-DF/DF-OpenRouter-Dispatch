@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import api_v1_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError
-from app.core.logging import configure_logging, get_logger
+from app.core.logging import configure_logging, flush_logging, get_logger
 from app.core.response import failure_response
 from app.seed import run_seed
 
@@ -22,6 +22,7 @@ async def lifespan(_: FastAPI):
     except Exception:
         logger.exception("Seed 失敗；服務繼續啟動，請檢查資料庫與 .env。")
     yield
+    flush_logging()
 
 
 def create_app() -> FastAPI:

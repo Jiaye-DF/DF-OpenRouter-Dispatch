@@ -1,6 +1,7 @@
 """模型主檔 API(對齊 docs/Tasks/v1.1/tasks-v1.1.0.md § Backend §2)。
 
-- 列表 / 單筆:require_user
+- /models 列表 / 單筆:require_user(完整欄位,供前端後台)
+- /allowed/models:公開,精簡欄位,供 SDK 使用者瀏覽
 - PATCH / sync:require_admin
 """
 
@@ -12,17 +13,24 @@ from uuid_utils import uuid7
 
 from app.clients.openrouter.client import OpenRouterClient, get_openrouter_client
 from app.core.audit import write_audit
-from app.core.deps import AdminDep, ClientIpDep, DbDep, OptionalUserDep, UserDep
+from app.core.deps import AdminDep, ClientIpDep, DbDep, UserDep
 from app.core.exceptions import AppError
 from app.core.response import success_response
 from app.models.model import Model
 from app.repositories.model import ModelRepository
 from app.repositories.model_tier import ModelTierRepository
 from app.schemas.common import Page
-from app.schemas.model import ModelCreateRequest, ModelPatch, ModelRead
+from app.schemas.model import (
+    AllowedModelRead,
+    ModelCreateRequest,
+    ModelPatch,
+    ModelRead,
+)
 from app.services.sync import sync_models_and_credits
 
 router = APIRouter(prefix="/models", tags=["models"])
+# 公開「可用模型」清單;與前端後台用的 /models 分流,只回傳精簡欄位
+allowed_router = APIRouter(prefix="/allowed/models", tags=["models"])
 
 # openrouter 模型編輯只可改的欄位(沿用 v1.1)
 _OPENROUTER_PATCHABLE = {"is_active", "tier_key"}
@@ -32,17 +40,18 @@ _INTERNAL_PATCHABLE = {"is_active", "tier_key", "name", "description", "context_
 
 @router.get(
     "",
-    summary="模型列表(公開;一次回傳全部,分頁與篩選由前端處理)",
-    description="無須驗證即可取得已啟用模型清單,供 SDK 使用者複製 model_key。"
-    "登入的 admin 可額外帶 include_inactive=1 取得未啟用模型。",
+    summary="模型列表(需登入;一次回傳全部,分頁與篩選由前端處理)",
+    description="登入後取得模型清單供後台管理使用,回傳完整欄位。"
+    "admin 可額外帶 include_inactive=1 取得未啟用模型。"
+    "SDK 使用者請改用公開的 GET /api/v1/allowed/models。",
 )
 async def list_models(
-    actor: OptionalUserDep,
+    actor: UserDep,
     db: DbDep,
     include_inactive: int = Query(0, ge=0, le=1),
 ):
-    # include_inactive 僅登入的 admin 可用;未登入 / 一般使用者一律只看 active
-    only_active = not (bool(include_inactive) and actor is not None and actor.is_admin)
+    # include_inactive 僅 admin 可用;一般使用者一律只看 active
+    only_active = not (bool(include_inactive) and actor.is_admin)
     repo = ModelRepository(db)
     items = await repo.list_all(include_inactive=not only_active)
     data = Page[ModelRead](
@@ -52,6 +61,19 @@ async def list_models(
         size=len(items),
     )
     return success_response(data=data.model_dump(mode="json"), detail="success")
+
+
+@allowed_router.get(
+    "",
+    summary="可用模型清單(公開;精簡欄位,供 SDK 使用者瀏覽)",
+    description="無須驗證即可取得已啟用模型的精簡清單(model_key 與基本資訊),"
+    "供 SDK 使用者挑選並複製 model_key。定價、tokenizer 等內部資訊不對外。",
+)
+async def list_allowed_models(db: DbDep):
+    repo = ModelRepository(db)
+    items = await repo.list_active()
+    data = [AllowedModelRead.model_validate(x).model_dump(mode="json") for x in items]
+    return success_response(data=data, detail="success")
 
 
 @router.get("/{model_uid}", summary="模型單筆")

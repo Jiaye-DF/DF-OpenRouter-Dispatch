@@ -42,7 +42,7 @@ services:
       - "8000"
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_started
       alembic:
         condition: service_completed_successfully
       seq:
@@ -58,22 +58,18 @@ services:
       - "5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
 
   alembic:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: "no"
     environment:
       DATABASE_URL: ${DATABASE_URL}
     command: ["alembic", "upgrade", "head"]
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_started
 
   adminer:
     image: adminer:4.8.1-standalone
@@ -94,8 +90,8 @@ services:
       ACCEPT_EULA: "Y"
       SERVICE_URL_SEQ_80:
       SEQ_FIRSTRUN_ADMINUSERNAME: admin
-      # 冒號後留空:由後端於部署時產生隨機密碼寫入 Coolify Env Vars 注入
-      SEQ_FIRSTRUN_ADMINPASSWORD:
+      # 由 Coolify Environment Variables 注入(後端部署時產生隨機密碼寫入)
+      SEQ_FIRSTRUN_ADMINPASSWORD: ${SEQ_FIRSTRUN_ADMINPASSWORD}
     expose:
       - "80"
     volumes:

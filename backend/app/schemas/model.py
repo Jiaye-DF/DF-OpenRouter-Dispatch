@@ -54,6 +54,22 @@ class ModelRead(BaseModel):
     updated_at: datetime
 
 
+class AllowedModelRead(BaseModel):
+    """公開「可用模型」清單的精簡視圖(供 SDK 使用者瀏覽並複製 model_key)。
+
+    刻意只暴露挑選模型所需的基本欄位;定價、tokenizer、時間戳等內部資訊不對外。
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    provider: str
+    model_key: str
+    name: str
+    description: str | None = None
+    context_length: int | None = None
+    modality: str | None = None
+
+
 class ModelPatch(BaseModel):
     """Admin 編輯模型。
 

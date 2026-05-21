@@ -77,6 +77,7 @@ DF-OpenRouter-Dispatch/
 | `frontend` | Next.js Web UI，呼叫 `backend` | 3000 |
 | `backend` | FastAPI（由 Uvicorn 驅動），代理 OpenRouter API、處理商業邏輯與稽核 | 8000 |
 | `postgres` | PostgreSQL 17，儲存金鑰、配額、用量、稽核 Log | 5432（內網） |
+| `adminer` | 資料庫管理 Web UI（正式環境須加存取限制） | 8080 |
 | `seq` | Seq 集中式 Log 收集與查詢（標準監控服務） | 80 |
 
 ## 請求與資料流

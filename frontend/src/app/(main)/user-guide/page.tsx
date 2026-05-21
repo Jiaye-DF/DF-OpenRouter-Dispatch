@@ -351,7 +351,7 @@ export default function UserGuidePage() {
             <li><code>success</code>:布林,程式判斷成功失敗。</li>
             <li><code>code</code>:對應 HTTP status。</li>
             <li><code>data</code>:成功時為 OpenRouter 原始回應(已去除內部 metadata)。</li>
-            <li><code>detail</code>:成功固定為 <code>"success"</code>;失敗為錯誤碼或中文描述。</li>
+            <li><code>detail</code>:成功固定為 <code>&quot;success&quot;</code>;失敗為錯誤碼或中文描述。</li>
           </ul>
         </Section>
 

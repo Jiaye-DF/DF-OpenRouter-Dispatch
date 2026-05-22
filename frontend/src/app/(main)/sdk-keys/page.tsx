@@ -192,16 +192,26 @@ export default function SdkKeysPage() {
             <Table>
               <THead>
                 <TR>
+                  <TH>操作</TH>
                   <TH>部門</TH>
                   <TH>名稱</TH>
                   <TH>Prefix</TH>
                   <TH>狀態</TH>
-                  <TH className="text-right">操作</TH>
                 </TR>
               </THead>
               <TBody>
                 {items.map((k) => (
                   <TR key={k.sdk_api_key_uid}>
+                    <TD>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="刪除"
+                        onClick={() => onDelete(k)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TD>
                     <TD>{deptName(k.department_uid)}</TD>
                     <TD>{k.name}</TD>
                     <TD className="font-mono text-sm">{k.key_prefix}···</TD>
@@ -214,16 +224,6 @@ export default function SdkKeysPage() {
                           {k.is_active ? "啟用" : "停用"}
                         </Badge>
                       </button>
-                    </TD>
-                    <TD className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="刪除"
-                        onClick={() => onDelete(k)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
                     </TD>
                   </TR>
                 ))}

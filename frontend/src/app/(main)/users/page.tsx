@@ -323,38 +323,20 @@ export default function UsersPage() {
             <Table>
               <THead>
                 <TR>
+                  <TH>操作</TH>
                   <TH>姓名</TH>
                   <TH>員工編號</TH>
                   <TH>角色</TH>
                   <TH>部門</TH>
                   <TH>Email</TH>
                   <TH>狀態</TH>
-                  <TH className="text-right">操作</TH>
                 </TR>
               </THead>
               <TBody>
                 {items.map((u) => (
                   <TR key={u.user_uid}>
-                    <TD>{u.username}</TD>
-                    <TD className="font-mono text-muted-foreground">
-                      {u.employee_id ?? "-"}
-                    </TD>
                     <TD>
-                      <Badge
-                        variant={u.role === "admin" ? "default" : "secondary"}
-                      >
-                        {u.role}
-                      </Badge>
-                    </TD>
-                    <TD>{deptName(u.department_uid)}</TD>
-                    <TD className="text-muted-foreground">{u.email ?? "-"}</TD>
-                    <TD>
-                      <Badge variant={u.is_active ? "success" : "secondary"}>
-                        {u.is_active ? "啟用" : "停用"}
-                      </Badge>
-                    </TD>
-                    <TD className="text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex gap-1">
                         {u.role === "admin" && (
                           <Button
                             variant="ghost"
@@ -388,6 +370,24 @@ export default function UsersPage() {
                           </>
                         )}
                       </div>
+                    </TD>
+                    <TD>{u.username}</TD>
+                    <TD className="font-mono text-muted-foreground">
+                      {u.employee_id ?? "-"}
+                    </TD>
+                    <TD>
+                      <Badge
+                        variant={u.role === "admin" ? "default" : "secondary"}
+                      >
+                        {u.role}
+                      </Badge>
+                    </TD>
+                    <TD>{deptName(u.department_uid)}</TD>
+                    <TD className="text-muted-foreground">{u.email ?? "-"}</TD>
+                    <TD>
+                      <Badge variant={u.is_active ? "success" : "secondary"}>
+                        {u.is_active ? "啟用" : "停用"}
+                      </Badge>
                     </TD>
                   </TR>
                 ))}

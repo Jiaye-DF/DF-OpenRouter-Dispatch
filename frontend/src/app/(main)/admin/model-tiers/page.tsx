@@ -301,6 +301,7 @@ export default function ModelTiersPage() {
             <Table>
               <THead>
                 <TR>
+                  <TH className="whitespace-nowrap">操作</TH>
                   <TH className="whitespace-nowrap">中文名稱</TH>
                   <TH className="whitespace-nowrap">英文名稱</TH>
                   <TH className="whitespace-nowrap">Key</TH>
@@ -309,35 +310,13 @@ export default function ModelTiersPage() {
                     自動匹配價格區間(US$ / 每百萬 tokens)
                   </TH>
                   <TH className="text-right whitespace-nowrap">排序</TH>
-                  <TH className="text-right whitespace-nowrap">操作</TH>
                 </TR>
               </THead>
               <TBody>
                 {items.map((t) => (
                   <TR key={t.tier_uid}>
-                    <TD className="font-medium">{t.label_zh}</TD>
-                    <TD className="text-muted-foreground">{t.label_en ?? "-"}</TD>
-                    <TD className="font-mono text-sm">{t.key}</TD>
                     <TD>
-                      <div className="flex items-center gap-2">
-                        <span
-                          aria-hidden
-                          className="inline-block h-3 w-3 rounded-full border border-border"
-                          style={{
-                            backgroundColor: resolveColor(t.color) || "transparent",
-                          }}
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {t.color ?? "-"}
-                        </span>
-                      </div>
-                    </TD>
-                    <TD className="font-mono text-sm whitespace-nowrap">
-                      {autoMatchRange(t)}
-                    </TD>
-                    <TD className="text-right">{t.sort_order}</TD>
-                    <TD className="text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -359,6 +338,27 @@ export default function ModelTiersPage() {
                         </Button>
                       </div>
                     </TD>
+                    <TD className="font-medium">{t.label_zh}</TD>
+                    <TD className="text-muted-foreground">{t.label_en ?? "-"}</TD>
+                    <TD className="font-mono text-sm">{t.key}</TD>
+                    <TD>
+                      <div className="flex items-center gap-2">
+                        <span
+                          aria-hidden
+                          className="inline-block h-3 w-3 rounded-full border border-border"
+                          style={{
+                            backgroundColor: resolveColor(t.color) || "transparent",
+                          }}
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          {t.color ?? "-"}
+                        </span>
+                      </div>
+                    </TD>
+                    <TD className="font-mono text-sm whitespace-nowrap">
+                      {autoMatchRange(t)}
+                    </TD>
+                    <TD className="text-right">{t.sort_order}</TD>
                   </TR>
                 ))}
               </TBody>

@@ -227,17 +227,37 @@ export default function InternalKeysPage() {
             <Table>
               <THead>
                 <TR>
+                  <TH>操作</TH>
                   <TH>名稱</TH>
                   <TH>Base URL</TH>
                   <TH>API Key</TH>
                   <TH>速率限制</TH>
                   <TH>狀態</TH>
-                  <TH className="text-right">操作</TH>
                 </TR>
               </THead>
               <TBody>
                 {items.map((k) => (
                   <TR key={k.internal_key_uid}>
+                    <TD>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="編輯"
+                          onClick={() => onOpenEdit(k)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="刪除"
+                          onClick={() => onDelete(k)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TD>
                     <TD>{k.name}</TD>
                     <TD className="font-mono text-sm break-all">{k.base_url}</TD>
                     <TD className="text-sm">
@@ -259,26 +279,6 @@ export default function InternalKeysPage() {
                           {k.is_active ? "啟用" : "停用"}
                         </Badge>
                       </button>
-                    </TD>
-                    <TD className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="編輯"
-                          onClick={() => onOpenEdit(k)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="刪除"
-                          onClick={() => onDelete(k)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
                     </TD>
                   </TR>
                 ))}

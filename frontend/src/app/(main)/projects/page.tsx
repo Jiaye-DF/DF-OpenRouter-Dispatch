@@ -200,31 +200,20 @@ export default function ProjectsPage() {
             <Table>
               <THead>
                 <TR>
+                  {isAdmin && <TH>操作</TH>}
                   <TH>部門</TH>
                   <TH>代碼</TH>
                   <TH>名稱</TH>
                   <TH>描述</TH>
                   <TH>狀態</TH>
-                  {isAdmin && <TH className="text-right">操作</TH>}
                 </TR>
               </THead>
               <TBody>
                 {items.map((p) => (
                   <TR key={p.project_uid}>
-                    <TD>{deptName(p.department_uid)}</TD>
-                    <TD className="font-mono">{p.code}</TD>
-                    <TD>{p.name}</TD>
-                    <TD className="text-muted-foreground">
-                      {p.description ?? "-"}
-                    </TD>
-                    <TD>
-                      <Badge variant={p.is_active ? "success" : "secondary"}>
-                        {p.is_active ? "啟用" : "停用"}
-                      </Badge>
-                    </TD>
                     {isAdmin && (
-                      <TD className="text-right">
-                        <div className="flex justify-end gap-1">
+                      <TD>
+                        <div className="flex gap-1">
                           <Button
                             variant="ghost"
                             size="icon"
@@ -244,6 +233,17 @@ export default function ProjectsPage() {
                         </div>
                       </TD>
                     )}
+                    <TD>{deptName(p.department_uid)}</TD>
+                    <TD className="font-mono">{p.code}</TD>
+                    <TD>{p.name}</TD>
+                    <TD className="text-muted-foreground">
+                      {p.description ?? "-"}
+                    </TD>
+                    <TD>
+                      <Badge variant={p.is_active ? "success" : "secondary"}>
+                        {p.is_active ? "啟用" : "停用"}
+                      </Badge>
+                    </TD>
                   </TR>
                 ))}
               </TBody>

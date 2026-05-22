@@ -58,7 +58,7 @@ export function TH({
   return (
     <th
       className={cn(
-        "text-left font-medium px-4 py-3 text-sm uppercase tracking-wide",
+        "text-left font-medium px-4 py-3 text-sm uppercase tracking-wide whitespace-nowrap",
         className
       )}
       {...props}
@@ -70,5 +70,11 @@ export function TD({
   className,
   ...props
 }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("px-4 py-3 align-middle", className)} {...props} />;
+  // whitespace-nowrap：避免長文字擠壓欄位，過長時由 Table 外層水平捲動
+  return (
+    <td
+      className={cn("px-4 py-3 align-middle whitespace-nowrap", className)}
+      {...props}
+    />
+  );
 }

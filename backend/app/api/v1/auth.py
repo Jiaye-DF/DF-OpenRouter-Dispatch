@@ -1,5 +1,5 @@
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse
@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from app.clients import sso as sso_client
 from app.clients.sso import SsoError
 from app.core.config import get_settings
-from app.core.deps import ClientIpDep, DbDep, UserDep
+from app.core.deps import SSO_DISPLAY_COOKIE, ClientIpDep, DbDep, UserDep
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
 from app.core.response import success_response
@@ -64,11 +64,29 @@ def _set_sso_cookie(resp: Response, token: str) -> None:
     )
 
 
+def _set_display_name_cookie(resp: Response, encoded_name: str) -> None:
+    """設定 SSO 顯示姓名 cookie(值須為已 URL-encode 的字串)。
+
+    掛 path `/` 使所有受保護端點的 require_user 都讀得到,確保 Actor 顯示一致。
+    """
+    settings = get_settings()
+    resp.set_cookie(
+        key=SSO_DISPLAY_COOKIE,
+        value=encoded_name,
+        max_age=settings.REFRESH_TOKEN_EXPIRES_DAYS * 86400,
+        httponly=True,
+        secure=settings.is_prod,
+        samesite="lax",
+        path="/",
+    )
+
+
 def _clear_cookies(resp: Response) -> None:
     settings = get_settings()
     resp.delete_cookie(settings.ACCESS_COOKIE_NAME, path="/")
     resp.delete_cookie(settings.REFRESH_COOKIE_NAME, path="/api/v1/auth")
     resp.delete_cookie(_SSO_COOKIE_NAME, path="/api/v1/auth")
+    resp.delete_cookie(SSO_DISPLAY_COOKIE, path="/")
 
 
 @router.post("/login", summary="登入")
@@ -90,6 +108,8 @@ async def login(
     resp = success_response(data=actor.model_dump(mode="json"), detail="success")
     _set_access_cookie(resp, access)
     _set_refresh_cookie(resp, refresh_cookie, expires_at)
+    # 帳號密碼登入:清除可能殘留的 SSO 顯示姓名,確保顯示本地 username。
+    resp.delete_cookie(SSO_DISPLAY_COOKIE, path="/")
     return resp
 
 
@@ -112,6 +132,10 @@ async def refresh(
     resp = success_response(data=actor.model_dump(mode="json"), detail="success")
     _set_access_cookie(resp, access)
     _set_refresh_cookie(resp, refresh_cookie, expires_at)
+    # SSO session:沿用並延長顯示姓名 cookie(值已為 encoded 形式,原樣回寫)。
+    display = request.cookies.get(SSO_DISPLAY_COOKIE)
+    if display:
+        _set_display_name_cookie(resp, display)
     return resp
 
 
@@ -188,6 +212,9 @@ async def sso_callback(
     _set_access_cookie(resp, result.access_token)
     _set_refresh_cookie(resp, result.refresh_cookie, result.refresh_expires_at)
     _set_sso_cookie(resp, result.sso_token)
+    # 帶 SSO 本人姓名,使 /me 回傳的 Actor 顯示該姓名而非本地 username。
+    if result.display_name:
+        _set_display_name_cookie(resp, quote(result.display_name, safe=""))
     return resp
 
 

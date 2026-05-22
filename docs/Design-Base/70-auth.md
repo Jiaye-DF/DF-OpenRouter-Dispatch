@@ -439,3 +439,12 @@ GET /sso/callback?code=…
 - **帳號密碼登入**（§ 5–§ 16）保留供本機開發測試，以及 SSO 暫時不可用時的後備管道。
 - 兩條路徑對應同一份 `users`，皆受「僅 `role="admin"` 可進管理後台」限制（見 § 7）。
 - 若日後要全面停用帳密登入，移除前端登入頁表單與後端 `auth.py` 的 `login` 路由即可。
+
+### 18.7 登入後顯示名稱
+
+畫面顯示的使用者名稱（`Actor.username`）依登入方式而定 —— 因為 SSO 與帳密可能對應同一個本地 admin 帳號：
+
+- **SSO 登入**：callback 寫入 `sso_display_name` cookie（URL-encoded 的 SSO 本人姓名）；`require_user` 讀取後作為 `Actor.username` 回傳 → 顯示 SSO 使用者**本人姓名**。
+- **帳號密碼登入**：`/login` 會清除 `sso_display_name` cookie；`Actor.username` 沿用本地 `users.username`（例：系統管理員）。
+
+`sso_display_name` 為 path `/`、HttpOnly cookie，於 `/refresh` 一併延展、於 `/logout` 與帳密 `/login` 清除。DB 的 `users.username` 始終不受影響（使用者管理頁仍顯示原值）。

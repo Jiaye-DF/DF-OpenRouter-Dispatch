@@ -37,6 +37,7 @@ class SsoLoginResult:
     refresh_cookie: str
     refresh_expires_at: datetime
     sso_token: str
+    display_name: str  # SSO 回傳的本人姓名,供前端顯示(可能為空字串)
 
 
 async def sso_login(
@@ -81,6 +82,7 @@ async def sso_login(
         refresh_cookie=refresh_cookie,
         refresh_expires_at=expires_at,
         sso_token=sso_token,
+        display_name=(info.name or "").strip(),
     )
 
 

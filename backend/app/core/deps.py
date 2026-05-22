@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated
+from urllib.parse import unquote
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,10 @@ from app.schemas.actor import Actor, SdkCallerContext
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbDep = Annotated[AsyncSession, Depends(get_db)]
+
+# DF-SSO 登入的 session 會帶此 cookie(值為 URL-encoded 的 SSO 本人姓名);
+# 用以讓 Actor 顯示 SSO 使用者姓名而非本地 username。帳號密碼登入不帶此 cookie。
+SSO_DISPLAY_COOKIE = "sso_display_name"
 
 
 async def require_user(
@@ -48,10 +53,15 @@ async def require_user(
     if user.password_changed_at and user.password_changed_at > datetime.fromtimestamp(iat, tz=UTC):
         raise AppError("unauthorized", code=401)
 
+    # SSO 登入的 session 帶 sso_display_name cookie → 顯示 SSO 本人姓名;
+    # 帳號密碼登入無此 cookie,沿用本地 users.username(例:系統管理員)。
+    raw_display = request.cookies.get(SSO_DISPLAY_COOKIE)
+    display_name = unquote(raw_display)[:128] if raw_display else user.username
+
     return Actor(
         user_uid=user.user_uid,
         account=user.account,
-        username=user.username,
+        username=display_name,
         email=user.email,
         role=user.role,  # type: ignore[arg-type]
         department_uid=user.department_uid,

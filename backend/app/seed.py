@@ -50,6 +50,7 @@ async def run_seed() -> None:
                 .limit(1)
             )
         ).scalar_one_or_none()
+        admin_email = settings.INITIAL_ADMIN_EMAIL.strip() or None
         if admin is None:
             admin = User(
                 user_uid=UUID(str(uuid7())),
@@ -58,9 +59,14 @@ async def run_seed() -> None:
                 password_hash=hash_password(settings.INITIAL_ADMIN_PASSWORD),
                 role="admin",
                 department_uid=None,
+                email=admin_email,
                 password_changed_at=datetime.now(tz=UTC),
             )
             session.add(admin)
             await session.flush()
             logger.info("已建立初始 admin：%s", admin.account)
+        elif admin_email and not admin.email:
+            # 既有 admin 尚無 Email:回填以供 DF-SSO 以 Email 對應登入(僅補空,不覆寫)。
+            admin.email = admin_email
+            logger.info("已回填初始 admin Email：%s", admin.account)
         await session.commit()

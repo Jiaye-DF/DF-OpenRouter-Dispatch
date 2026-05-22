@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.back_channel import router as back_channel_router
 from app.api.v1 import api_v1_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError
@@ -66,6 +67,8 @@ def create_app() -> FastAPI:
         return failure_response(500, "操作失敗")
 
     app.include_router(api_v1_router, prefix="/api/v1")
+    # DF-SSO back-channel logout:路徑由中央寫死,需掛在 /api/auth(非 /api/v1)。
+    app.include_router(back_channel_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

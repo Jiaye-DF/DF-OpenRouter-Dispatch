@@ -6,6 +6,8 @@
 
 > 代理端（`/api/v1/model/openrouter/*`）**不**套用本文件，改以 **SDK Key + 加密 User Token** 雙因子認證，詳見 [50-openrouter.md § 3](./50-openrouter.md#3-本地認證sdk-key--user-token-雙因子) 與 [80-permission.md § 1](./80-permission.md#1-主體類型)。
 
+> **v1.3 起**：管理端登入新增 **DF-SSO** 入口（見 [§ 18](#18-df-sso-登入整合v13)）作為主要登入方式；§ 5–§ 16 的帳號密碼登入仍**並存保留**，登入頁同時提供「透過 DF-SSO 登入」按鈕與帳密表單。
+
 ## 1. 核心原則
 
 - **admin-only 帳號治理**：**無**自助註冊、**無**忘記密碼、**無**公開 `/register` 端點；使用者由 admin 於後台建立並發放首次密碼。
@@ -363,3 +365,77 @@ Request ─▶ Cookie: access_token=<JWT>
 - `require_user` / `require_admin` Dependency 封裝於 `backend/app/core/deps.py`；受保護 router **必須**透過 Dependency 注入。
 - Token 明文（Access JWT、Refresh secret）與密碼明文**禁止**寫入 Log；如需記錄只保留前後 4 字元。
 - 所有涉及 `users` / `refresh_tokens` 的寫入流程**必須**在 Dependency / Service 層顯式 `await db.commit()`（對齊 [20-backend.md § 8](./20-backend.md#8-session-與-transaction-規範)）。
+
+## 18. DF-SSO 登入整合（v1.3）
+
+管理端登入自 v1.3 起改以 **DF-SSO** 為主要入口，採「**SSO 作為登入閘道 + 本地角色對應**」模式：SSO 負責身分驗證，通過後以 **Email** 對應本地 `users`，沿用既有 Access + Refresh JWT session 與 `require_user` / `require_admin` 權限模型。對應契約：[DF-SSO INTEGRATION.md](https://github.com/Jiaye-DF/DF-SSO/blob/main/INTEGRATION.md)。
+
+### 18.1 環境變數
+
+| 變數 | 說明 |
+| --- | --- |
+| `SSO_URL` | SSO 中央伺服器（Test：`https://df-sso-login-test.apps.zerozero.tw`；Prod：`https://df-it-sso-login.it.zerozero.tw`） |
+| `SSO_APP_ID` | 此 App 的 ID，由對應環境 SSO Dashboard 發放 |
+| `SSO_APP_SECRET` | App 密鑰；換 token 與驗 HMAC 用，**禁止 commit／外流前端**，正式環境由 Coolify 注入 |
+| `BACKEND_URL` | 後端對外 origin；SSO callback 落點，Dashboard `redirect_uris` 須登記 `<BACKEND_URL>/api/v1/auth/sso/callback` |
+| `FRONTEND_URL` | 前端對外 origin；登入頁／dashboard 落點 |
+| `INITIAL_ADMIN_EMAIL` | 可選；Seed 以此寫入／回填首位 admin 的 `email`，使其可首次 SSO 登入 |
+
+三項 SSO 設定（`SSO_URL` / `SSO_APP_ID` / `SSO_APP_SECRET`）皆有值時 `Settings.sso_enabled` 為真，SSO 端點才生效。
+
+### 18.2 端點
+
+| Method | Path | 認證 | 功能 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/auth/sso/login` | 匿名 | 組 authorize URL 並 302 至 SSO |
+| GET | `/api/v1/auth/sso/callback` | 匿名（帶 `code`） | 換 token + 使用者資料 → 對應本地 admin → 簽發本地 session → 導回前端 |
+| POST | `/api/auth/back-channel-logout` | HMAC 簽章 | 中央廣播登出；驗章後撤銷該使用者本地全部 refresh token |
+
+> `back-channel-logout` 的路徑由 DF-SSO 中央寫死（中央對 `<已註冊 origin>/api/auth/back-channel-logout` 發送），故**不在** `/api/v1` 前綴下，由 `app/api/back_channel.py` 直接掛於 `/api/auth`。其餘端點路徑可自訂（`login` 為自家按鈕落點、`callback` 的 URL 由我方傳給 `/authorize`）。
+
+### 18.3 登入流程
+
+```
+前端登入頁「透過 DF-SSO 登入」
+        │  瀏覽器整頁導向 <BACKEND_URL>/api/v1/auth/sso/login
+        ▼
+GET /sso/login → 302 至 <SSO_URL>/api/auth/sso/authorize?client_id=&redirect_uri=
+        │  SSO 完成驗證後 302 帶 ?code= 回 callback
+        ▼
+GET /sso/callback?code=…
+     1. POST 中央 /api/auth/sso/exchange（帶 client_secret）
+          → 回應同時帶 token 與 user（email / userId / erpData）
+     2. 以 email（不分大小寫）對應本地 users：
+          ├ 查無／停用／非 admin → 302 回 <FRONTEND_URL>/login?error=…
+          └ 對應成功 → 寫入 users.sso_user_id（azure oid）
+     3. issue_session：簽發 Access + Refresh（沿用 § 7 機制）
+     4. Set-Cookie access_token / refresh_token / sso_token
+        │
+        ▼
+   302 至 <FRONTEND_URL>/dashboard
+```
+
+`sso_token` cookie（HttpOnly、Path `/api/v1/auth`）保存 SSO token，供登出時通知中央。
+
+### 18.4 帳號對應規則
+
+- 以 SSO `/me` 回傳的 **Email**（不分大小寫）對應本地 `users`，**不**自動建立帳號。
+- 對應不到 → `sso_no_account`；帳號停用 → `sso_inactive`；`role != "admin"` → `sso_not_admin`；皆導回登入頁顯示訊息。
+- 使用者仍由 admin 於後台預先建立（設定 `role` / `department_uid` / `email`），與 § 6 一致。
+- 一般使用者（`role="user"`）僅作 SDK 代理身分，**不得**進管理後台（與 § 7 本地登入限制一致）。
+
+### 18.5 與 SSO 契約的取捨
+
+- **契約 #1（`/me` 即時回源）**：本平台沿用本地 Access（15 分）+ Refresh（7 天）session，**未**逐請求回源中央；SSO 端 session 撤銷改由 **back-channel logout** 傳達。此為「SSO 作為登入閘道 + 本地 session」的明確取捨，換取既有權限模型零改動。
+- **契約 #2（登出通知中央）**：`/api/v1/auth/logout` 以 `sso_token` cookie 通知中央 `/api/auth/logout`（best-effort，失敗不阻斷本地登出）。
+- **契約 #3（登入頁不自動 redirect）**：登入頁採嚴格模式，`/me` 401 時僅顯示按鈕，不自動跳 SSO。
+- **契約 #4（back-channel HMAC）**：`HMAC-SHA256("{user_id}:{timestamp}", SSO_APP_SECRET)`，`hmac.compare_digest` constant-time 比對 + 30 秒雙向 timestamp drift。
+
+### 18.6 帳號密碼登入（並存）
+
+登入頁同時提供「透過 DF-SSO 登入」按鈕與帳號密碼表單，兩者並存：
+
+- **DF-SSO** 為主要入口。
+- **帳號密碼登入**（§ 5–§ 16）保留供本機開發測試，以及 SSO 暫時不可用時的後備管道。
+- 兩條路徑對應同一份 `users`，皆受「僅 `role="admin"` 可進管理後台」限制（見 § 7）。
+- 若日後要全面停用帳密登入，移除前端登入頁表單與後端 `auth.py` 的 `login` 路由即可。

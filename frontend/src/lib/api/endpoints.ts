@@ -6,6 +6,8 @@ export const API_ENDPOINTS = {
   refresh: "/api/v1/auth/refresh",
   logout: "/api/v1/auth/logout",
   me: "/api/v1/auth/me",
+  // DF-SSO 登入入口（瀏覽器整頁導向,需搭配 NEXT_PUBLIC_API_BASE_URL 組成絕對網址）
+  ssoLogin: "/api/v1/auth/sso/login",
 
   // 使用者（admin）
   users: "/api/v1/users",

@@ -31,6 +31,24 @@ class Settings(BaseSettings):
     INITIAL_ADMIN_ACCOUNT: str
     INITIAL_ADMIN_USERNAME: str
     INITIAL_ADMIN_PASSWORD: str
+    # 可選:首位 admin 的 Email。填入後 Seed 會寫入(或回填)admin.email,
+    # 使該帳號可直接以 DF-SSO 登入(SSO 以 Email 對應本地帳號)。
+    INITIAL_ADMIN_EMAIL: str = ""
+
+    # --- DF-SSO 登入器整合 ---
+    # SSO 中央伺服器位址;三者皆有值才視為啟用 SSO 登入(見 sso_enabled)。
+    #   Test: https://df-sso-login-test.apps.zerozero.tw
+    #   Prod: https://df-it-sso-login.it.zerozero.tw
+    # SSO_APP_ID / SSO_APP_SECRET 由對應環境的 SSO Dashboard 各自發放;
+    # SSO_APP_SECRET 為機密,禁止寫入前端或 commit。
+    SSO_URL: str = ""
+    SSO_APP_ID: str = ""
+    SSO_APP_SECRET: str = ""
+    SSO_TIMEOUT_SECONDS: float = 8.0
+    # 前後端分離:BACKEND_URL = SSO callback 落點 origin(Dashboard redirect_uris 需登記);
+    #            FRONTEND_URL = 登入頁 / dashboard 落點 origin。
+    BACKEND_URL: str = ""
+    FRONTEND_URL: str = ""
 
     # --- OpenRouter ---
     OPENROUTER_API_BASE_URL: str = "https://openrouter.ai/api/v1"
@@ -58,6 +76,11 @@ class Settings(BaseSettings):
     @property
     def is_prod(self) -> bool:
         return self.APP_ENV.lower() in ("prod", "production")
+
+    @property
+    def sso_enabled(self) -> bool:
+        """三項 SSO 設定皆有值才啟用 SSO 登入流程。"""
+        return bool(self.SSO_URL and self.SSO_APP_ID and self.SSO_APP_SECRET)
 
 
 @lru_cache(maxsize=1)

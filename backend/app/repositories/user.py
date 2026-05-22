@@ -22,6 +22,25 @@ class UserRepository:
         )
         return (await self.db.execute(stmt)).scalar_one_or_none()
 
+    async def get_by_email(self, email: str) -> User | None:
+        """以 Email(不分大小寫)查使用者;供 DF-SSO 登入對應本地帳號。
+
+        email 無唯一約束,取第一筆即可(資料正常時不會重複)。
+        """
+        stmt = select(User).where(
+            func.lower(User.email) == email.lower(),
+            User.is_deleted.is_(False),
+        )
+        return (await self.db.execute(stmt)).scalars().first()
+
+    async def get_by_sso_user_id(self, sso_user_id: str) -> User | None:
+        """以 SSO userId(azure oid)查使用者;供 back-channel logout 反查。"""
+        stmt = select(User).where(
+            User.sso_user_id == sso_user_id,
+            User.is_deleted.is_(False),
+        )
+        return (await self.db.execute(stmt)).scalars().first()
+
     async def list(
         self,
         *,

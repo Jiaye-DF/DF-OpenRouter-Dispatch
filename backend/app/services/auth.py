@@ -23,6 +23,42 @@ _MAX_FAILED = 5
 _LOCK_MINUTES = 15
 
 
+async def issue_session(
+    db: AsyncSession,
+    *,
+    user: User,
+    user_agent: str | None,
+    ip: str | None,
+) -> tuple[str, str, datetime]:
+    """為已完成身分驗證的使用者簽發 Access + Refresh Token。
+
+    回傳 (access_token, refresh_cookie_value, refresh_expires_at);僅 flush 不 commit,
+    由呼叫端負責 commit。供本地帳密登入與 DF-SSO 登入共用。
+    """
+    settings = get_settings()
+    now = datetime.now(tz=UTC)
+    rt_repo = RefreshTokenRepository(db)
+
+    access_token = create_access_token(user.user_uid)
+    refresh_uid = UUID(str(uuid7()))
+    family_uid = UUID(str(uuid7()))
+    secret = generate_refresh_secret()
+    expires_at = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRES_DAYS)
+    row = RefreshToken(
+        refresh_token_uid=refresh_uid,
+        user_uid=user.user_uid,
+        family_uid=family_uid,
+        token_hash=hash_refresh_secret(secret),
+        issued_at=now,
+        expires_at=expires_at,
+        user_agent=(user_agent or "")[:512] or None,
+        ip=ip or None,
+    )
+    rt_repo.add(row)
+    await db.flush()
+    return access_token, f"{refresh_uid}.{secret}", expires_at
+
+
 async def login(
     db: AsyncSession,
     *,
@@ -33,7 +69,6 @@ async def login(
 ) -> tuple[User, str, str, datetime]:
     """回傳 (user, access_token, refresh_cookie_value, refresh_expires_at)。"""
     repo = UserRepository(db)
-    rt_repo = RefreshTokenRepository(db)
     user = await repo.get_by_account(account)
     now = datetime.now(tz=UTC)
 
@@ -61,29 +96,10 @@ async def login(
     user.failed_login_count = 0
     user.locked_until = None
 
-    settings = get_settings()
-    # Access Token
-    access_token = create_access_token(user.user_uid)
-    # Refresh Token
-    refresh_uid = UUID(str(uuid7()))
-    family_uid = UUID(str(uuid7()))
-    secret = generate_refresh_secret()
-    expires_at = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRES_DAYS)
-    row = RefreshToken(
-        refresh_token_uid=refresh_uid,
-        user_uid=user.user_uid,
-        family_uid=family_uid,
-        token_hash=hash_refresh_secret(secret),
-        issued_at=now,
-        expires_at=expires_at,
-        user_agent=(user_agent or "")[:512] or None,
-        ip=ip or None,
+    access_token, refresh_cookie, expires_at = await issue_session(
+        db, user=user, user_agent=user_agent, ip=ip
     )
-    rt_repo.add(row)
-    await db.flush()
     await db.commit()
-
-    refresh_cookie = f"{refresh_uid}.{secret}"
     return user, access_token, refresh_cookie, expires_at
 
 

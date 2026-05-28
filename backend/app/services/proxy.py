@@ -70,6 +70,31 @@ def _build_request_log(
     return {"model": model, "text": text, "images": list(images or [])}
 
 
+def _extract_content(resp: dict[str, Any]) -> str:
+    """從 OpenRouter / Internal 回應抽出最終文字內容,回給 SDK 使用者。
+
+    SDK 使用者只關心「模型講了什麼」,內部 id / usage / provider / metadata 一律不外露
+    (但仍會完整寫入 usage_logs 供 dashboard 統計)。
+    """
+    choices = resp.get("choices") or []
+    if not choices:
+        return ""
+    msg = choices[0].get("message") or {}
+    raw = msg.get("content")
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, list):
+        # 多模態輸出:把所有 text block 串起來;非 text 區塊忽略。
+        parts: list[str] = []
+        for blk in raw:
+            if isinstance(blk, dict) and blk.get("type") == "text":
+                t = blk.get("text")
+                if isinstance(t, str):
+                    parts.append(t)
+        return "".join(parts)
+    return ""
+
+
 def _summarize_response(resp: dict[str, Any]) -> dict[str, Any]:
     summary: dict[str, Any] = {}
     choices = resp.get("choices") or []
@@ -170,8 +195,12 @@ async def run_chat(
     text: str | None,
     images: list[str] | None,
     videos: list[str] | None,
-) -> dict[str, Any]:
-    """依 model.provider 分流到對應路徑;白名單檢查由本 fn 統一執行。"""
+) -> str:
+    """依 model.provider 分流到對應路徑;白名單檢查由本 fn 統一執行。
+
+    回傳值刻意精簡為純文字內容(模型回應的 first content);usage / id / provider 等
+    OpenRouter 原始欄位完整寫入 usage_logs 供 dashboard,但不暴露給 SDK 使用者。
+    """
     if videos:
         raise AppError("feature_not_supported", code=400)
     model_row = await _check_model_whitelist(db, model)
@@ -212,7 +241,7 @@ async def _run_chat_openrouter(
     user_uid: UUID,
     payload: dict[str, Any],
     request_log: dict[str, Any],
-) -> dict[str, Any]:
+) -> str:
     """OpenRouter 流程 — 每把 Key 經 rate limiter,撞限額 failover 換下一把。"""
     client = client_factory.openrouter()
     model = payload["model"]
@@ -329,10 +358,7 @@ async def _run_chat_openrouter(
             error_code=None,
             request_log=request_log,
         )
-        sanitized = dict(resp_body)
-        for k in ("metadata", "provider_metadata"):
-            sanitized.pop(k, None)
-        return sanitized
+        return _extract_content(resp_body)
 
     # 全部失敗
     latency_ms = int((time.monotonic() - started) * 1000)
@@ -380,7 +406,7 @@ async def _run_chat_internal(
     user_uid: UUID,
     payload: dict[str, Any],
     request_log: dict[str, Any],
-) -> dict[str, Any]:
+) -> str:
     """Internal 流程(v1.2 增量,DB-driven per-Key):
 
     1. 拿全平台 active internal_keys
@@ -505,7 +531,7 @@ async def _try_internal_call(
     user_uid: UUID,
     model: str,
     model_uid: UUID,
-) -> dict[str, Any] | None:
+) -> str | None:
     """用單一 Key 嘗試呼叫;成功 → 寫 success log + 回 sanitized body;
     失敗 → 寫 error log + 回 None(供呼叫端決定 failover 或 abort)。
 
@@ -541,7 +567,4 @@ async def _try_internal_call(
         error_code=None,
         request_log=request_log,
     )
-    sanitized = dict(resp_body)
-    for k in ("metadata", "provider_metadata"):
-        sanitized.pop(k, None)
-    return sanitized
+    return _extract_content(resp_body)

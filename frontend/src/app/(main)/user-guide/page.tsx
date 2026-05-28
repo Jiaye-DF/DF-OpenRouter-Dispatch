@@ -201,7 +201,7 @@ const ERRORS: ErrorRow[] = [
   { status: 404, code: "model_not_found", desc: "OpenRouter 找不到此模型" },
   { status: 429, code: "rate_limited", desc: "OpenRouter Key 短時間呼叫過於頻繁;建議指數退避重試" },
   // { status: 429, code: "internal_busy", desc: "本地模型排隊已超時(data.retry_after_seconds);依該秒數退避後重試" },
-  { status: 502, code: "openrouter_unavailable", desc: "OpenRouter 服務暫時不可用" },
+  { status: 502, code: "openrouter_unavailable", desc: "OpenRouter 服務暫時不可用,請確認 OpenRouter Key 是否有正確加入" },
   // { status: 502, code: "internal_unavailable", desc: "本地模型 server 暫時不可用,稍後再試" },
   // { status: 500, code: "provider_misconfigured", desc: "本地模型設定未完成,請聯絡管理員" },
   { status: 500, code: "操作失敗", desc: "後端異常,請聯絡管理員並提供時間點" },

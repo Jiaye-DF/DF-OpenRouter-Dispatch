@@ -6,8 +6,8 @@ import type {
   StatsByUser,
 } from "@/types/api";
 
-// 12 位小數的 Excel 數字格式(USD 統一規則)
-const USD_FORMAT = "$0.000000000000";
+// 6 位小數的 Excel 數字格式(USD 統一規則)
+const USD_FORMAT = "$0.000000";
 
 interface SheetSpec {
   name: string;

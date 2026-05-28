@@ -8,6 +8,7 @@ import {
   BookOpen,
   Box,
   Building2,
+  CheckSquare,
   Cloud,
   FolderKanban,
   KeyRound,
@@ -56,6 +57,12 @@ const NAV_SECTIONS: NavSection[] = [
     label: "模型",
     items: [
       { href: "/admin/models", label: "模型管理", icon: Box, adminOnly: true },
+      {
+        href: "/admin/allowed-models",
+        label: "Sync 白名單",
+        icon: CheckSquare,
+        adminOnly: true,
+      },
       {
         href: "/admin/model-tiers",
         label: "模型分級",

@@ -53,4 +53,8 @@ export const API_ENDPOINTS = {
   // 模型分級(v1.1)
   modelTiers: "/api/v1/model-tiers",
   modelTierById: (uid: string) => `/api/v1/model-tiers/${uid}`,
+
+  // Sync 白名單(v1.5)
+  allowedModels: "/api/v1/allowed-models",
+  allowedModelById: (uid: string) => `/api/v1/allowed-models/${uid}`,
 } as const;

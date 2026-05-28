@@ -31,7 +31,8 @@ import { useAppSelector } from "@/store/hooks";
 // 一般使用者（role=user）不在平台登入，僅作為 SDK 代理呼叫的身分識別；
 // 因此建立時只輸入顯示姓名 / 部門 / 員工編號 / Email；帳號與密碼由後端自動產生。
 
-const EMAIL_SUFFIX = "@df-recycle.com";
+const EMAIL_SUFFIXES = ["@df-recycle.com", "@df-recycle.com.tw"] as const;
+type EmailSuffix = (typeof EMAIL_SUFFIXES)[number];
 const EMAIL_LOCAL_RE = /^[A-Za-z0-9._%+-]+$/;
 
 interface CreateForm {
@@ -39,6 +40,7 @@ interface CreateForm {
   department_uid: string;
   employee_id: string;
   email: string;
+  email_suffix: EmailSuffix;
 }
 
 const EMPTY_CREATE: CreateForm = {
@@ -46,6 +48,7 @@ const EMPTY_CREATE: CreateForm = {
   department_uid: "",
   employee_id: "",
   email: "",
+  email_suffix: EMAIL_SUFFIXES[0],
 };
 
 type Mode =
@@ -173,7 +176,7 @@ export default function UsersPage() {
         role: "user",
         department_uid: f.department_uid,
         employee_id: f.employee_id.trim(),
-        email: `${emailLocal}${EMAIL_SUFFIX}`,
+        email: `${emailLocal}${f.email_suffix}`,
       });
       setMode(null);
       setCreateForm(EMPTY_CREATE);
@@ -483,9 +486,23 @@ export default function UsersPage() {
                   placeholder="員工帳號前綴"
                   className="h-10 flex-1 min-w-0 bg-transparent px-3 text-sm outline-none"
                 />
-                <span className="flex items-center px-3 text-sm text-muted-foreground bg-muted/40 border-l border-border select-none">
-                  {EMAIL_SUFFIX}
-                </span>
+                <select
+                  value={createForm.email_suffix}
+                  onChange={(e) =>
+                    setCreateForm({
+                      ...createForm,
+                      email_suffix: e.target.value as EmailSuffix,
+                    })
+                  }
+                  aria-label="Email 網域"
+                  className="h-10 px-3 text-sm text-muted-foreground bg-muted/40 border-l border-border outline-none hover:cursor-pointer focus:text-foreground"
+                >
+                  {EMAIL_SUFFIXES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
               </div>
             </FormField>
           </div>

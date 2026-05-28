@@ -36,11 +36,9 @@ SDK 使用者透過 **SDK Key + User Token** 雙因子呼叫代理端點的完�
 
 | 環境 | Base URL |
 | --- | --- |
-| 測試環境 | _(待補)_ |
-| 正式環境 | _(待補)_ |
+| 測試環境 | `https://df-it-openrouter-dispatch-stage-api.it.zerozero.tw` |
+| 正式環境 | `https://df-it-openrouter-dispatch-api.it.zerozero.tw` |
 
-> 網址確認後請同步更新此表,以及前端 `frontend/src/app/(main)/user-guide/page.tsx` 內的 `TEST_API_BASE` / `PROD_API_BASE` 常數。
->
 > 本文件後續範例皆以**正式環境**為準,測試時將 Base URL 換成測試環境即可。
 
 ---
@@ -50,7 +48,7 @@ SDK 使用者透過 **SDK Key + User Token** 雙因子呼叫代理端點的完�
 所有呼叫皆透過下面這支端點:
 
 ```http
-POST https://<正式站網址>/api/v1/model/chat
+POST https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat
 Content-Type: application/json
 X-SDK-Key: <SDK Key 明文>
 X-User-Token: <User Token 明文>
@@ -79,7 +77,7 @@ JSON body 欄位如下:
 以 GET 取得目前**已啟用**的完整模型清單:
 
 ```http
-GET https://<正式站網址>/api/v1/models
+GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/models
 ```
 
 - 此端點**不需任何憑證**,可直接於瀏覽器開啟。
@@ -160,7 +158,7 @@ GET https://<正式站網址>/api/v1/models
 ### curl
 
 ```bash
-curl -X POST 'https://<正式站網址>/api/v1/model/chat' \
+curl -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat' \
   -H 'Content-Type: application/json' \
   -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \
   -H 'X-User-Token: <admin 發放的 User Token>' \
@@ -175,7 +173,7 @@ curl -X POST 'https://<正式站網址>/api/v1/model/chat' \
 ```python
 import httpx
 
-API_URL = "https://<正式站網址>/api/v1/model/chat"
+API_URL = "https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat"
 SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 USER_TOKEN = "<admin 發放的 User Token>"
 

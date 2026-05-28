@@ -8,10 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { cn } from "@/lib/utils/cn";
 
-// 測試 / 正式環境的 API Base URL —— 待網址確認後填入下方常數即可,
-// 「呼叫環境」表格與範例程式碼會自動套用(範例以正式環境為準)。
-const TEST_API_BASE = ""; // 測試環境,例:https://test-api.example.com
-const PROD_API_BASE = ""; // 正式環境,例:https://api.example.com
+// 測試 / 正式環境的 API Base URL ——「呼叫環境」表格與範例程式碼會自動套用(範例以正式環境為準)。
+const TEST_API_BASE = "https://df-it-openrouter-dispatch-stage-api.it.zerozero.tw";
+const PROD_API_BASE = "https://df-it-openrouter-dispatch-api.it.zerozero.tw";
 
 // 「呼叫環境」表格顯示用
 const API_ENVIRONMENTS: { label: string; base: string }[] = [
@@ -26,6 +25,7 @@ const API_BASE = (
   "https://<正式站網址>"
 ).replace(/\/$/, "");
 const CHAT_URL = `${API_BASE}/api/v1/model/chat`;
+const MODELS_URL = `${API_BASE}/api/v1/models`;
 
 function CodeBlock({
   code,
@@ -330,8 +330,38 @@ export default function UserGuidePage() {
             </Table>
           </div>
           <p className="text-muted-foreground text-xs">
-            可用的 <code>model</code> 清單由管理員集中維護;若呼叫時收到 <code>403 model_forbidden</code>,請向管理員確認該模型是否已啟用。
+            可用的 <code>model</code> 清單由管理員集中維護。你可隨時查詢已啟用的模型清單(見下方<strong>查詢可用模型清單</strong>),從中複製 <code>model_key</code> 填入此欄位;若呼叫時收到 <code>403 model_forbidden</code>,請向管理員確認該模型是否已啟用。
           </p>
+
+          <div className="mt-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">GET</Badge>
+              <span className="font-medium text-sm">查詢可用模型清單</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              以 GET 取得目前<strong>已啟用</strong>的完整模型清單:
+            </p>
+            <CodeBlock language="HTTP" code={`GET ${MODELS_URL}`} />
+            <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+              <li>
+                此端點<strong>不需任何憑證</strong>,可直接於瀏覽器開啟:
+                {" "}
+                <a
+                  href={MODELS_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-xs underline underline-offset-2 hover:text-foreground"
+                >
+                  {MODELS_URL}
+                </a>
+              </li>
+              <li>
+                回應 <code>data.items[]</code> 每筆的 <code>model_key</code> 即為呼叫上方端點時 <code>model</code> 欄位要填入的值;<code>name</code> 為模型顯示名稱。
+              </li>
+              <li>僅回傳已啟用(白名單內)的模型,清單與管理員後台維護結果同步。</li>
+            </ul>
+          </div>
+
           <p className="font-medium mt-2">含圖片的 Request 範例:</p>
           <CodeBlock language="JSON" code={IMAGE_EXAMPLE} />
           <div className="mt-4 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 text-sm">

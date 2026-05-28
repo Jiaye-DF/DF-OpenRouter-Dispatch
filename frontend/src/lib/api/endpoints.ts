@@ -11,6 +11,7 @@ export const API_ENDPOINTS = {
 
   // 使用者（admin）
   users: "/api/v1/users",
+  usersDropdown: "/api/v1/users/dropdown",
   userById: (uid: string) => `/api/v1/users/${uid}`,
   resetUserPassword: (uid: string) => `/api/v1/users/${uid}/password/reset`,
   userTokens: (uid: string) => `/api/v1/users/${uid}/tokens`,
@@ -40,6 +41,8 @@ export const API_ENDPOINTS = {
   statsOverview: "/api/v1/stats/overview",
   statsByDepartment: "/api/v1/stats/by-department",
   statsByModel: "/api/v1/stats/by-model",
+  statsByProject: "/api/v1/stats/by-project",
+  statsByUser: "/api/v1/stats/by-user",
   statsTimeseries: "/api/v1/stats/timeseries",
 
   // 模型主檔(v1.1)

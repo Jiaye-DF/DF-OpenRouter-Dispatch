@@ -113,6 +113,7 @@ export interface UsageLog {
   usage_log_uid: string;
   user_uid: string | null;
   department_uid: string;
+  project_uid: string | null;
   openrouter_key_uid: string | null;
   model: string;
   prompt_tokens: number;
@@ -134,6 +135,7 @@ export interface StatsOverview {
 
 export interface StatsByDepartment {
   department_uid: string;
+  department_code: string | null;
   department_name: string;
   total_tokens: number;
   total_cost_usd: string;
@@ -146,6 +148,36 @@ export interface StatsByModel {
   department_name?: string;
   total_tokens: number;
   total_cost_usd: string;
+  total_requests: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+}
+
+// v1.5 新增 — 依專案 / 使用者彙總
+export interface StatsByProject {
+  project_uid: string;
+  project_code: string;
+  project_name: string;
+  total_requests: number;
+  total_tokens: number;
+  total_cost_usd: string;
+}
+
+export interface StatsByUser {
+  user_uid: string | null;
+  username: string | null;
+  employee_id: string | null;
+  total_requests: number;
+  total_tokens: number;
+  total_cost_usd: string;
+}
+
+// v1.5 新增 — 使用者下拉精簡欄位
+export interface UserDropdownItem {
+  user_uid: string;
+  username: string;
+  employee_id: string | null;
+  department_uid: string | null;
 }
 
 export interface StatsTimeseriesPoint {

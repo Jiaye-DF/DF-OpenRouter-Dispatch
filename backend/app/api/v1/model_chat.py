@@ -32,6 +32,7 @@ async def _chat_handler(
         db,
         client_factory=client_factory,
         department_uid=caller.department_uid,
+        project_uid=caller.project_uid,
         user_uid=caller.user_uid,
         model=body.model,
         text=body.text,

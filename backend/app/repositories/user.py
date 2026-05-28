@@ -58,6 +58,23 @@ class UserRepository:
         total = int((await self.db.execute(count_stmt)).scalar_one())
         return items, total
 
+    async def list_for_dropdown(
+        self,
+        *,
+        department_uid: UUID | None = None,
+        limit: int = 2000,
+    ) -> list[User]:
+        """供儀表板下拉用的精簡列表(免分頁,內部 limit 保險)。"""
+        stmt = (
+            select(User)
+            .where(User.is_deleted.is_(False), User.is_active.is_(True))
+            .order_by(User.username.asc())
+            .limit(limit)
+        )
+        if department_uid is not None:
+            stmt = stmt.where(User.department_uid == department_uid)
+        return list((await self.db.execute(stmt)).scalars().all())
+
     def add(self, user: User) -> None:
         self.db.add(user)
 

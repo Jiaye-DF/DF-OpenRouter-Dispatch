@@ -52,3 +52,13 @@ class UserResponse(BaseModel):
     employee_id: str | None
     email: str | None
     is_active: bool
+
+
+class UserDropdownItem(BaseModel):
+    """供儀表板下拉用的精簡欄位(v1.5)。"""
+    model_config = ConfigDict(from_attributes=True)
+
+    user_uid: UUID
+    username: str
+    employee_id: str | None
+    department_uid: UUID | None

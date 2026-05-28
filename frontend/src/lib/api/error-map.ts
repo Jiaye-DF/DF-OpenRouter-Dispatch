@@ -42,6 +42,10 @@ const MESSAGES: Record<string, string> = {
   provider_misconfigured: "本地模型設定未完成,請聯絡系統管理員。",
   provider_not_allowed: "此 provider 不允許手動建立,請改用同步流程。",
 
+  // v1.5 專案維度
+  project_id_required: "請於請求 header 帶入 X-Project-Id。",
+  project_invalid: "X-Project-Id 不存在、已停用或與 SDK Key 部門不符。",
+
   // 預設
   操作失敗: "操作失敗,請稍後再試。",
 };

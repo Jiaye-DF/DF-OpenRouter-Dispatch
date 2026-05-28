@@ -29,6 +29,24 @@ class ModelStatItem(BaseModel):
     total_cost_usd: Decimal
 
 
+class ProjectStatItem(BaseModel):
+    project_uid: UUID
+    project_code: str
+    project_name: str
+    total_requests: int
+    total_tokens: int
+    total_cost_usd: Decimal
+
+
+class UserStatItem(BaseModel):
+    user_uid: UUID | None
+    username: str | None
+    employee_id: str | None
+    total_requests: int
+    total_tokens: int
+    total_cost_usd: Decimal
+
+
 class TimeseriesPoint(BaseModel):
     bucket: datetime
     total_requests: int

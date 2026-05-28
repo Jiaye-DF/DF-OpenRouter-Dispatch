@@ -104,6 +104,7 @@ async def _check_model_whitelist(db: AsyncSession, model: str) -> Model:
 def schedule_usage_log(
     *,
     department_uid: UUID | None,
+    project_uid: UUID | None,
     user_uid: UUID | None,
     openrouter_key_uid: UUID | None,
     model: str,
@@ -131,6 +132,7 @@ def schedule_usage_log(
                     usage_log_uid=UUID(str(uuid7())),
                     user_uid=user_uid,
                     department_uid=department_uid,
+                    project_uid=project_uid,
                     openrouter_key_uid=openrouter_key_uid,
                     model=model,
                     model_uid=model_uid,
@@ -162,6 +164,7 @@ async def run_chat(
     *,
     client_factory: ChatClientFactory,
     department_uid: UUID,
+    project_uid: UUID,
     user_uid: UUID,
     model: str,
     text: str | None,
@@ -182,6 +185,7 @@ async def run_chat(
             client_factory=client_factory,
             model_row=model_row,
             department_uid=department_uid,
+            project_uid=project_uid,
             user_uid=user_uid,
             payload=payload,
             request_log=request_log,
@@ -191,6 +195,7 @@ async def run_chat(
         client_factory=client_factory,
         model_row=model_row,
         department_uid=department_uid,
+        project_uid=project_uid,
         user_uid=user_uid,
         payload=payload,
         request_log=request_log,
@@ -203,6 +208,7 @@ async def _run_chat_openrouter(
     client_factory: ChatClientFactory,
     model_row: Model,
     department_uid: UUID,
+    project_uid: UUID,
     user_uid: UUID,
     payload: dict[str, Any],
     request_log: dict[str, Any],
@@ -261,6 +267,7 @@ async def _run_chat_openrouter(
         except OpenRouterModelNotFoundError as exc:
             schedule_usage_log(
                 department_uid=department_uid,
+                project_uid=project_uid,
                 user_uid=user_uid,
                 openrouter_key_uid=key_row.openrouter_key_uid,
                 model=model,
@@ -275,6 +282,7 @@ async def _run_chat_openrouter(
         except OpenRouterForbiddenError as exc:
             schedule_usage_log(
                 department_uid=department_uid,
+                project_uid=project_uid,
                 user_uid=user_uid,
                 openrouter_key_uid=key_row.openrouter_key_uid,
                 model=model,
@@ -289,6 +297,7 @@ async def _run_chat_openrouter(
         except OpenRouterRateLimitError as exc:
             schedule_usage_log(
                 department_uid=department_uid,
+                project_uid=project_uid,
                 user_uid=user_uid,
                 openrouter_key_uid=key_row.openrouter_key_uid,
                 model=model,
@@ -309,6 +318,7 @@ async def _run_chat_openrouter(
         latency_ms = int((time.monotonic() - started) * 1000)
         schedule_usage_log(
             department_uid=department_uid,
+            project_uid=project_uid,
             user_uid=user_uid,
             openrouter_key_uid=key_row.openrouter_key_uid,
             model=model,
@@ -330,6 +340,7 @@ async def _run_chat_openrouter(
     code = 429 if rate_limited_all else 502
     schedule_usage_log(
         department_uid=department_uid,
+        project_uid=project_uid,
         user_uid=user_uid,
         openrouter_key_uid=None,
         model=model,
@@ -365,6 +376,7 @@ async def _run_chat_internal(
     client_factory: ChatClientFactory,
     model_row: Model,
     department_uid: UUID,
+    project_uid: UUID,
     user_uid: UUID,
     payload: dict[str, Any],
     request_log: dict[str, Any],
@@ -420,6 +432,7 @@ async def _run_chat_internal(
             request_log=request_log,
             started=started,
             department_uid=department_uid,
+            project_uid=project_uid,
             user_uid=user_uid,
             model=model,
             model_uid=model_uid,
@@ -443,6 +456,7 @@ async def _run_chat_internal(
             latency_ms = int((time.monotonic() - started) * 1000)
             schedule_usage_log(
                 department_uid=department_uid,
+                project_uid=project_uid,
                 user_uid=user_uid,
                 openrouter_key_uid=None,
                 model=model,
@@ -467,6 +481,7 @@ async def _run_chat_internal(
             request_log=request_log,
             started=started,
             department_uid=department_uid,
+            project_uid=project_uid,
             user_uid=user_uid,
             model=model,
             model_uid=model_uid,
@@ -486,6 +501,7 @@ async def _try_internal_call(
     request_log: dict[str, Any],
     started: float,
     department_uid: UUID,
+    project_uid: UUID,
     user_uid: UUID,
     model: str,
     model_uid: UUID,
@@ -514,6 +530,7 @@ async def _try_internal_call(
     latency_ms = int((time.monotonic() - started) * 1000)
     schedule_usage_log(
         department_uid=department_uid,
+        project_uid=project_uid,
         user_uid=user_uid,
         openrouter_key_uid=None,
         model=model,

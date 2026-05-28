@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query
 from uuid_utils import uuid7
 
 from app.core.audit import write_audit
-from app.core.deps import AdminDep, ClientIpDep, DbDep
+from app.core.deps import AdminDep, ClientIpDep, DbDep, UserDep
 from app.core.exceptions import AppError
 from app.core.response import success_response
 from app.core.security import hash_password
@@ -14,6 +14,7 @@ from app.repositories.user import UserRepository
 from app.schemas.common import Page
 from app.schemas.user import (
     UserCreateRequest,
+    UserDropdownItem,
     UserPasswordResetRequest,
     UserResponse,
     UserUpdateRequest,
@@ -46,6 +47,23 @@ async def list_users(
         size=size,
     )
     return success_response(data=data.model_dump(mode="json"), detail="success")
+
+
+@router.get("/dropdown", summary="使用者下拉清單(v1.5,免分頁,供儀表板篩選)")
+async def list_users_dropdown(
+    actor: UserDep,
+    db: DbDep,
+    department_uid: UUID | None = None,
+):
+    """非 admin 強制只能看自己部門;admin 可不傳取全公司,或傳 department_uid 過濾。"""
+    if not actor.is_admin:
+        department_uid = actor.department_uid
+    repo = UserRepository(db)
+    rows = await repo.list_for_dropdown(department_uid=department_uid)
+    items = [UserDropdownItem.model_validate(r) for r in rows]
+    return success_response(
+        data=[x.model_dump(mode="json") for x in items], detail="success"
+    )
 
 
 @router.post("", summary="建立使用者（admin）", status_code=200)

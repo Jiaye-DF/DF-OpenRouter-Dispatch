@@ -25,6 +25,8 @@ class SdkCallerContext(BaseModel):
     sdk_api_key_uid: UUID
     department_uid: UUID
     department_code: str
+    project_uid: UUID
+    project_code: str
     user_uid: UUID
     employee_id: str | None = None
     email: str | None = None

@@ -6,7 +6,9 @@ from sqlalchemy import String, case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.department import Department
+from app.models.project import Project
 from app.models.usage_log import UsageLog
+from app.models.user import User
 
 
 class UsageLogRepository:
@@ -30,6 +32,7 @@ class UsageLogRepository:
         stmt,
         *,
         department_uid: UUID | None,
+        project_uid: UUID | None,
         user_uid: UUID | None,
         model: str | None,
         from_time: datetime | None,
@@ -39,6 +42,8 @@ class UsageLogRepository:
         stmt = stmt.where(UsageLog.is_deleted.is_(False))
         if department_uid is not None:
             stmt = stmt.where(UsageLog.department_uid == department_uid)
+        if project_uid is not None:
+            stmt = stmt.where(UsageLog.project_uid == project_uid)
         if user_uid is not None:
             stmt = stmt.where(UsageLog.user_uid == user_uid)
         if model:
@@ -57,6 +62,7 @@ class UsageLogRepository:
         page: int,
         size: int,
         department_uid: UUID | None = None,
+        project_uid: UUID | None = None,
         user_uid: UUID | None = None,
         model: str | None = None,
         from_time: datetime | None = None,
@@ -67,6 +73,7 @@ class UsageLogRepository:
         stmt = self._apply_filters(
             stmt,
             department_uid=department_uid,
+            project_uid=project_uid,
             user_uid=user_uid,
             model=model,
             from_time=from_time,
@@ -76,6 +83,7 @@ class UsageLogRepository:
         count_stmt = self._apply_filters(
             select(func.count()).select_from(UsageLog),
             department_uid=department_uid,
+            project_uid=project_uid,
             user_uid=user_uid,
             model=model,
             from_time=from_time,
@@ -93,6 +101,8 @@ class UsageLogRepository:
         self,
         *,
         department_uid: UUID | None,
+        project_uid: UUID | None = None,
+        user_uid: UUID | None = None,
         from_time: datetime | None,
         to_time: datetime | None,
     ) -> tuple[int, int, Decimal]:
@@ -104,7 +114,8 @@ class UsageLogRepository:
         stmt = self._apply_filters(
             stmt,
             department_uid=department_uid,
-            user_uid=None,
+            project_uid=project_uid,
+            user_uid=user_uid,
             model=None,
             from_time=from_time,
             to_time=to_time,
@@ -117,6 +128,8 @@ class UsageLogRepository:
         self,
         *,
         department_uid: UUID | None,
+        project_uid: UUID | None = None,
+        user_uid: UUID | None = None,
         from_time: datetime | None,
         to_time: datetime | None,
     ) -> list[tuple[UUID | None, str | None, str | None, int, int, Decimal]]:
@@ -140,7 +153,8 @@ class UsageLogRepository:
         stmt = self._apply_filters(
             stmt,
             department_uid=department_uid,
-            user_uid=None,
+            project_uid=project_uid,
+            user_uid=user_uid,
             model=None,
             from_time=from_time,
             to_time=to_time,
@@ -163,6 +177,8 @@ class UsageLogRepository:
         self,
         *,
         department_uid: UUID | None,
+        project_uid: UUID | None = None,
+        user_uid: UUID | None = None,
         from_time: datetime | None,
         to_time: datetime | None,
     ) -> list[tuple[str, int, int, int, int, Decimal]]:
@@ -180,7 +196,8 @@ class UsageLogRepository:
         stmt = self._apply_filters(
             stmt,
             department_uid=department_uid,
-            user_uid=None,
+            project_uid=project_uid,
+            user_uid=user_uid,
             model=None,
             from_time=from_time,
             to_time=to_time,
@@ -191,10 +208,88 @@ class UsageLogRepository:
             (r[0], int(r[1]), int(r[2]), int(r[3]), int(r[4]), Decimal(r[5])) for r in rows
         ]
 
+    async def by_project(
+        self,
+        *,
+        department_uid: UUID | None,
+        project_uid: UUID | None = None,
+        user_uid: UUID | None = None,
+        from_time: datetime | None,
+        to_time: datetime | None,
+    ) -> list[tuple[UUID, str, str, int, int, Decimal]]:
+        """依專案彙總;歷史 project_uid 為 NULL 的紀錄不出現(JOIN 內連線)。"""
+        stmt = (
+            select(
+                UsageLog.project_uid,
+                Project.code,
+                Project.name,
+                func.count(UsageLog.pid),
+                func.coalesce(func.sum(UsageLog.total_tokens), 0),
+                func.coalesce(func.sum(UsageLog.cost_usd), 0),
+            )
+            .select_from(UsageLog)
+            .join(Project, Project.project_uid == UsageLog.project_uid)
+            .group_by(UsageLog.project_uid, Project.code, Project.name)
+        )
+        stmt = self._apply_filters(
+            stmt,
+            department_uid=department_uid,
+            project_uid=project_uid,
+            user_uid=user_uid,
+            model=None,
+            from_time=from_time,
+            to_time=to_time,
+            status=None,
+        )
+        rows = (await self.db.execute(stmt)).all()
+        return [
+            (r[0], r[1], r[2], int(r[3]), int(r[4]), Decimal(r[5])) for r in rows
+        ]
+
+    async def by_user(
+        self,
+        *,
+        department_uid: UUID | None,
+        project_uid: UUID | None = None,
+        user_uid: UUID | None = None,
+        from_time: datetime | None,
+        to_time: datetime | None,
+    ) -> list[tuple[UUID | None, str | None, str | None, int, int, Decimal]]:
+        """依使用者彙總;user_uid 為 NULL 的紀錄(歷史代理錯誤)外連線顯示為 unknown。"""
+        stmt = (
+            select(
+                UsageLog.user_uid,
+                User.username,
+                User.employee_id,
+                func.count(UsageLog.pid),
+                func.coalesce(func.sum(UsageLog.total_tokens), 0),
+                func.coalesce(func.sum(UsageLog.cost_usd), 0),
+            )
+            .select_from(UsageLog)
+            .join(User, User.user_uid == UsageLog.user_uid, isouter=True)
+            .group_by(UsageLog.user_uid, User.username, User.employee_id)
+        )
+        stmt = self._apply_filters(
+            stmt,
+            department_uid=department_uid,
+            project_uid=project_uid,
+            user_uid=user_uid,
+            model=None,
+            from_time=from_time,
+            to_time=to_time,
+            status=None,
+        )
+        rows = (await self.db.execute(stmt)).all()
+        return [
+            (r[0], r[1], r[2], int(r[3]), int(r[4]), Decimal(r[5])) for r in rows
+        ]
+
     async def timeseries(
         self,
         *,
         department_uid: UUID | None,
+        project_uid: UUID | None = None,
+        user_uid: UUID | None = None,
         from_time: datetime | None,
         to_time: datetime | None,
         granularity: str = "day",
@@ -215,7 +310,8 @@ class UsageLogRepository:
         stmt = self._apply_filters(
             stmt,
             department_uid=department_uid,
-            user_uid=None,
+            project_uid=project_uid,
+            user_uid=user_uid,
             model=None,
             from_time=from_time,
             to_time=to_time,

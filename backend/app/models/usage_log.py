@@ -17,6 +17,8 @@ class UsageLog(Base, TimestampMixin):
     )
     user_uid: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     department_uid: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    # v1.5 加入;允許 NULL 以容錯既有歷史紀錄(代理新呼叫一律必帶 X-Project-Id)
+    project_uid: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     openrouter_key_uid: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     model: Mapped[str] = mapped_column(String(128), nullable=False)
     # V11 加入;允許 NULL 容錯既有歷史與白名單拒絕情境

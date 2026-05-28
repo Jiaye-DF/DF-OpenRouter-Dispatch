@@ -26,6 +26,18 @@ class ProjectRepository:
         )
         return (await self.db.execute(stmt)).scalar_one_or_none()
 
+    async def get_active_by_uid_and_dept(
+        self, project_uid: UUID, department_uid: UUID
+    ) -> Project | None:
+        """供 SDK 代理鏈驗證 X-Project-Id 必須屬於該部門且仍啟用。"""
+        stmt = select(Project).where(
+            Project.project_uid == project_uid,
+            Project.department_uid == department_uid,
+            Project.is_active.is_(True),
+            Project.is_deleted.is_(False),
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
     async def list(
         self,
         *,

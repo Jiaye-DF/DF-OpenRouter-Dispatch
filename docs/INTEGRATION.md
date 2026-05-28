@@ -76,15 +76,16 @@ JSON body 欄位如下:
 
 ### 5.1 查詢可用模型清單
 
-以 GET 取得目前**已啟用**的完整模型清單:
+以 GET 取得目前**已啟用**的模型清單(精簡欄位):
 
 ```http
-GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/models
+GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/allowed/models
 ```
 
 - 此端點**不需任何憑證**,可直接於瀏覽器開啟。
-- 回應 `data.items[]` 每筆的 `model_key` 即為呼叫 §4 端點時 `model` 欄位要填入的值;`name` 為模型顯示名稱。
+- 回應 `data[]`(陣列)每筆的 `model_key` 即為呼叫 §4 端點時 `model` 欄位要填入的值;`name` 為模型顯示名稱、`description` / `context_length` / `modality` 供參考。
 - 僅回傳已啟用(白名單內)的模型,清單與管理員後台維護結果同步。
+- 定價、tokenizer 等內部欄位不對外;若需完整資訊請聯絡管理員。
 
 **含圖片的 Request 範例:**
 

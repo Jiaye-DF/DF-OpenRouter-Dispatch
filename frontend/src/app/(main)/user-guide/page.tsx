@@ -25,7 +25,7 @@ const API_BASE = (
   "https://<正式站網址>"
 ).replace(/\/$/, "");
 const CHAT_URL = `${API_BASE}/api/v1/model/chat`;
-const MODELS_URL = `${API_BASE}/api/v1/models`;
+const MODELS_URL = `${API_BASE}/api/v1/allowed/models`;
 
 function CodeBlock({
   code,
@@ -372,9 +372,9 @@ export default function UserGuidePage() {
                 </a>
               </li>
               <li>
-                回應 <code>data.items[]</code> 每筆的 <code>model_key</code> 即為呼叫上方端點時 <code>model</code> 欄位要填入的值;<code>name</code> 為模型顯示名稱。
+                回應 <code>data[]</code>(陣列)每筆的 <code>model_key</code> 即為呼叫上方端點時 <code>model</code> 欄位要填入的值;<code>name</code> 為顯示名稱、<code>description</code> / <code>context_length</code> / <code>modality</code> 供參考。
               </li>
-              <li>僅回傳已啟用(白名單內)的模型,清單與管理員後台維護結果同步。</li>
+              <li>僅回傳已啟用(白名單內)的模型;定價、tokenizer 等內部欄位不對外。</li>
             </ul>
           </div>
 

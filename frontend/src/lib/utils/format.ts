@@ -1,6 +1,6 @@
-// 後端 cost_usd 以字串傳輸(避免 JS 浮點誤差);本平台 USD 顯示一律保留 12 位小數。
+// 後端 cost_usd 以字串傳輸(避免 JS 浮點誤差);本平台 USD 顯示一律保留 6 位小數。
 
-const USD_DECIMALS = 12;
+const USD_DECIMALS = 6;
 
 export function formatUSD(value: string | number | null | undefined, decimals = USD_DECIMALS): string {
   if (value === null || value === undefined || value === "") return "-";

@@ -83,8 +83,9 @@ async def create_user(
         account = body.account
         password_hash = hash_password(body.password)
     else:
-        # role=user 為 SDK 代理身分；員工編號 / Email 為 User Token payload 必要欄位
-        if not body.employee_id or not body.email:
+        # role=user 為 SDK 代理身分;Email 為 User Token payload 必要欄位,
+        # 員工編號為選填(部分使用者可能無正式編號;產 Token 時以空字串補位)。
+        if not body.email:
             raise AppError("user_requires_identity", code=400)
         account = _gen_internal_account()
         # 隨機長密碼 hash；無人知道，確保 role=user 無法以密碼登入

@@ -215,7 +215,7 @@ export default function UserGuidePage() {
         description="SDK 使用者透過 SDK Key + User Token + Project Code 呼叫代理端點的完整說明"
       />
 
-      <div className="flex flex-col gap-8 max-w-4xl">
+      <div className="flex flex-col gap-8">
         <Section id="overview" title="概述">
           <p>
             本平台為 OpenRouter API 的<strong>代理層</strong>:統一管理金鑰、模型白名單與用量稽核。

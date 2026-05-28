@@ -28,15 +28,21 @@ import type { Department, Paginated, User } from "@/types/api";
 import { useAppSelector } from "@/store/hooks";
 
 // 僅 admin 可見：使用者管理
-// 一般使用者（role=user）不在平台登入，僅作為 SDK 代理呼叫的身分識別；
-// 因此建立時只輸入顯示姓名 / 部門 / 員工編號 / Email；帳號與密碼由後端自動產生。
+// admin / user 在 SDK 身分識別上等價;唯一差別:admin 可登入平台、可重設密碼。
+// 因此建立時統一收集 部門 / 員工編號 / Email(供產 Token 用);admin 另需 account + password。
 
 const EMAIL_SUFFIXES = ["@df-recycle.com", "@df-recycle.com.tw"] as const;
 type EmailSuffix = (typeof EMAIL_SUFFIXES)[number];
 const EMAIL_LOCAL_RE = /^[A-Za-z0-9._%+-]+$/;
+const ACCOUNT_RE = /^[A-Za-z0-9._-]+$/;
+
+type UserRole = "admin" | "user";
 
 interface CreateForm {
+  role: UserRole;
   username: string;
+  account: string;
+  password: string;
   department_uid: string;
   employee_id: string;
   email: string;
@@ -44,7 +50,10 @@ interface CreateForm {
 }
 
 const EMPTY_CREATE: CreateForm = {
+  role: "user",
   username: "",
+  account: "",
+  password: "",
   department_uid: "",
   employee_id: "",
   email: "",
@@ -136,19 +145,38 @@ export default function UsersPage() {
       });
       return;
     }
+    if (f.role === "admin") {
+      const acc = f.account.trim();
+      if (acc.length < 4) {
+        showDialog({
+          type: "warning",
+          title: "欄位未填",
+          message: "請輸入登入帳號(至少 4 字元)",
+        });
+        return;
+      }
+      if (!ACCOUNT_RE.test(acc)) {
+        showDialog({
+          type: "warning",
+          title: "帳號格式錯誤",
+          message: "帳號僅能包含英數字與 . _ -",
+        });
+        return;
+      }
+      if (f.password.length < 10) {
+        showDialog({
+          type: "warning",
+          title: "密碼太短",
+          message: "管理員密碼至少 10 字元",
+        });
+        return;
+      }
+    }
     if (!f.department_uid) {
       showDialog({
         type: "warning",
         title: "欄位未填",
         message: "請選擇部門（產生 Token 時必要）",
-      });
-      return;
-    }
-    if (!f.employee_id.trim()) {
-      showDialog({
-        type: "warning",
-        title: "欄位未填",
-        message: "請輸入員工編號",
       });
       return;
     }
@@ -171,13 +199,19 @@ export default function UsersPage() {
     }
     setSaving(true);
     try {
-      await apiClient.post(API_ENDPOINTS.users, {
+      const empId = f.employee_id.trim();
+      const payload: Record<string, unknown> = {
         username: f.username.trim(),
-        role: "user",
+        role: f.role,
         department_uid: f.department_uid,
-        employee_id: f.employee_id.trim(),
         email: `${emailLocal}${f.email_suffix}`,
-      });
+      };
+      if (empId) payload.employee_id = empId;
+      if (f.role === "admin") {
+        payload.account = f.account.trim();
+        payload.password = f.password;
+      }
+      await apiClient.post(API_ENDPOINTS.users, payload);
       setMode(null);
       setCreateForm(EMPTY_CREATE);
       setPage(1);
@@ -338,33 +372,35 @@ export default function UsersPage() {
                             variant="ghost"
                             size="icon"
                             aria-label="重設密碼"
+                            title="重設登入密碼"
                             onClick={() => setMode({ kind: "reset", user: u })}
                           >
                             <KeyRound className="h-4 w-4" />
                           </Button>
                         )}
-                        {u.role === "user" && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="產生 User Token(一次性顯示)"
-                              onClick={() => onGenToken(u)}
-                            >
-                              <Ticket className="h-4 w-4" />
-                              <span className="hidden lg:inline ml-1">產生 Token</span>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="撤銷此使用者所有 Token"
-                              onClick={() => onRevokeToken(u)}
-                            >
-                              <ShieldOff className="h-4 w-4 text-destructive" />
-                              <span className="hidden lg:inline ml-1 text-destructive">撤銷</span>
-                            </Button>
-                          </>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title={
+                            u.department_uid
+                              ? "產生 User Token(一次性顯示)"
+                              : "需先指派部門才能產生 Token"
+                          }
+                          disabled={!u.department_uid}
+                          onClick={() => onGenToken(u)}
+                        >
+                          <Ticket className="h-4 w-4" />
+                          <span className="hidden lg:inline ml-1">產生 Token</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="撤銷此使用者所有 Token"
+                          onClick={() => onRevokeToken(u)}
+                        >
+                          <ShieldOff className="h-4 w-4 text-destructive" />
+                          <span className="hidden lg:inline ml-1 text-destructive">撤銷</span>
+                        </Button>
                       </div>
                     </TD>
                     <TD>{u.username}</TD>
@@ -429,8 +465,25 @@ export default function UsersPage() {
             <DialogTitle>建立使用者</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-3 pt-4">
+            <FormField label="角色">
+              <select
+                value={createForm.role}
+                onChange={(e) =>
+                  setCreateForm({
+                    ...createForm,
+                    role: e.target.value as UserRole,
+                  })
+                }
+                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
+              >
+                <option value="user">一般使用者(僅 SDK 身分,無法登入後台)</option>
+                <option value="admin">管理員(可登入後台 + SDK 身分)</option>
+              </select>
+            </FormField>
             <p className="text-sm text-muted-foreground">
-              一般使用者僅作為 SDK 呼叫的身分識別,無法登入平台。
+              {createForm.role === "admin"
+                ? "管理員可登入平台、亦可產生 User Token 作為 SDK 呼叫身分。"
+                : "一般使用者僅作為 SDK 呼叫的身分識別,無法登入平台。"}
             </p>
             <FormField label="姓名">
               <Input
@@ -441,6 +494,29 @@ export default function UsersPage() {
                 placeholder="顯示用姓名"
               />
             </FormField>
+            {createForm.role === "admin" && (
+              <>
+                <FormField label="登入帳號">
+                  <Input
+                    value={createForm.account}
+                    onChange={(e) =>
+                      setCreateForm({ ...createForm, account: e.target.value })
+                    }
+                    placeholder="僅英數字與 . _ -,至少 4 字元"
+                  />
+                </FormField>
+                <FormField label="登入密碼(至少 10 字元)">
+                  <Input
+                    type="text"
+                    value={createForm.password}
+                    onChange={(e) =>
+                      setCreateForm({ ...createForm, password: e.target.value })
+                    }
+                    placeholder="建立後可由管理員重設"
+                  />
+                </FormField>
+              </>
+            )}
             <FormField label="部門">
               <select
                 value={createForm.department_uid}
@@ -460,13 +536,13 @@ export default function UsersPage() {
                 ))}
               </select>
             </FormField>
-            <FormField label="員工編號">
+            <FormField label="員工編號（選填）">
               <Input
                 value={createForm.employee_id}
                 onChange={(e) =>
                   setCreateForm({ ...createForm, employee_id: e.target.value })
                 }
-                placeholder="User Token payload 使用"
+                placeholder="無正式編號可留空;有填則寫入 Token payload"
               />
             </FormField>
             <FormField label="Email">

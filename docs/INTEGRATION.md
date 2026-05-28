@@ -222,7 +222,7 @@ if __name__ == "__main__":
 | 404 | `model_not_found` | OpenRouter 找不到此模型 |
 | 429 | `rate_limited` | OpenRouter Key 短時間呼叫過於頻繁;建議指數退避重試 |
 <!-- | 429 | `internal_busy` | 本地模型排隊已超時(`data.retry_after_seconds`);依該秒數退避後重試 | -->
-| 502 | `openrouter_unavailable` | 上游 OpenRouter 暫時不可用,所有可用 Key 都失敗 |
+| 502 | `openrouter_unavailable` | OpenRouter 服務暫時不可用 |
 <!-- | 502 | `internal_unavailable` | 本地模型 server 暫時不可用,稍後再試 | -->
 <!-- | 500 | `provider_misconfigured` | 本地模型設定未完成,請聯絡管理員 | -->
 | 500 | `操作失敗` | 後端異常,請聯絡管理員並提供時間點 |

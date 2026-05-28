@@ -23,11 +23,11 @@ SDK 使用者透過 **SDK Key + User Token** 雙因子呼叫代理端點的完�
 | --- | --- | --- |
 | `X-SDK-Key` | 部門層級 · 存取金鑰 | 以部門為單位發放,代表「**哪個部門的程式在呼叫**」。由 admin 於後台「存取金鑰 / SDK Keys」建立,格式類似 `ordsk_xxxxxxxxxxxx_xxxx…`。 |
 | `X-User-Token` | 使用者層級 · 加密 payload | 以個別使用者為單位發放,代表「**哪個人在呼叫**」。由 admin 於「使用者管理」頁針對 role=user 的使用者產生,為加密字串、內含使用者識別與發行時間。 |
-| `X-Project-Id` | 專案層級 · UUID | 以部門底下的專案為單位發放(v1.5+),代表「**這次呼叫歸到哪個專案算用量**」。由 admin 於「專案管理」頁建立後給予,值為 project_uid(UUID)。同一把 SDK Key 可呼叫同部門任一專案。 |
+| `X-Project-Code` | 專案層級 · 代碼 | 以部門底下的專案為單位發放(v1.5+),代表「**這次呼叫歸到哪個專案算用量**」。值為「專案管理」頁面顯示的 `代碼`(由系統自動產生的數字字串,例如 `53299897503322112`)。同一把 SDK Key 可呼叫同部門任一專案。 |
 
-> ⚠ SDK Key 與 User Token 皆**只在建立時顯示一次**;Project ID 為 UUID 可重複查看,但仍應視為配置(請與 SDK Key 一起存放於受控環境)。遺失 SDK Key / User Token 只能請管理員重新發放(同時舊憑證會被撤銷)。
+> ⚠ SDK Key 與 User Token 皆**只在建立時顯示一次**;Project Code 在後台可隨時複製。遺失 SDK Key / User Token 只能請管理員重新發放(同時舊憑證會被撤銷)。
 >
-> ⚠ **三者必須屬於同一部門**:SDK Key、User Token 各自綁部門,Project ID 必須屬於 SDK Key 的部門;否則代理端會回 `401 unauthorized` 或 `400 project_invalid`。
+> ⚠ **三者必須屬於同一部門**:SDK Key、User Token 各自綁部門,Project Code 必須屬於 SDK Key 的部門;否則代理端會回 `401 unauthorized` 或 `400 project_invalid`。
 
 ---
 
@@ -53,10 +53,10 @@ POST https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat
 Content-Type: application/json
 X-SDK-Key: <SDK Key 明文>
 X-User-Token: <User Token 明文>
-X-Project-Id: <project_uid (UUID)>
+X-Project-Code: <專案代碼>
 ```
 
-- 三個 Header **皆必填**;缺 SDK Key / User Token 回 `401 unauthorized`,缺 X-Project-Id 回 `400 project_id_required`,Project 不屬該部門 / 已停用 回 `400 project_invalid`。
+- 三個 Header **皆必填**;缺 SDK Key / User Token 回 `401 unauthorized`,缺 X-Project-Code 回 `400 project_code_required`,Project 不屬該部門 / 已停用 回 `400 project_invalid`。
 - 請勿把憑證寫死於前端 / 公開 repo / 客戶端 App;只能存放在受控的後端或 CI Secret 環境變數。
 
 ---
@@ -99,9 +99,13 @@ GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/models
 }
 ```
 
+<!--
+本段「本地模型」目前停用,等實際導入企業內部模型再開啟。
 **本地模型(企業內部 server)**
 
 呼叫方式**完全相同**(同 endpoint、同 header),只是 `model` 字串改成管理員給你的本地模型 id(慣例 `internal/<name>`)。本地模型可能因排隊或速率限制延後執行,若收到 `429 internal_busy` 並帶 `data.retry_after_seconds`,請依該秒數退避後重試。
+-->
+
 
 ---
 
@@ -164,7 +168,7 @@ curl -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/
   -H 'Content-Type: application/json' \
   -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \
   -H 'X-User-Token: <admin 發放的 User Token>' \
-  -H 'X-Project-Id: 00000000-0000-0000-0000-000000000000' \
+  -H 'X-Project-Code: 53299897503322112' \
   -d '{
     "model": "openai/gpt-4o-mini",
     "text": "用一句話介紹台灣"
@@ -179,7 +183,7 @@ import httpx
 API_URL = "https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat"
 SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 USER_TOKEN = "<admin 發放的 User Token>"
-PROJECT_ID = "<admin 發放的 project_uid (UUID)>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
 
 def chat(model: str, text: str) -> dict:
     resp = httpx.post(
@@ -187,7 +191,7 @@ def chat(model: str, text: str) -> dict:
         headers={
             "X-SDK-Key": SDK_KEY,
             "X-User-Token": USER_TOKEN,
-            "X-Project-Id": PROJECT_ID,
+            "X-Project-Code": PROJECT_CODE,
             "Content-Type": "application/json",
         },
         json={"model": model, "text": text},
@@ -211,16 +215,16 @@ if __name__ == "__main__":
 | HTTP | detail | 說明 / 建議處理 |
 | --- | --- | --- |
 | 400 | `feature_not_supported` | 請求帶了不支援的欄位(目前 videos 暫不支援) |
-| 400 | `project_id_required` | 未帶 `X-Project-Id` header(v1.5+ 必填) |
-| 400 | `project_invalid` | `X-Project-Id` 對應專案不存在 / 已停用 / 不屬於 SDK Key 的部門 |
+| 400 | `project_code_required` | 未帶 `X-Project-Code` header(v1.5+ 必填) |
+| 400 | `project_invalid` | `X-Project-Code` 對應專案不存在 / 已停用 / 不屬於 SDK Key 的部門 |
 | 401 | `unauthorized` | SDK Key 或 User Token 無效 / 已被撤銷 / 兩者不屬同一部門 |
 | 403 | `model_forbidden` | 模型未在白名單,或已被 admin 停用 |
 | 404 | `model_not_found` | OpenRouter 找不到此模型 |
 | 429 | `rate_limited` | OpenRouter Key 短時間呼叫過於頻繁;建議指數退避重試 |
-| 429 | `internal_busy` | 本地模型排隊已超時(`data.retry_after_seconds`);依該秒數退避後重試 |
+<!-- | 429 | `internal_busy` | 本地模型排隊已超時(`data.retry_after_seconds`);依該秒數退避後重試 | -->
 | 502 | `openrouter_unavailable` | 上游 OpenRouter 暫時不可用,所有可用 Key 都失敗 |
-| 502 | `internal_unavailable` | 本地模型 server 暫時不可用,稍後再試 |
-| 500 | `provider_misconfigured` | 本地模型設定未完成,請聯絡管理員 |
+<!-- | 502 | `internal_unavailable` | 本地模型 server 暫時不可用,稍後再試 | -->
+<!-- | 500 | `provider_misconfigured` | 本地模型設定未完成,請聯絡管理員 | -->
 | 500 | `操作失敗` | 後端異常,請聯絡管理員並提供時間點 |
 
 ---

@@ -75,13 +75,14 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Cloud,
         adminOnly: true,
       },
-      {
-        href: "/internal-keys",
-        label: "Internal Keys",
-        subtitle: "地端 · OpenAI-compatible",
-        icon: Server,
-        adminOnly: true,
-      },
+      // 本地模型功能暫時停用 — 暫不顯示 Internal Keys 入口(待實際導入企業內部模型再開啟)
+      // {
+      //   href: "/internal-keys",
+      //   label: "Internal Keys",
+      //   subtitle: "地端 · OpenAI-compatible",
+      //   icon: Server,
+      //   adminOnly: true,
+      // },
     ],
   },
   {

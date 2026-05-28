@@ -27,7 +27,7 @@ async def resolve_sdk_caller(
     db: AsyncSession,
     sdk_key_raw: str,
     user_token_raw: str,
-    project_uid: UUID,
+    project_code: str,
 ) -> SdkCallerContext:
     from app.repositories.project import ProjectRepository
     from app.repositories.sdk_api_key import SdkApiKeyRepository
@@ -92,10 +92,10 @@ async def resolve_sdk_caller(
     if latest_rev is not None and issued_at < latest_rev.revoked_issued_at:
         raise _UNAUTHORIZED
 
-    # --- 5. X-Project-Id 必須屬於 SDK Key 的部門且仍啟用 ---
+    # --- 5. X-Project-Code 必須屬於 SDK Key 的部門且仍啟用 ---
     project_repo = ProjectRepository(db)
-    project = await project_repo.get_active_by_uid_and_dept(
-        project_uid, sdk_row.department_uid
+    project = await project_repo.get_active_by_code_and_dept(
+        project_code, sdk_row.department_uid
     )
     if project is None:
         raise AppError("project_invalid", code=400)

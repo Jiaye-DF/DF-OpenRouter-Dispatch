@@ -277,10 +277,10 @@ export default function ModelsAdminPage() {
     <>
       <PageTitle
         title="模型管理"
-        description="模型白名單 — OpenRouter 走「同步」自動拉取;本地模型走「手動新增」"
+        description="模型白名單 — OpenRouter 走「同步」自動拉取"
         actions={
           <div className="flex shrink-0 items-center gap-2">
-            {/* 暫時停用:本地模型功能尚未開放,先關閉新增入口(待整備後移除 disabled) */}
+            {/* 本地模型功能暫時停用 — 隱藏「新增本地模型」入口(待實際導入企業內部模型再開啟)
             <Button
               variant="outline"
               className="whitespace-nowrap"
@@ -291,6 +291,7 @@ export default function ModelsAdminPage() {
               <Plus className="h-4 w-4" />
               新增本地模型
             </Button>
+            */}
             <SyncButton
               endpoint={API_ENDPOINTS.syncModels}
               onSuccess={() => load()}

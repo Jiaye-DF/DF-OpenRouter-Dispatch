@@ -26,12 +26,12 @@ class ProjectRepository:
         )
         return (await self.db.execute(stmt)).scalar_one_or_none()
 
-    async def get_active_by_uid_and_dept(
-        self, project_uid: UUID, department_uid: UUID
+    async def get_active_by_code_and_dept(
+        self, code: str, department_uid: UUID
     ) -> Project | None:
-        """供 SDK 代理鏈驗證 X-Project-Id 必須屬於該部門且仍啟用。"""
+        """供 SDK 代理鏈驗證 X-Project-Id(以 code 帶入)必須屬於該部門且仍啟用。"""
         stmt = select(Project).where(
-            Project.project_uid == project_uid,
+            func.lower(Project.code) == code.lower(),
             Project.department_uid == department_uid,
             Project.is_active.is_(True),
             Project.is_deleted.is_(False),

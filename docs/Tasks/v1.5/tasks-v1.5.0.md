@@ -3,7 +3,7 @@
 ## 版本資訊
 
 - 前置依賴:v1.4.0(部署與 UX 維護修正集);v1.3.0 SSO 整合
-- 本版本範圍:`X-Project-Id` 串入代理鏈、`usage_logs.project_uid` 寫入、儀表板部門/專案/使用者三層篩選 + 依專案 / 依使用者彙總
+- 本版本範圍:`X-Project-Code` 串入代理鏈、`usage_logs.project_uid` 寫入、儀表板部門/專案/使用者三層篩選 + 依專案 / 依使用者彙總
 - 對齊的 Design-Base 章節:
   - [20-backend.md § 1 統一 Response 格式](../../Design-Base/20-backend.md#1-統一-response-格式)
   - [30-database.md § 5 Migration](../../Design-Base/30-database.md#5-migration)
@@ -44,11 +44,10 @@
 #### Auth(代理鏈)
 
 - [x] `app/core/deps.py:require_sdk_caller` 解析 `x-project-id` header:
-  - 缺 → `AppError("project_id_required", 400)`
-  - UUID 格式錯 → `AppError("project_invalid", 400)`
-- [x] `app/core/sdk_auth.py:resolve_sdk_caller` 新增 `project_uid: UUID` 參數;
-  - 在既有部門 / user 驗證後,呼叫 `ProjectRepository.get_active_by_uid_and_dept(project_uid, sdk_row.department_uid)`,失敗 → `AppError("project_invalid", 400)`
-  - 將 `project.project_uid` / `project.code` 寫入回傳的 `SdkCallerContext`
+  - 缺 → `AppError("project_code_required", 400)`
+- [x] `app/core/sdk_auth.py:resolve_sdk_caller` 新增 `project_code: str` 參數;
+  - 在既有部門 / user 驗證後,呼叫 `ProjectRepository.get_active_by_code_and_dept(project_code, sdk_row.department_uid)`,失敗(不存在 / 不屬同部門 / 已停用) → `AppError("project_invalid", 400)`
+  - 將 `project.project_uid` / `project.code` 寫入回傳的 `SdkCallerContext`(SdkCallerContext 仍以 UUID 為內部識別,供 usage_log 寫入)
 
 #### Service(代理)
 
@@ -72,7 +71,7 @@
 
 #### 文件
 
-- [x] `docs/INTEGRATION.md`:§ 2 加 X-Project-Id 列;§ 4 範例加 header + 錯誤碼說明;§ 7 curl/Python 範例加 header;§ 8 加 `project_id_required` / `project_invalid` 兩列
+- [x] `docs/INTEGRATION.md`:§ 2 加 X-Project-Code 列;§ 4 範例加 header + 錯誤碼說明;§ 7 curl/Python 範例加 header;§ 8 加 `project_code_required` / `project_invalid` 兩列
 
 ### Frontend
 
@@ -84,7 +83,7 @@
   - `StatsByDepartment` 加 `department_code: string | null`
   - `StatsByModel` 加 `total_requests` / `prompt_tokens` / `completion_tokens`(可選)
 - [x] `frontend/src/lib/api/endpoints.ts` 加 `usersDropdown` / `statsByProject` / `statsByUser`
-- [x] `frontend/src/lib/api/error-map.ts` 加 `project_id_required` / `project_invalid` 中文化
+- [x] `frontend/src/lib/api/error-map.ts` 加 `project_code_required` / `project_invalid` 中文化
 
 #### 元件
 
@@ -107,10 +106,10 @@
 - [x] `frontend/src/app/(main)/user-guide/page.tsx`:
   - PageTitle description 改為「SDK Key + User Token + Project ID」
   - 概述 / 憑證 section:三組憑證描述
-  - 憑證 grid 從 2-column 改 3-column,加 X-Project-Id 卡片
-  - HTTP 端點 CodeBlock 加 X-Project-Id 行;說明列表更新為「三個 Header 必填」與對應錯誤碼
-  - CURL / Python 範例加 X-Project-Id header / PROJECT_ID 變數
-  - `ERRORS` 陣列加 `project_id_required` / `project_invalid` 兩條
+  - 憑證 grid 從 2-column 改 3-column,加 X-Project-Code 卡片
+  - HTTP 端點 CodeBlock 加 X-Project-Code 行;說明列表更新為「三個 Header 必填」與對應錯誤碼
+  - CURL / Python 範例加 X-Project-Code header / PROJECT_CODE 變數
+  - `ERRORS` 陣列加 `project_code_required` / `project_invalid` 兩條
 
 ### 補齊歷史文件
 
@@ -125,7 +124,7 @@
 - [ ] E2E:
   - admin 建立部門 A → 部門 A 下建專案 P1, P2 → 建使用者 U1(屬 A)→ 建 SDK Key K1 → 產生 U1 的 User Token T1
   - curl 帶 3 個 header(K1 + T1 + P1.uuid)POST `/api/v1/model/chat` → 預期 200;`usage_logs` 該筆 `project_uid = P1`
-  - curl 不帶 `X-Project-Id` → 預期 400 `project_id_required`
+  - curl 不帶 `X-Project-Code` → 預期 400 `project_code_required`
   - curl 帶 P1.uuid 但 SDK Key 屬於部門 B → 預期 400 `project_invalid`
 - [ ] Dashboard(admin):三個篩選下拉皆可用,選了部門後 project/user 下拉限縮
 - [ ] Dashboard(non-admin):部門固定為 badge,project/user 下拉只見自己部門

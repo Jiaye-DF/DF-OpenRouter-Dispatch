@@ -111,7 +111,7 @@ const CURL_EXAMPLE = `curl -X POST '${CHAT_URL}' \\
   -H 'Content-Type: application/json' \\
   -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \\
   -H 'X-User-Token: <admin 發放的 User Token>' \\
-  -H 'X-Project-Id: 00000000-0000-0000-0000-000000000000' \\
+  -H 'X-Project-Code: 53299897503322112' \\
   -d '{
     "model": "openai/gpt-4o-mini",
     "text": "用一句話介紹台灣"
@@ -122,7 +122,7 @@ const PYTHON_EXAMPLE = `import httpx
 API_URL = "${CHAT_URL}"
 SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 USER_TOKEN = "<admin 發放的 User Token>"
-PROJECT_ID = "<admin 發放的 project_uid (UUID)>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
 
 def chat(model: str, text: str) -> dict:
     resp = httpx.post(
@@ -130,7 +130,7 @@ def chat(model: str, text: str) -> dict:
         headers={
             "X-SDK-Key": SDK_KEY,
             "X-User-Token": USER_TOKEN,
-            "X-Project-Id": PROJECT_ID,
+            "X-Project-Code": PROJECT_CODE,
             "Content-Type": "application/json",
         },
         json={"model": model, "text": text},
@@ -194,16 +194,16 @@ interface ErrorRow {
 
 const ERRORS: ErrorRow[] = [
   { status: 400, code: "feature_not_supported", desc: "請求帶了不支援的欄位(目前 videos 暫不支援)" },
-  { status: 400, code: "project_id_required", desc: "未帶 X-Project-Id header(v1.5+ 必填)" },
-  { status: 400, code: "project_invalid", desc: "X-Project-Id 對應專案不存在 / 已停用 / 不屬於 SDK Key 的部門" },
+  { status: 400, code: "project_code_required", desc: "未帶 X-Project-Code header(v1.5+ 必填)" },
+  { status: 400, code: "project_invalid", desc: "X-Project-Code 對應專案不存在 / 已停用 / 不屬於 SDK Key 的部門" },
   { status: 401, code: "unauthorized", desc: "SDK Key 或 User Token 無效 / 已被撤銷 / 兩者不屬同一部門" },
   { status: 403, code: "model_forbidden", desc: "模型未在白名單,或已被 admin 停用" },
   { status: 404, code: "model_not_found", desc: "OpenRouter 找不到此模型" },
   { status: 429, code: "rate_limited", desc: "OpenRouter Key 短時間呼叫過於頻繁;建議指數退避重試" },
-  { status: 429, code: "internal_busy", desc: "本地模型排隊已超時(data.retry_after_seconds);依該秒數退避後重試" },
+  // { status: 429, code: "internal_busy", desc: "本地模型排隊已超時(data.retry_after_seconds);依該秒數退避後重試" },
   { status: 502, code: "openrouter_unavailable", desc: "上游 OpenRouter 暫時不可用,所有可用 Key 都失敗" },
-  { status: 502, code: "internal_unavailable", desc: "本地模型 server 暫時不可用,稍後再試" },
-  { status: 500, code: "provider_misconfigured", desc: "本地模型設定未完成,請聯絡管理員" },
+  // { status: 502, code: "internal_unavailable", desc: "本地模型 server 暫時不可用,稍後再試" },
+  // { status: 500, code: "provider_misconfigured", desc: "本地模型設定未完成,請聯絡管理員" },
   { status: 500, code: "操作失敗", desc: "後端異常,請聯絡管理員並提供時間點" },
 ];
 
@@ -212,7 +212,7 @@ export default function UserGuidePage() {
     <>
       <PageTitle
         title="使用者使用說明"
-        description="SDK 使用者透過 SDK Key + User Token + Project ID 呼叫代理端點的完整說明"
+        description="SDK 使用者透過 SDK Key + User Token + Project Code 呼叫代理端點的完整說明"
       />
 
       <div className="flex flex-col gap-8 max-w-4xl">
@@ -222,7 +222,7 @@ export default function UserGuidePage() {
             使用者<strong>不需要</strong>登入此網站,只需要拿到管理員發放的三組憑證,即可在自己的程式碼或工具裡呼叫代理端點。
           </p>
           <p className="text-muted-foreground">
-            管理員(admin)透過本網站集中發放與管理憑證、模型白名單與部門金鑰;一般使用者只接觸下面提到的「SDK Key + User Token + Project ID」三因子組合。
+            管理員(admin)透過本網站集中發放與管理憑證、模型白名單與部門金鑰;一般使用者只接觸下面提到的「SDK Key + User Token + Project Code」三因子組合。
           </p>
         </Section>
 
@@ -253,12 +253,12 @@ export default function UserGuidePage() {
             </div>
             <div className="rounded-xl border border-border p-4">
               <div className="flex items-center gap-2 mb-2">
-                <Badge>X-Project-Id</Badge>
+                <Badge>X-Project-Code</Badge>
               </div>
-              <p className="text-xs text-muted-foreground mb-1">專案層級 · UUID</p>
+              <p className="text-xs text-muted-foreground mb-1">專案層級 · 代碼</p>
               <p className="text-sm">
                 以部門下的專案為單位發放,代表「<strong>這次呼叫歸到哪個專案算用量</strong>」。
-                由 admin 於「專案管理」頁建立後給予,值為 <code className="font-mono text-xs">project_uid</code>(UUID)。
+                值為「專案管理」頁顯示的 <code className="font-mono text-xs">代碼</code>欄(系統自動產生的數字字串)。
                 同把 SDK Key 可呼叫同部門任一專案。
               </p>
             </div>
@@ -298,9 +298,9 @@ export default function UserGuidePage() {
             </Table>
           </div>
           <p>所有呼叫皆透過下面這支端點:</p>
-          <CodeBlock language="HTTP" code={`POST ${CHAT_URL}\nContent-Type: application/json\nX-SDK-Key: <SDK Key 明文>\nX-User-Token: <User Token 明文>\nX-Project-Id: <project_uid (UUID)>`} />
+          <CodeBlock language="HTTP" code={`POST ${CHAT_URL}\nContent-Type: application/json\nX-SDK-Key: <SDK Key 明文>\nX-User-Token: <User Token 明文>\nX-Project-Code: <專案代碼>`} />
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>三個 Header <strong>皆必填</strong>;缺 SDK Key / User Token 回 <code>401 unauthorized</code>,缺 X-Project-Id 回 <code>400 project_id_required</code>,Project 不屬該部門 / 已停用 回 <code>400 project_invalid</code>。</li>
+            <li>三個 Header <strong>皆必填</strong>;缺 SDK Key / User Token 回 <code>401 unauthorized</code>,缺 X-Project-Code 回 <code>400 project_code_required</code>,Project 不屬該部門 / 已停用 回 <code>400 project_invalid</code>。</li>
             <li>請勿把憑證寫死於前端 / 公開 repo / 客戶端 App;只能存放在受控的後端或 CI Secret 環境變數。</li>
           </ul>
         </Section>
@@ -380,12 +380,14 @@ export default function UserGuidePage() {
 
           <p className="font-medium mt-2">含圖片的 Request 範例:</p>
           <CodeBlock language="JSON" code={IMAGE_EXAMPLE} />
+          {/* 本地模型區塊暫時隱藏(待實際導入企業內部模型再開啟)
           <div className="mt-4 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 text-sm">
             <p className="font-medium text-purple-700 mb-1">本地模型(企業內部 server)</p>
             <p className="text-muted-foreground">
               呼叫方式<strong>完全相同</strong>(同 endpoint、同 header),只是 <code>model</code> 字串改成管理員給你的本地模型 id(慣例 <code>internal/&lt;name&gt;</code>)。本地模型可能因排隊或速率限制延後執行,若收到 <code>429 internal_busy</code> 並帶 <code>data.retry_after_seconds</code>,請依該秒數退避後重試。
             </p>
           </div>
+          */}
         </Section>
 
         <Section id="response" title="Response 格式">

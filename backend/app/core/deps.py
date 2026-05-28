@@ -100,16 +100,10 @@ async def require_sdk_caller(
     user_token = request.headers.get("x-user-token")
     if not sdk_key or not user_token:
         raise AppError("unauthorized", code=401)
-    project_id_raw = request.headers.get("x-project-id")
-    if not project_id_raw:
-        raise AppError("project_id_required", code=400)
-    try:
-        from uuid import UUID
-
-        project_uid = UUID(project_id_raw)
-    except (TypeError, ValueError) as exc:
-        raise AppError("project_invalid", code=400) from exc
-    return await resolve_sdk_caller(db, sdk_key, user_token, project_uid)
+    project_code = request.headers.get("x-project-code")
+    if not project_code:
+        raise AppError("project_code_required", code=400)
+    return await resolve_sdk_caller(db, sdk_key, user_token, project_code.strip())
 
 
 UserDep = Annotated[Actor, Depends(require_user)]

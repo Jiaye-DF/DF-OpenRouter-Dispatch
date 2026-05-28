@@ -28,7 +28,7 @@
 
 **後端認證(代理鏈)**:
 - `SdkCallerContext` 加 `project_uid` / `project_code` 欄位
-- `require_sdk_caller` 解析 `X-Project-Id` header;缺 → `400 project_id_required`,格式錯 → `400 project_invalid`
+- `require_sdk_caller` 解析 `X-Project-Code` header;缺 → `400 project_code_required`;對應專案不存在 / 不屬同部門 / 已停用 → `400 project_invalid`(header 值為「專案管理」頁顯示的代碼字串,非 UUID)
 - `resolve_sdk_caller` 在既有 SDK Key + User Token + 部門一致性檢查之後追加 project ownership 驗證(必須屬於 SDK Key 的部門、`is_active=TRUE`、`is_deleted=FALSE`),否則 → `400 project_invalid`
 - `ProjectRepository.get_active_by_uid_and_dept(project_uid, dept_uid)` 新查詢方法
 
@@ -52,7 +52,7 @@
 **前端**:
 - `types/api.ts` 加 `StatsByProject` / `StatsByUser` / `UserDropdownItem`;`UsageLog` / `StatsByDepartment` 補對應欄位
 - `lib/api/endpoints.ts` 加 `statsByProject` / `statsByUser` / `usersDropdown`
-- `lib/api/error-map.ts` 加 `project_id_required` / `project_invalid` 中文化
+- `lib/api/error-map.ts` 加 `project_code_required` / `project_invalid` 中文化
 - 新元件:
   - `components/feature/stats/ByProjectBar.tsx`(抄 DeptTokensBar)
   - `components/feature/stats/ByUserBar.tsx`(抄 DeptTokensBar)
@@ -60,7 +60,7 @@
 - `app/(main)/dashboard/page.tsx` 重寫:加 filters state、6 個 stats 呼叫都帶上 filters、新增 ByProjectBar / ByUserBar 行
 
 **文件**:
-- `docs/INTEGRATION.md` § 2 / § 4 / § 7 / § 8 同步加 `X-Project-Id` header 與 2 個新錯誤碼
+- `docs/INTEGRATION.md` § 2 / § 4 / § 7 / § 8 同步加 `X-Project-Code` header 與 2 個新錯誤碼
 - `frontend user-guide page`:憑證 grid 改 3 columns、HTTP 範例 / curl / Python 加 header、錯誤碼表加新條目
 - 補寫 `docs/Tasks/v1.3/propose-v1.3.0.md` 與 `docs/Tasks/v1.4/propose-v1.4.0.md`(原版本未撰寫,本次一併追溯)
 
@@ -80,8 +80,8 @@
 SDK ─POST /api/v1/model/chat──────────▶ chat handler
                                          │  (require_sdk_caller)
                                          │
-                                         │ 1. 解析 X-SDK-Key / X-User-Token / X-Project-Id
-                                         │    缺任一 → 401 / 400 project_id_required
+                                         │ 1. 解析 X-SDK-Key / X-User-Token / X-Project-Code
+                                         │    缺任一 → 401 / 400 project_code_required
                                          │ 2. 驗證 SDK Key 有效、User Token 解密 + dept 一致
                                          │ 3. 驗證 project_uid 屬於 SDK Key 的部門 + is_active
                                          │    失敗 → 400 project_invalid

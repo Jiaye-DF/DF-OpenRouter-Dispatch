@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { KeyRound, Plus, ShieldOff, Ticket } from "lucide-react";
+import { KeyRound, Pencil, Plus, ShieldOff, Ticket } from "lucide-react";
 import { PageTitle } from "@/components/common/PageTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,21 +28,19 @@ import type { Department, Paginated, User } from "@/types/api";
 import { useAppSelector } from "@/store/hooks";
 
 // 僅 admin 可見：使用者管理
-// admin / user 在 SDK 身分識別上等價;唯一差別:admin 可登入平台、可重設密碼。
-// 因此建立時統一收集 部門 / 員工編號 / Email(供產 Token 用);admin 另需 account + password。
+// 設計:所有後台建立的使用者一律走 SSO 登入(以 Email 對應);
+// account/password 由後端自動產生且無人知曉,僅 Seed 出來的初始 admin 保有帳密登入作為緊急備援。
+// admin / user 在 SDK 身分識別上等價,差別只在能否登入後台。
 
 const EMAIL_SUFFIXES = ["@df-recycle.com", "@df-recycle.com.tw"] as const;
 type EmailSuffix = (typeof EMAIL_SUFFIXES)[number];
 const EMAIL_LOCAL_RE = /^[A-Za-z0-9._%+-]+$/;
-const ACCOUNT_RE = /^[A-Za-z0-9._-]+$/;
 
 type UserRole = "admin" | "user";
 
 interface CreateForm {
   role: UserRole;
   username: string;
-  account: string;
-  password: string;
   department_uid: string;
   employee_id: string;
   email: string;
@@ -52,16 +50,32 @@ interface CreateForm {
 const EMPTY_CREATE: CreateForm = {
   role: "user",
   username: "",
-  account: "",
-  password: "",
   department_uid: "",
   employee_id: "",
   email: "",
   email_suffix: EMAIL_SUFFIXES[0],
 };
 
+interface EditForm {
+  username: string;
+  department_uid: string;
+  employee_id: string;
+  email: string;
+  email_suffix: EmailSuffix;
+}
+
+function splitEmail(full: string | null): { local: string; suffix: EmailSuffix } {
+  if (!full) return { local: "", suffix: EMAIL_SUFFIXES[0] };
+  for (const s of EMAIL_SUFFIXES) {
+    if (full.endsWith(s)) return { local: full.slice(0, -s.length), suffix: s };
+  }
+  // 不在預設網域內:整段塞入 local、suffix 留預設,送出時會被覆蓋為預設網域。
+  return { local: full, suffix: EMAIL_SUFFIXES[0] };
+}
+
 type Mode =
   | { kind: "create" }
+  | { kind: "edit"; user: User }
   | { kind: "reset"; user: User }
   | { kind: "token"; user: User }
   | null;
@@ -81,6 +95,7 @@ export default function UsersPage() {
   const [mode, setMode] = React.useState<Mode>(null);
   const [saving, setSaving] = React.useState(false);
   const [createForm, setCreateForm] = React.useState<CreateForm>(EMPTY_CREATE);
+  const [editForm, setEditForm] = React.useState<EditForm | null>(null);
   const [resetPwd, setResetPwd] = React.useState("");
 
   const [revealOpen, setRevealOpen] = React.useState(false);
@@ -145,33 +160,6 @@ export default function UsersPage() {
       });
       return;
     }
-    if (f.role === "admin") {
-      const acc = f.account.trim();
-      if (acc.length < 4) {
-        showDialog({
-          type: "warning",
-          title: "欄位未填",
-          message: "請輸入登入帳號(至少 4 字元)",
-        });
-        return;
-      }
-      if (!ACCOUNT_RE.test(acc)) {
-        showDialog({
-          type: "warning",
-          title: "帳號格式錯誤",
-          message: "帳號僅能包含英數字與 . _ -",
-        });
-        return;
-      }
-      if (f.password.length < 10) {
-        showDialog({
-          type: "warning",
-          title: "密碼太短",
-          message: "管理員密碼至少 10 字元",
-        });
-        return;
-      }
-    }
     if (!f.department_uid) {
       showDialog({
         type: "warning",
@@ -207,10 +195,6 @@ export default function UsersPage() {
         email: `${emailLocal}${f.email_suffix}`,
       };
       if (empId) payload.employee_id = empId;
-      if (f.role === "admin") {
-        payload.account = f.account.trim();
-        payload.password = f.password;
-      }
       await apiClient.post(API_ENDPOINTS.users, payload);
       setMode(null);
       setCreateForm(EMPTY_CREATE);
@@ -221,6 +205,92 @@ export default function UsersPage() {
         showDialog({
           type: "error",
           title: "建立失敗",
+          message: err.localizedDetail,
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEdit = (u: User) => {
+    const { local, suffix } = splitEmail(u.email);
+    setEditForm({
+      username: u.username,
+      department_uid: u.department_uid ?? "",
+      employee_id: u.employee_id ?? "",
+      email: local,
+      email_suffix: suffix,
+    });
+    setMode({ kind: "edit", user: u });
+  };
+
+  const onEdit = async () => {
+    if (mode?.kind !== "edit" || !editForm) return;
+    const f = editForm;
+    if (!f.username.trim()) {
+      showDialog({
+        type: "warning",
+        title: "欄位未填",
+        message: "請輸入姓名",
+      });
+      return;
+    }
+    if (!f.department_uid) {
+      showDialog({
+        type: "warning",
+        title: "欄位未填",
+        message: "請選擇部門",
+      });
+      return;
+    }
+    const emailLocal = f.email.trim();
+    if (!emailLocal) {
+      showDialog({
+        type: "warning",
+        title: "欄位未填",
+        message: "請輸入 Email 前綴",
+      });
+      return;
+    }
+    if (!EMAIL_LOCAL_RE.test(emailLocal)) {
+      showDialog({
+        type: "warning",
+        title: "Email 格式錯誤",
+        message: "前綴僅能包含英數字與 . _ % + -",
+      });
+      return;
+    }
+    setSaving(true);
+    try {
+      const empId = f.employee_id.trim();
+      const payload: Record<string, unknown> = {
+        username: f.username.trim(),
+        department_uid: f.department_uid,
+        email: `${emailLocal}${f.email_suffix}`,
+        employee_id: empId || null,
+      };
+      const res = await apiClient.patch<{ tokens_revoked?: boolean }>(
+        API_ENDPOINTS.userById(mode.user.user_uid),
+        payload
+      );
+      const revoked = !!res?.tokens_revoked;
+      setMode(null);
+      setEditForm(null);
+      await load();
+      if (revoked) {
+        showDialog({
+          type: "info",
+          title: "已撤銷既有 Token",
+          message:
+            "因姓名 / 員工編號 / Email / 部門有變更,該使用者既有 User Token 已自動失效,請重新產生並交付。",
+        });
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showDialog({
+          type: "error",
+          title: "更新失敗",
           message: err.localizedDetail,
         });
       }
@@ -367,6 +437,15 @@ export default function UsersPage() {
                   <TR key={u.user_uid}>
                     <TD>
                       <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="編輯"
+                          title="編輯使用者資料"
+                          onClick={() => openEdit(u)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                         {u.role === "admin" && (
                           <Button
                             variant="ghost"
@@ -482,8 +561,8 @@ export default function UsersPage() {
             </FormField>
             <p className="text-sm text-muted-foreground">
               {createForm.role === "admin"
-                ? "管理員可登入平台、亦可產生 User Token 作為 SDK 呼叫身分。"
-                : "一般使用者僅作為 SDK 呼叫的身分識別,無法登入平台。"}
+                ? "管理員以 DF-SSO 登入後台(Email 須與 SSO 一致),亦可產生 User Token 作為 SDK 呼叫身分。"
+                : "一般使用者僅作為 SDK 呼叫的身分識別,無法登入後台。"}
             </p>
             <FormField label="姓名">
               <Input
@@ -494,29 +573,6 @@ export default function UsersPage() {
                 placeholder="顯示用姓名"
               />
             </FormField>
-            {createForm.role === "admin" && (
-              <>
-                <FormField label="登入帳號">
-                  <Input
-                    value={createForm.account}
-                    onChange={(e) =>
-                      setCreateForm({ ...createForm, account: e.target.value })
-                    }
-                    placeholder="僅英數字與 . _ -,至少 4 字元"
-                  />
-                </FormField>
-                <FormField label="登入密碼(至少 10 字元)">
-                  <Input
-                    type="text"
-                    value={createForm.password}
-                    onChange={(e) =>
-                      setCreateForm({ ...createForm, password: e.target.value })
-                    }
-                    placeholder="建立後可由管理員重設"
-                  />
-                </FormField>
-              </>
-            )}
             <FormField label="部門">
               <select
                 value={createForm.department_uid}
@@ -585,6 +641,112 @@ export default function UsersPage() {
             </Button>
             <LoadingButton onClick={onCreate} loading={saving}>
               建立
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 編輯使用者 */}
+      <Dialog
+        open={mode?.kind === "edit"}
+        onOpenChange={(o) => {
+          if (!o) {
+            setMode(null);
+            setEditForm(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              編輯使用者 · {mode?.kind === "edit" ? mode.user.username : ""}
+            </DialogTitle>
+          </DialogHeader>
+          {editForm && (
+            <div className="flex flex-col gap-3 pt-4">
+              <p className="text-sm text-muted-foreground">
+                修改姓名 / 員工編號 / Email / 部門後,該使用者既有 User Token 會被自動撤銷,需重新產生並交付。
+              </p>
+              <FormField label="姓名">
+                <Input
+                  value={editForm.username}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, username: e.target.value })
+                  }
+                />
+              </FormField>
+              <FormField label="部門">
+                <select
+                  value={editForm.department_uid}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      department_uid: e.target.value,
+                    })
+                  }
+                  className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
+                >
+                  <option value="">（請選擇）</option>
+                  {depts.map((d) => (
+                    <option key={d.department_uid} value={d.department_uid}>
+                      {d.name}（{d.code}）
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label="員工編號（選填）">
+                <Input
+                  value={editForm.employee_id}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, employee_id: e.target.value })
+                  }
+                  placeholder="無正式編號可留空"
+                />
+              </FormField>
+              <FormField label="Email">
+                <div className="flex items-stretch rounded-xl border border-border bg-background overflow-hidden focus-within:ring-2 focus-within:ring-ring">
+                  <input
+                    value={editForm.email}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, email: e.target.value })
+                    }
+                    placeholder="員工帳號前綴"
+                    className="h-10 flex-1 min-w-0 bg-transparent px-3 text-sm outline-none"
+                  />
+                  <select
+                    value={editForm.email_suffix}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        email_suffix: e.target.value as EmailSuffix,
+                      })
+                    }
+                    aria-label="Email 網域"
+                    className="h-10 px-3 text-sm text-muted-foreground bg-muted/40 border-l border-border outline-none hover:cursor-pointer focus:text-foreground"
+                  >
+                    {EMAIL_SUFFIXES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </FormField>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setMode(null);
+                setEditForm(null);
+              }}
+              disabled={saving}
+            >
+              取消
+            </Button>
+            <LoadingButton onClick={onEdit} loading={saving}>
+              儲存
             </LoadingButton>
           </DialogFooter>
         </DialogContent>

@@ -199,16 +199,8 @@ export default function InternalKeysPage() {
         }
       />
       <PageHint title="這把 Key 是做什麼用的?">
-        <p>
-          <strong>方向</strong>:本平台 → 地端 OpenAI-compatible server
-          (vLLM / Ollama / TGI / LiteLLM 等)。每把 Key 代表「<strong>一台地端機器的連線設定</strong>」
-          (base_url + 可選 api_key + 該機器的速率限制)。
-        </p>
-        <p className="text-muted-foreground text-xs mt-1">
-          <strong>與 OpenRouter Keys 兩個差異</strong>:
-          (1) <strong>全平台共用</strong>,不綁部門;
-          (2) 撞速率限制時除 failover 外還會等待至 timeout,因為地端 server 是稀缺資源。
-        </p>
+        地端 OpenAI-compatible server(vLLM / Ollama 等)的連線設定。
+        全平台共用、不綁部門;撞速率會等待至 timeout(地端 server 為稀缺資源)。
       </PageHint>
       <Card>
         <CardContent className="pt-6">

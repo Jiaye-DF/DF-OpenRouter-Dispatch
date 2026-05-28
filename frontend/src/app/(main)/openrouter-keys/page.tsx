@@ -220,15 +220,8 @@ export default function OpenRouterKeysPage() {
         }
       />
       <PageHint title="這把 Key 是做什麼用的?">
-        <p>
-          <strong>方向</strong>:本平台 → OpenRouter(雲端付費 API)。每把 Key 綁
-          <strong>部門</strong>;代理呼叫時自該部門的啟用 Key 中隨機挑選,撞速率限制
-          自動換下一把(failover)。
-        </p>
-        <p className="text-muted-foreground text-xs mt-1">
-          與「Internal Keys(地端模型)」、「SDK Keys(對內接受 SDK 呼叫)」是不同概念。
-          餘額由「模型管理 · 同步」自動更新。
-        </p>
+        本平台 → OpenRouter 的雲端 Key,綁部門;撞速率自動 failover 換下一把。
+        餘額由「模型管理 · 同步」自動更新。
       </PageHint>
       <Card>
         <CardContent className="pt-6">

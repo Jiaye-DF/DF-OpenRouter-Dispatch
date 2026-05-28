@@ -301,16 +301,9 @@ export default function UsersPage() {
         }
       />
       <PageHint title="User Token 怎麼用?">
-        <p>
-          User Token 是配合 <strong>SDK Key</strong> 雙因子認證的另一半,代表「
-          <strong>哪一位使用者</strong>在呼叫」,呼叫代理端點時放入 <code className="text-xs font-mono">X-User-Token</code> header。
-        </p>
-        <p className="text-muted-foreground text-xs mt-1">
-          <strong>產生</strong>:點列右側 <Ticket className="inline h-3 w-3 mx-0.5" /> 圖示
-          → Dialog 一次性顯示明文 → 請<strong>立即複製</strong>並以安全管道交付使用者。
-          <strong>撤銷</strong>:點 <ShieldOff className="inline h-3 w-3 mx-0.5 text-destructive" /> 圖示
-          → 該使用者名下<strong>所有現存 token 立即失效</strong>(非單張),通常用於外洩處置。
-        </p>
+        代表「<strong>哪一位使用者在呼叫</strong>」,放入 <code className="text-xs font-mono">X-User-Token</code>。
+        <Ticket className="inline h-3 w-3 mx-1" />產生:明文僅顯示一次。
+        <ShieldOff className="inline h-3 w-3 mx-1 text-destructive" />撤銷:該人名下<strong>所有現存 token 立即失效</strong>。
       </PageHint>
       <Card>
         <CardContent className="pt-6">

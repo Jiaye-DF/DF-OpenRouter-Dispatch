@@ -271,6 +271,14 @@ export interface ModelTierPatch {
   auto_match_max_price_per_mtok?: string | null;
 }
 
+// Sync 白名單(v1.5)
+export interface AllowedModel {
+  allowed_model_uid: string;
+  model_key: string;
+  note: string | null;
+  is_active: boolean;
+}
+
 // 結構化錯誤 data 酬載
 export interface SyncThrottledData {
   retry_after_seconds: number;

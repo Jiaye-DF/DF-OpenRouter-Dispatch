@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    allowed_models,
     auth,
     departments,
     health,
@@ -30,6 +31,7 @@ api_v1_router.include_router(model_chat.router)             # canonical: /model/
 api_v1_router.include_router(model_chat.deprecated_router)  # alias: /model/openrouter/chat
 api_v1_router.include_router(models.router)
 api_v1_router.include_router(models.allowed_router)  # 公開精簡清單: /allowed/models
+api_v1_router.include_router(allowed_models.router)
 api_v1_router.include_router(model_tiers.router)
 api_v1_router.include_router(usage_logs.router)
 api_v1_router.include_router(stats.router)

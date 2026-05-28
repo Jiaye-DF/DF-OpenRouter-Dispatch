@@ -1,4 +1,5 @@
 import secrets
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Query
@@ -10,7 +11,9 @@ from app.core.exceptions import AppError
 from app.core.response import success_response
 from app.core.security import hash_password
 from app.models.user import User
+from app.models.user_token_revocation import UserTokenRevocation
 from app.repositories.user import UserRepository
+from app.repositories.user_token_revocation import UserTokenRevocationRepository
 from app.schemas.common import Page
 from app.schemas.user import (
     UserCreateRequest,
@@ -20,11 +23,10 @@ from app.schemas.user import (
     UserUpdateRequest,
 )
 from app.services import auth as auth_service
-from app.services.password_policy import validate_password
 
 
 def _gen_internal_account() -> str:
-    """為 role=user 的內部使用者產生不可登入的合成帳號。"""
+    """後台建立的使用者一律走 SSO 登入,以隨機合成帳號 + 隨機長密碼擋下任何帳密登入嘗試。"""
     return f"usr_{secrets.token_hex(12)}"
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -75,21 +77,13 @@ async def create_user(
 ):
     repo = UserRepository(db)
 
-    # admin 需明確指定 account/password；user 由後端自動產生（不可登入）
-    if body.role == "admin":
-        if not body.account or not body.password:
-            raise AppError("admin_requires_credentials", code=400)
-        validate_password(body.password)
-        account = body.account
-        password_hash = hash_password(body.password)
-    else:
-        # role=user 為 SDK 代理身分;Email 為 User Token payload 必要欄位,
-        # 員工編號為選填(部分使用者可能無正式編號;產 Token 時以空字串補位)。
-        if not body.email:
-            raise AppError("user_requires_identity", code=400)
-        account = _gen_internal_account()
-        # 隨機長密碼 hash；無人知道，確保 role=user 無法以密碼登入
-        password_hash = hash_password(secrets.token_urlsafe(32))
+    # 後台建立的使用者一律走 SSO 登入(以 Email 對應);account/password 由後端自動產生且無人知曉,
+    # 確保僅 Seed 出來的初始 admin 保有帳密登入作為緊急備援。Email 是必要欄位:
+    # admin 用於 SSO 對應、user 用於 SDK 代理身分。
+    if not body.email:
+        raise AppError("user_requires_identity", code=400)
+    account = _gen_internal_account()
+    password_hash = hash_password(secrets.token_urlsafe(32))
 
     existing = await repo.get_by_account(account)
     if existing is not None:
@@ -146,10 +140,31 @@ async def update_user(
     user = await repo.get_by_uid(user_uid)
     if user is None:
         raise AppError("not_found", code=404)
+    # 修改任一寫入 User Token payload 的欄位(employee_id/email)、影響 token 驗證的 department_uid,
+    # 或顯示用 username,皆自動撤銷該使用者既有 User Token,避免下發資料與當前實際身分不一致。
+    snapshot = (user.username, user.employee_id, user.email, user.department_uid)
     fields = body.model_dump(exclude_unset=True)
     for k, v in fields.items():
         setattr(user, k, v)
     await db.flush()
+    tokens_revoked = False
+    if (
+        snapshot
+        != (user.username, user.employee_id, user.email, user.department_uid)
+    ):
+        now = datetime.now(tz=UTC)
+        rev_repo = UserTokenRevocationRepository(db)
+        rev_repo.add(
+            UserTokenRevocation(
+                user_tokens_revocation_uid=UUID(str(uuid7())),
+                user_uid=user.user_uid,
+                revoked_issued_at=now,
+                revoked_at=now,
+                reason="user_profile_changed",
+            )
+        )
+        await db.flush()
+        tokens_revoked = True
     await write_audit(
         db,
         actor_user_uid=admin.user_uid,
@@ -158,11 +173,15 @@ async def update_user(
         target_type="user",
         target_uid=user.user_uid,
         ip=ip,
-        extra=fields,
+        extra={**fields, "tokens_revoked": tokens_revoked},
     )
     await db.commit()
     return success_response(
-        data=UserResponse.model_validate(user).model_dump(mode="json"), detail="success"
+        data={
+            **UserResponse.model_validate(user).model_dump(mode="json"),
+            "tokens_revoked": tokens_revoked,
+        },
+        detail="success",
     )
 
 

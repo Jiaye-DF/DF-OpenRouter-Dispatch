@@ -6,6 +6,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatUSD } from "@/lib/utils/format";
 import type { StatsOverview } from "@/types/api";
 
 interface Props {
@@ -28,7 +29,7 @@ export function KpiCards({ data, loading }: Props) {
     },
     {
       label: "總成本 (USD)",
-      value: data ? `$${Number(data.total_cost_usd).toFixed(4)}` : "-",
+      value: data ? formatUSD(data.total_cost_usd) : "-",
       icon: Coins,
     },
   ];

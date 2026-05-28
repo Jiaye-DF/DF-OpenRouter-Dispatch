@@ -57,8 +57,8 @@ def chat(
     project_code: str,
     model: str,
     text: str,
-) -> dict:
-    """呼叫代理端點;成功回 OpenRouter 標準 chat completion 物件。
+) -> str:
+    """呼叫代理端點;成功回模型回答的純文字(後端已精簡 response 為單一字串)。
 
     失敗時 raise RuntimeError,訊息含 HTTP code 與後端 detail。
     """
@@ -74,7 +74,7 @@ def chat(
         timeout=60,
     )
 
-    # 後端統一回應結構:{"success": bool, "code": int, "data": ..., "detail": str}
+    # 後端統一回應結構:{"success": bool, "code": int, "data": str, "detail": str}
     try:
         body = resp.json()
     except Exception:
@@ -82,7 +82,7 @@ def chat(
 
     if not body.get("success"):
         raise RuntimeError(f"HTTP {body.get('code')} · {body.get('detail')}")
-    return body["data"]
+    return body["data"] or ""
 
 
 def _require_env(name: str) -> str:
@@ -110,7 +110,7 @@ def main() -> None:
     print()
 
     try:
-        data = chat(
+        reply = chat(
             api_base=api_base,
             sdk_key=sdk_key,
             user_token=user_token,
@@ -122,20 +122,9 @@ def main() -> None:
         print(f"[FAIL] {exc}", file=sys.stderr)
         sys.exit(1)
 
-    # OpenRouter 標準回應結構:choices[0].message.content
-    reply = data["choices"][0]["message"]["content"]
-    usage = data.get("usage", {})
-
+    # 後端已精簡為 data: <字串>;usage / cost / id 等只在後台 dashboard 看得到。
     print("[OK] 回應:")
     print(reply)
-    print()
-    if usage:
-        print(
-            f"  tokens: prompt={usage.get('prompt_tokens', 0)} "
-            f"completion={usage.get('completion_tokens', 0)} "
-            f"total={usage.get('total_tokens', 0)} "
-            f"cost=${usage.get('cost', 0)}"
-        )
 
 
 if __name__ == "__main__":

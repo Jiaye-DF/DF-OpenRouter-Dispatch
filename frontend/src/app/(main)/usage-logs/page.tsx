@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { useDialog } from "@/lib/dialog";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
+import { formatUSD } from "@/lib/utils/format";
 import type { Department, Model, Paginated, UsageLog } from "@/types/api";
 
 // 用量紀錄頁:部門 / 狀態 chip、模型 Combobox、時間區間快捷篩選
@@ -284,8 +285,8 @@ export default function UsageLogsPage() {
                     <TD className="text-right font-medium">
                       {log.total_tokens.toLocaleString()}
                     </TD>
-                    <TD className="text-right">
-                      ${Number(log.cost_usd).toFixed(4)}
+                    <TD className="text-right font-mono text-xs">
+                      {formatUSD(log.cost_usd)}
                     </TD>
                     <TD className="text-right">{log.latency_ms} ms</TD>
                     <TD>

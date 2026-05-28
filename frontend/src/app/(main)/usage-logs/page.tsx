@@ -259,11 +259,11 @@ export default function UsageLogsPage() {
                   <TH>時間</TH>
                   <TH>部門</TH>
                   <TH>模型</TH>
-                  <TH className="text-right">Prompt</TH>
-                  <TH className="text-right">Completion</TH>
-                  <TH className="text-right">Total</TH>
-                  <TH className="text-right">Cost USD</TH>
-                  <TH className="text-right">Latency</TH>
+                  <TH className="text-right">輸入 Token</TH>
+                  <TH className="text-right">回覆 Token</TH>
+                  <TH className="text-right">合計 Token</TH>
+                  <TH className="text-right">花費 (USD)</TH>
+                  <TH className="text-right">延遲</TH>
                   <TH>狀態</TH>
                 </TR>
               </THead>

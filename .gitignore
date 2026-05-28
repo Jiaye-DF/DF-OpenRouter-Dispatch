@@ -52,6 +52,8 @@ docker-compose.override.yml
 # --- Project ---
 backend/logs/
 frontend/.env.local
+# 個人本機測試腳本(放憑證明文 / 暫存實驗),禁止 commit
+local/
 
 # --- Claude Code runtime ---
 .claude/scheduled_tasks.lock

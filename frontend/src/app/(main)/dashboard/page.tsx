@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { Download } from "lucide-react";
 import { PageTitle } from "@/components/common/PageTitle";
+import { Button } from "@/components/ui/button";
 import { KpiCards } from "@/components/feature/stats/KpiCards";
 import { DeptTokensBar } from "@/components/feature/stats/DeptTokensBar";
 import { ModelTokensStacked } from "@/components/feature/stats/ModelTokensStacked";
@@ -84,11 +86,47 @@ export default function DashboardPage() {
     };
   }, [filters]);
 
+  const hasAnyData =
+    (byDept?.length ?? 0) +
+      (byProject?.length ?? 0) +
+      (byUser?.length ?? 0) >
+    0;
+
+  const [exporting, setExporting] = React.useState(false);
+  const onDownloadExcel = async () => {
+    setExporting(true);
+    try {
+      const { exportDashboardToExcel } = await import("@/lib/export/excel");
+      const today = new Date().toISOString().slice(0, 10);
+      exportDashboardToExcel(
+        { byDept, byProject, byUser },
+        `dashboard_${today}.xlsx`,
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <>
       <PageTitle
         title="儀錶板"
         description="檢視本月份平台整體用量;可依部門、專案、使用者篩選"
+        actions={
+          <Button
+            variant="outline"
+            onClick={onDownloadExcel}
+            disabled={loading || exporting || !hasAnyData}
+            title={
+              !hasAnyData
+                ? "尚無資料可下載"
+                : "下載 Excel(含部門 / 專案 / 使用者三個 sheet)"
+            }
+          >
+            <Download className="h-4 w-4" />
+            {exporting ? "產生中…" : "下載 Excel"}
+          </Button>
+        }
       />
       <div className="flex flex-col gap-6">
         <DashboardFilters

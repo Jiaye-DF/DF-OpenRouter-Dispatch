@@ -113,7 +113,7 @@ const CURL_EXAMPLE = `curl -X POST '${CHAT_URL}' \\
   -H 'X-User-Token: <admin 發放的 User Token>' \\
   -H 'X-Project-Code: 53299897503322112' \\
   -d '{
-    "model": "openai/gpt-4o-mini",
+    "model": "google/gemini-2.5-flash",
     "text": "用一句話介紹台灣"
   }'`;
 
@@ -143,11 +143,11 @@ def chat(model: str, text: str) -> dict:
     return body["data"]
 
 if __name__ == "__main__":
-    result = chat("openai/gpt-4o-mini", "用一句話介紹台灣")
-    print(result["choices"][0]["message"]["content"])`;
+    answer = chat("google/gemini-2.5-flash", "用一句話介紹台灣")
+    print(answer)`;
 
 const IMAGE_EXAMPLE = `{
-  "model": "openai/gpt-4o-mini",
+  "model": "google/gemini-2.5-flash",
   "text": "請描述這張圖片",
   "images": [
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...",
@@ -158,24 +158,7 @@ const IMAGE_EXAMPLE = `{
 const RESPONSE_EXAMPLE = `{
   "success": true,
   "code": 200,
-  "data": {
-    "id": "gen-...",
-    "model": "openai/gpt-4o-mini",
-    "choices": [
-      {
-        "index": 0,
-        "message": { "role": "assistant", "content": "..." },
-        "finish_reason": "stop"
-      }
-    ],
-    "usage": {
-      "prompt_tokens": 12,
-      "completion_tokens": 34,
-      "total_tokens": 46,
-      "cost": 0.000123
-    },
-    "created": 1731400000
-  },
+  "data": "模型回答的文字內容...",
   "detail": "success"
 }`;
 
@@ -322,7 +305,7 @@ export default function UserGuidePage() {
                   <TD className="font-mono">model</TD>
                   <TD>string</TD>
                   <TD>是</TD>
-                  <TD>OpenRouter 模型 id(例:<code>openai/gpt-4o-mini</code>),須在管理員設定的白名單內</TD>
+                  <TD>OpenRouter 模型 id(例:<code>google/gemini-2.5-flash</code>),須在管理員設定的白名單內</TD>
                 </TR>
                 <TR>
                   <TD className="font-mono">text</TD>
@@ -398,7 +381,7 @@ export default function UserGuidePage() {
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
             <li><code>success</code>:布林,程式判斷成功失敗。</li>
             <li><code>code</code>:對應 HTTP status。</li>
-            <li><code>data</code>:成功時為 OpenRouter 原始回應(已去除內部 metadata)。</li>
+            <li><code>data</code>:成功時為<strong>模型回答的純文字字串</strong>(已剝除 id / usage / provider 等內部欄位)。</li>
             <li><code>detail</code>:成功固定為 <code>&quot;success&quot;</code>;失敗為錯誤碼或中文描述。</li>
           </ul>
         </Section>

@@ -18,7 +18,7 @@ interface Props {
   data?: StatsByProject[];
 }
 
-// 專案 × 總 tokens 長條圖 + 排行表(v1.5);歷史無 project 的紀錄不會出現於此
+// 專案 × 總 tokens 長條圖 + 排行表(v1.5)
 export function ByProjectBar({ data }: Props) {
   const items = (data ?? []).map((d) => ({
     name: d.project_name,
@@ -37,7 +37,7 @@ export function ByProjectBar({ data }: Props) {
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (
-          <EmptyState title="尚無專案用量資料" description="代理呼叫須帶 X-Project-Code 才會出現在此" />
+          <EmptyState title="尚無專案用量資料" />
         ) : (
           <>
             <ResponsiveContainer width="100%" height={280}>

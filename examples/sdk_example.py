@@ -15,6 +15,11 @@
   DFOR_PROJECT_CODE   後台「專案管理」頁顯示的「代碼」欄
   DFOR_MODEL          (選填) 模型 id,預設 openai/gpt-4o-mini
 
+兩種注入方式擇一:
+  (a) 寫入專案根目錄 `.env`(已被 .gitignore 排除),本檔會自動載入。
+  (b) shell 自行 export / $env: 設定後再執行。
+  注意:已存在於 process 環境的變數優先,.env 不會覆蓋。
+
 執行:
   python examples/sdk_example.py "你想問的問題"
   # 或不帶參數,使用預設 prompt:
@@ -26,8 +31,22 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 import httpx
+
+
+def _load_dotenv() -> None:
+    """從專案根 `.env` 載入變數至 os.environ(已存在者不覆蓋)。"""
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if not env_path.is_file():
+        return
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
 def chat(
@@ -75,13 +94,14 @@ def _require_env(name: str) -> str:
 
 
 def main() -> None:
+    _load_dotenv()
     api_base     = os.environ.get("DFOR_API_BASE", "http://localhost:8800")
     sdk_key      = _require_env("DFOR_SDK_KEY")
     user_token   = _require_env("DFOR_USER_TOKEN")
     project_code = _require_env("DFOR_PROJECT_CODE")
     model        = os.environ.get("DFOR_MODEL", "openai/gpt-4o-mini")
 
-    prompt = sys.argv[1] if len(sys.argv) > 1 else "用一句話介紹台灣"
+    prompt = sys.argv[1] if len(sys.argv) > 1 else "hello"
 
     print(f"→ POST {api_base}/api/v1/model/chat")
     print(f"  model:   {model}")

@@ -361,7 +361,7 @@ export default function UsersPage() {
                               onClick={() => onRevokeToken(u)}
                             >
                               <ShieldOff className="h-4 w-4 text-destructive" />
-                              <span className="hidden lg:inline ml-1 text-destructive">撤銷全部</span>
+                              <span className="hidden lg:inline ml-1 text-destructive">撤銷</span>
                             </Button>
                           </>
                         )}

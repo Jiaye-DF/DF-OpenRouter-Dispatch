@@ -329,7 +329,7 @@ export default function InternalKeysPage() {
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder="http://vllm.corp.local:8000/v1"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 OpenAI-compatible 路徑;後端會在此 base 後接 `/chat/completions`
               </p>
             </div>
@@ -337,7 +337,7 @@ export default function InternalKeysPage() {
               <Label>
                 API Key
                 {mode?.kind === "edit" && (
-                  <span className="ml-2 text-xs text-muted-foreground">
+                  <span className="ml-2 text-sm text-muted-foreground">
                     (留空 = 不變更)
                   </span>
                 )}
@@ -350,7 +350,7 @@ export default function InternalKeysPage() {
                   mode?.kind === "edit" ? "留空保持原 Key" : "可空(內網信任)"
                 }
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 有值即 AES-256-GCM 加密儲存;空值表示 server 不需驗證
               </p>
             </div>
@@ -376,7 +376,7 @@ export default function InternalKeysPage() {
                   placeholder="0 = 不限"
                 />
               </div>
-              <p className="col-span-2 text-xs text-muted-foreground leading-relaxed">
+              <p className="col-span-2 text-sm text-muted-foreground leading-relaxed">
                 <strong>兩者疊加</strong>:實際等待 = max(RPM 視窗剩餘、最小間隔剩餘)。
                 <br />
                 例:RPM=30、間隔=0 → 每分鐘 ≤30 次。
@@ -407,7 +407,7 @@ function RateLimitCell({ item }: { item: InternalKey }) {
   return (
     <div className="text-sm whitespace-nowrap">
       <div className="font-mono">{rpm}</div>
-      <div className="text-xs text-muted-foreground font-mono">間隔 {interval}</div>
+      <div className="text-sm text-muted-foreground font-mono">間隔 {interval}</div>
     </div>
   );
 }

@@ -285,7 +285,7 @@ export default function UsageLogsPage() {
                     <TD className="text-right font-medium">
                       {log.total_tokens.toLocaleString()}
                     </TD>
-                    <TD className="text-right font-mono text-xs">
+                    <TD className="text-right font-mono text-sm">
                       {formatUSD(log.cost_usd)}
                     </TD>
                     <TD className="text-right">{log.latency_ms} ms</TD>

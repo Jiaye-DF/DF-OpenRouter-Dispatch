@@ -144,7 +144,7 @@ function LoginInner() {
           透過 DF-SSO 登入
         </Button>
 
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
           <span className="h-px flex-1 bg-border" />
           或使用帳號密碼
           <span className="h-px flex-1 bg-border" />

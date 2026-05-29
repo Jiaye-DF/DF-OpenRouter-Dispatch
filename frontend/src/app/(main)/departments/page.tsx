@@ -2,8 +2,6 @@
 
 import * as React from "react";
 import {
-  ChevronDown,
-  ChevronRight,
   Copy,
   KeyRound,
   Pencil,
@@ -349,7 +347,6 @@ export default function DepartmentsPage() {
             <Table>
               <THead>
                 <TR>
-                  {isAdmin && <TH className="w-8"></TH>}
                   {isAdmin && <TH>操作</TH>}
                   <TH>代碼</TH>
                   <TH>名稱</TH>
@@ -365,22 +362,6 @@ export default function DepartmentsPage() {
                   return (
                     <React.Fragment key={d.department_uid}>
                       <TR>
-                        {isAdmin && (
-                          <TD>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label={isOpen ? "收合部門金鑰" : "展開部門金鑰"}
-                              onClick={() => toggleExpand(d.department_uid)}
-                            >
-                              {isOpen ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TD>
-                        )}
                         {isAdmin && (
                           <TD>
                             <div className="flex gap-1">
@@ -415,16 +396,26 @@ export default function DepartmentsPage() {
                         </TD>
                         {isAdmin && (
                           <TD className="text-right">
-                            <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
-                              <KeyRound className="h-3.5 w-3.5" />
+                            <button
+                              type="button"
+                              aria-expanded={isOpen}
+                              aria-label={
+                                isOpen ? "收合部門金鑰" : "展開部門金鑰"
+                              }
+                              onClick={() => toggleExpand(d.department_uid)}
+                              className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm transition-colors hover:bg-muted hover:cursor-pointer ${
+                                isOpen ? "text-primary" : "text-muted-foreground"
+                              }`}
+                            >
+                              <KeyRound className="h-4 w-4" />
                               {keys.length}
-                            </span>
+                            </button>
                           </TD>
                         )}
                       </TR>
                       {isAdmin && isOpen && (
                         <TR>
-                          <TD colSpan={7} className="bg-muted/30 p-0">
+                          <TD colSpan={6} className="bg-muted/30 p-0">
                             <DepartmentKeysPanel
                               dept={d}
                               keys={keys}
@@ -536,7 +527,7 @@ export default function DepartmentsPage() {
                   }
                   placeholder={`留空預設「${form.name.trim() || "(部門名稱)"} 主金鑰」`}
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   建立部門時會同步產生第 1 把 SDK Key,明文僅一次性彈窗顯示。
                 </p>
               </div>
@@ -646,7 +637,7 @@ function DepartmentKeysPanel({
                   <TD>
                     {k.key_values ? (
                       <div className="flex items-center gap-2">
-                        <code className="font-mono text-xs break-all">
+                        <code className="font-mono text-sm break-all">
                           {k.key_values}
                         </code>
                         <Button
@@ -659,7 +650,7 @@ function DepartmentKeysPanel({
                         </Button>
                       </div>
                     ) : (
-                      <span className="font-mono text-xs text-muted-foreground">
+                      <span className="font-mono text-sm text-muted-foreground">
                         {k.key_prefix}··· (舊資料,請重新建立)
                       </span>
                     )}

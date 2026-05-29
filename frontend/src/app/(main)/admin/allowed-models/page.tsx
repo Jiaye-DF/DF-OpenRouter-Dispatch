@@ -142,7 +142,7 @@ export default function AllowedModelsPage() {
           刪除後此 model_key 將從白名單移除,<strong>下次 sync</strong> 對應的
           model.is_active 會被覆寫為 FALSE,SDK user 無法再呼叫。
           <br />
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-sm">
             若只是暫時停用,建議改按「停用」(可一鍵還原)。重新新增同 key 會還原成 active。
           </span>
         </span>
@@ -178,9 +178,9 @@ export default function AllowedModelsPage() {
         }
       />
       <PageHint title="運作邏輯">
-        每次 sync 強制套用本表:<code className="text-xs">is_active=TRUE</code> 的 model_key →
-        對應 <code className="text-xs">models.is_active=TRUE</code>;表內沒有 / 已停用的 → 一律停用,
-        SDK user 呼叫會收到 <code className="text-xs">403 model_forbidden</code>。
+        每次 sync 強制套用本表:<code className="text-sm">is_active=TRUE</code> 的 model_key →
+        對應 <code className="text-sm">models.is_active=TRUE</code>;表內沒有 / 已停用的 → 一律停用,
+        SDK user 呼叫會收到 <code className="text-sm">403 model_forbidden</code>。
       </PageHint>
       <Card>
         <CardContent className="pt-6">
@@ -268,7 +268,7 @@ export default function AllowedModelsPage() {
                 placeholder="例:google/gemini-2.5-flash"
                 className="font-mono"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 必須完全符合 OpenRouter 的 model_key 字串。下次 sync 時才會生效。
               </p>
             </div>

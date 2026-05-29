@@ -171,7 +171,7 @@ export default function SdkKeysPage() {
       />
       <PageHint title="這把 Key 是做什麼用的?">
         代表「<strong>哪個部門的程式在呼叫</strong>」,綁部門。呼叫代理時放入
-        {" "}<code className="text-xs font-mono">X-SDK-Key</code>,搭配 User Token + Project Code。
+        {" "}<code className="text-sm font-mono">X-SDK-Key</code>,搭配 User Token + Project Code。
         部門金鑰明文於本頁可隨時複製;v1.5 之前建立的舊資料無法復原,需重新建立。
       </PageHint>
       <Card>
@@ -213,7 +213,7 @@ export default function SdkKeysPage() {
                     <TD>
                       {k.key_values ? (
                         <div className="flex items-center gap-2">
-                          <code className="font-mono text-xs break-all">
+                          <code className="font-mono text-sm break-all">
                             {k.key_values}
                           </code>
                           <Button
@@ -231,7 +231,7 @@ export default function SdkKeysPage() {
                           </Button>
                         </div>
                       ) : (
-                        <span className="font-mono text-xs text-muted-foreground">
+                        <span className="font-mono text-sm text-muted-foreground">
                           {k.key_prefix}··· (舊資料,請重新建立)
                         </span>
                       )}

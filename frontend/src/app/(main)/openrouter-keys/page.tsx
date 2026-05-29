@@ -389,7 +389,7 @@ export default function OpenRouterKeysPage() {
                   placeholder="0 = 不限"
                 />
               </div>
-              <p className="col-span-2 text-xs text-muted-foreground leading-relaxed">
+              <p className="col-span-2 text-sm text-muted-foreground leading-relaxed">
                 <strong>兩者疊加</strong>:實際等待時間 = max(RPM 視窗剩餘、最小間隔剩餘)。
                 <br />
                 例:RPM=60、間隔=200ms → 每分鐘 ≤60 次,且任兩次間隔 ≥200ms。
@@ -444,7 +444,7 @@ function RateLimitCell({ item }: { item: OpenRouterKey }) {
   return (
     <div className="text-sm whitespace-nowrap">
       <div className="font-mono">{rpm}</div>
-      <div className="text-xs text-muted-foreground font-mono">間隔 {interval}</div>
+      <div className="text-sm text-muted-foreground font-mono">間隔 {interval}</div>
     </div>
   );
 }
@@ -489,7 +489,7 @@ function CreditsCell({ item }: { item: OpenRouterKey }) {
           {limit !== null ? `$${limit.toFixed(2)}` : "無上限"}
         </span>
         {isFree && (
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge variant="secondary" className="text-sm">
             Free Tier
           </Badge>
         )}
@@ -505,7 +505,7 @@ function CreditsCell({ item }: { item: OpenRouterKey }) {
         </div>
       )}
       <div
-        className={`text-[10px] ${
+        className={`text-sm ${
           stale === "fresh"
             ? "text-muted-foreground"
             : "text-amber-600"

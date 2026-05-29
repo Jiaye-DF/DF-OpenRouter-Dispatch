@@ -362,10 +362,10 @@ export default function UsersPage() {
         <span>
           將立即作廢 <b>{user.username}</b> 名下所有現存 User Token。
           <br />
-          該使用者下次呼叫代理端點會收到 <code className="text-xs">401 unauthorized</code>,
+          該使用者下次呼叫代理端點會收到 <code className="text-sm">401 unauthorized</code>,
           需重新產生並交付。
           <br />
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-sm">
             通常用於懷疑外洩或員工離職;若僅是補發新 token,可直接「產生 Token」(舊的不會自動失效,
             如需汰換才需要撤銷)。
           </span>
@@ -405,7 +405,7 @@ export default function UsersPage() {
         }
       />
       <PageHint title="User Token 怎麼用?">
-        代表「<strong>哪一位使用者在呼叫</strong>」,放入 <code className="text-xs font-mono">X-User-Token</code>。
+        代表「<strong>哪一位使用者在呼叫</strong>」,放入 <code className="text-sm font-mono">X-User-Token</code>。
         <Ticket className="inline h-3 w-3 mx-1" />產生:明文僅顯示一次。
         <ShieldOff className="inline h-3 w-3 mx-1 text-destructive" />撤銷:該人名下<strong>所有現存 token 立即失效</strong>。
       </PageHint>
@@ -811,7 +811,7 @@ export default function UsersPage() {
               {revealValue}
             </div>
             {!revealCopied && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 建議先按下「複製明文」確認剪貼簿有內容,再關閉視窗。
               </p>
             )}

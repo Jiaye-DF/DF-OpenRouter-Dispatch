@@ -14,9 +14,14 @@ interface Props {
   loading?: boolean;
 }
 
-// 三張 KPI 卡：總請求數 / 總 tokens / 總金額
+// 三張 KPI 卡：總成本(主) / 總請求數 / 總 tokens(輔)
 export function KpiCards({ data, loading }: Props) {
   const items = [
+    {
+      label: "總成本 (USD)",
+      value: data ? formatUSD(data.total_cost_usd) : "-",
+      icon: Coins,
+    },
     {
       label: "總請求數",
       value: data ? data.total_requests.toLocaleString() : "-",
@@ -26,11 +31,6 @@ export function KpiCards({ data, loading }: Props) {
       label: "總 Tokens",
       value: data ? data.total_tokens.toLocaleString() : "-",
       icon: Hash,
-    },
-    {
-      label: "總成本 (USD)",
-      value: data ? formatUSD(data.total_cost_usd) : "-",
-      icon: Coins,
     },
   ];
 

@@ -3,11 +3,12 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { formatUSD } from "@/lib/utils/format";
 
 export interface RankingRow {
   name: string;
   requests: number;
-  tokens: number;
+  cost: number;
 }
 
 interface Props {
@@ -15,7 +16,7 @@ interface Props {
   emptyText?: string;
 }
 
-// 儀錶板四維度共用的排行表 — 預設 Top 10,可展開全部。依 tokens 降冪排序。
+// 儀錶板四維度共用的排行表 — 預設 Top 10,可展開全部。依成本降冪排序。
 export function RankingTable({ items, emptyText = "尚無資料" }: Props) {
   const [expanded, setExpanded] = React.useState(false);
 
@@ -27,7 +28,7 @@ export function RankingTable({ items, emptyText = "尚無資料" }: Props) {
     );
   }
 
-  const sorted = [...items].sort((a, b) => b.tokens - a.tokens);
+  const sorted = [...items].sort((a, b) => b.cost - a.cost);
   const shown = expanded ? sorted : sorted.slice(0, 10);
   const hasMore = sorted.length > 10;
 
@@ -39,7 +40,7 @@ export function RankingTable({ items, emptyText = "尚無資料" }: Props) {
             <TH className="w-16 text-right">排名</TH>
             <TH>名稱</TH>
             <TH className="text-right">請求數</TH>
-            <TH className="text-right">Tokens</TH>
+            <TH className="text-right">成本 (USD)</TH>
           </TR>
         </THead>
         <TBody>
@@ -55,7 +56,7 @@ export function RankingTable({ items, emptyText = "尚無資料" }: Props) {
                 {row.requests.toLocaleString()}
               </TD>
               <TD className="text-right font-mono">
-                {row.tokens.toLocaleString()}
+                {formatUSD(row.cost)}
               </TD>
             </TR>
           ))}

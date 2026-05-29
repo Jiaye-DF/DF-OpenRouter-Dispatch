@@ -13,6 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/EmptyState";
 import { FilterChip } from "@/components/ui/FilterChip";
+import { formatUSD, toUSDNumber } from "@/lib/utils/format";
 import type { StatsTimeseriesPoint } from "@/types/api";
 
 type Granularity = "day" | "hour";
@@ -81,6 +82,7 @@ export function DailyTimeseriesLine({
             ? {
                 bucket: d.bucket,
                 parsed,
+                cost: toUSDNumber(d.total_cost_usd),
                 tokens: d.total_tokens,
               }
             : null;
@@ -92,7 +94,7 @@ export function DailyTimeseriesLine({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
-        <CardTitle>用量時序(UTC+8)</CardTitle>
+        <CardTitle>成本時序 (USD,UTC+8)</CardTitle>
         <div className="flex items-center gap-2">
           <FilterChip
             active={granularity === "day"}
@@ -121,7 +123,10 @@ export function DailyTimeseriesLine({
                 tickFormatter={(_, i) => formatTick(items[i].parsed, granularity)}
                 minTickGap={granularity === "hour" ? 24 : 8}
               />
-              <YAxis tick={{ fontSize: 12 }} />
+              <YAxis
+                tick={{ fontSize: 12 }}
+                tickFormatter={(v) => formatUSD(v, 2)}
+              />
               <Tooltip
                 contentStyle={{
                   background: "rgb(var(--color-card))",
@@ -132,10 +137,20 @@ export function DailyTimeseriesLine({
                   const p = payload?.[0]?.payload?.parsed as ParsedBucket | undefined;
                   return p ? formatTooltipLabel(p, granularity) : "";
                 }}
+                formatter={(_v, _n, p) => {
+                  const row = p?.payload as
+                    | { cost: number; tokens: number }
+                    | undefined;
+                  if (!row) return null;
+                  return [
+                    `${formatUSD(row.cost)} · ${row.tokens.toLocaleString()} tokens`,
+                    "用量",
+                  ];
+                }}
               />
               <Line
                 type="monotone"
-                dataKey="tokens"
+                dataKey="cost"
                 stroke="rgb(var(--color-primary))"
                 strokeWidth={2}
                 dot={granularity === "day"}

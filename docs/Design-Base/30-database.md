@@ -113,3 +113,30 @@ def upgrade() -> None:
 
 4. **禁止**透過直接修改 `alembic_version` 表或刪除 revision 檔來繞過遺留檔;若遺留檔已在正式環境執行過,**必須**走新 revision 補救,不得事後竄改。
 5. **補救後**:於補救 Migration 的 commit message 與對應 Task 文件中同步標註「補救 <舊 revision>」,便於追溯。
+
+## 7. 業務代碼產生:Snowflake ID
+
+部分欄位需要「**對使用者顯示**」的全域唯一代碼(例:`projects.code` → 呼叫端 `X-Project-Code` header)。這類欄位**不適合**用 `<entity>_uid`(UUIDv7 含 hyphen 共 36 字,當 header / URL / 口頭傳遞太冗長),也**不應**讓使用者自訂(會有撞名、命名爭議),因此採 Twitter 風格的 **Snowflake ID**,由後端統一產生。
+
+### 結構(64-bit)
+
+| Bits | 用途 | 範圍 |
+| --- | --- | --- |
+| 41 | 自訂 epoch 起的毫秒數 | ~69 年 |
+| 10 | worker id | 0–1023 |
+| 12 | 同一毫秒內的 sequence | 0–4095 |
+
+- **自訂 epoch**:`2026-01-01T00:00:00Z`(寫死於 [`backend/app/core/snowflake.py`](../../backend/app/core/snowflake.py))。
+- **輸出**:`generate_id_str()` 回傳十進位字串(最長 19 字),寫入欄位型別 `VARCHAR(64)` 即可。
+- **worker id**:由環境變數 `SNOWFLAKE_WORKER_ID` 注入(0–1023),預設為 `1`。
+
+### 重要規則
+
+1. **適用範圍**:**僅限**「需對外顯示且需穩定可被引用」的業務代碼(目前為 `projects.code`)。**禁止**用於:
+   - Row PK → 用 `BIGSERIAL pid`。
+   - 對外 row 識別 → 用 `UUIDv7 <entity>_uid`。
+   - **任何密碼性質憑證**(SDK Key、User Token、API Key 等)→ Snowflake 帶時間戳可預測,**必須**改用 `secrets.token_hex` / `secrets.token_urlsafe` 等密碼學亂數。
+2. **多 worker 部署**:每個會產生 Snowflake ID 的 process **必須**配發**不同** `SNOWFLAKE_WORKER_ID`,否則同毫秒不同 worker 仍會撞 ID。Coolify / k8s 部署時需於 deployment template 注入。
+3. **免撞名檢查**:Snowflake 全域唯一(在 worker id 分配正確的前提下),引入此策略的欄位**不需要**額外做 `UNIQUE` 查詢檢查 — 但 DB schema 仍應加 `UNIQUE` 約束作為最後防線。
+4. **epoch 不可更動**:一旦正式環境產生過 ID,變更 epoch 會讓既有 ID 失去時間語義,並可能與新 ID 重疊。如需擴展年限,**應**走新 generator(例:`generate_id_v2`),不得就地改參數。
+5. **新欄位採用前需評估**:採 Snowflake 等同於放棄「使用者命名」的彈性。若該欄位的語義是「人類可讀的名稱」(例:部門 `code` 是縮寫如 `T000`)而非機器序號,**應**維持使用者輸入 + 撞名檢查的模式,不要強行套 Snowflake。

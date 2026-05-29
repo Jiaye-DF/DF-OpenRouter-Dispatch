@@ -112,7 +112,7 @@ export default function DashboardPage() {
     <>
       <PageTitle
         title="儀錶板"
-        description="檢視本月份平台整體用量;可依部門、專案、使用者篩選"
+        description="檢視本月份平台整體成本與用量;可依部門、專案、使用者篩選"
         actions={
           <Button
             variant="outline"

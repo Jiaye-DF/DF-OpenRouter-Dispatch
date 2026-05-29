@@ -11,11 +11,9 @@ import {
   CheckSquare,
   Cloud,
   FolderKanban,
-  KeyRound,
   Layers,
   LayoutDashboard,
   ScrollText,
-  Server,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -92,19 +90,8 @@ const NAV_SECTIONS: NavSection[] = [
       // },
     ],
   },
-  {
-    label: "存取金鑰",
-    hint: "對內接受 · SDK→平台",
-    items: [
-      {
-        href: "/sdk-keys",
-        label: "SDK Keys",
-        subtitle: "SDK 端呼叫本平台用",
-        icon: KeyRound,
-        adminOnly: true,
-      },
-    ],
-  },
+  // v1.6:「存取金鑰」section 已併入「部門」頁(部門 row 可展開管 SDK Keys),
+  // 此處不再單獨列出;舊書籤直打 /sdk-keys 仍可進得去。
   {
     label: "說明",
     items: [{ href: "/user-guide", label: "使用者使用說明", icon: BookOpen }],

@@ -1,12 +1,35 @@
+import contextvars
 import logging
 import sys
 
 from app.core.config import Settings, get_settings
 
-_CONSOLE_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+_CONSOLE_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [req:%(request_id)s] %(message)s"
 
 # log_to_seq() 回傳的 SeqLogHandler;關閉前用來 flush 緩衝。未啟用 Seq 時為 None。
 _seq_handler: logging.Handler | None = None
+
+# 每個請求的關聯 ID;由 main.py 的 middleware 於請求進入時 set,離開時 reset。
+# 非請求情境(啟動 Seed、背景 flush)取得預設值 "-"。
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
+
+
+class _RequestIdFilter(logging.Filter):
+    """將當前請求的 request_id 注入每筆 log record。
+
+    掛在 handler 上(非 logger),確保子 logger 傳上來的 record 也會被填值;
+    console 走 `%(request_id)s` 格式,Seq 走 record 屬性(support_extra_properties)。
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = request_id_var.get()
+        return True
+
+
+def _install_request_id_filter() -> None:
+    flt = _RequestIdFilter()
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(flt)
 
 
 def configure_logging() -> None:
@@ -21,6 +44,7 @@ def configure_logging() -> None:
     seq_url = settings.SEQ_INGESTION_URL.strip()
     if not seq_url:
         logging.basicConfig(level=level, format=_CONSOLE_FORMAT, force=True)
+        _install_request_id_filter()
         return
 
     _configure_with_seq(settings, level, seq_url)
@@ -39,6 +63,7 @@ def _configure_with_seq(settings: Settings, level: int, seq_url: str) -> None:
         import seqlog
     except ImportError:
         logging.basicConfig(level=level, format=_CONSOLE_FORMAT, force=True)
+        _install_request_id_filter()
         logging.getLogger(__name__).warning(
             "SEQ_INGESTION_URL 已設定,但未安裝 seqlog 套件;改用 console。"
         )
@@ -63,6 +88,7 @@ def _configure_with_seq(settings: Settings, level: int, seq_url: str) -> None:
         Application=settings.APP_NAME,
         Environment=settings.APP_ENV,
     )
+    _install_request_id_filter()
     logging.getLogger(__name__).info("Seq log 推送已啟用 → %s", seq_url)
 
 

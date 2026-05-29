@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -7,12 +8,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.back_channel import router as back_channel_router
 from app.api.v1 import api_v1_router
 from app.core.config import get_settings
+from app.core.database import engine
 from app.core.exceptions import AppError
-from app.core.logging import configure_logging, flush_logging, get_logger
+from app.core.logging import configure_logging, flush_logging, get_logger, request_id_var
 from app.core.response import failure_response
 from app.seed import run_seed
 
 logger = get_logger(__name__)
+
+# 沿用上游(reverse proxy / SSO)傳入的關聯 ID;無則本服務自產。
+REQUEST_ID_HEADER = "x-request-id"
 
 
 @asynccontextmanager
@@ -23,6 +28,7 @@ async def lifespan(_: FastAPI):
     except Exception:
         logger.exception("Seed 失敗；服務繼續啟動，請檢查資料庫與 .env。")
     yield
+    await engine.dispose()
     flush_logging()
 
 
@@ -44,6 +50,17 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def _request_id_middleware(request: Request, call_next):
+        rid = request.headers.get(REQUEST_ID_HEADER) or uuid4().hex
+        token = request_id_var.set(rid)
+        try:
+            response = await call_next(request)
+        finally:
+            request_id_var.reset(token)
+        response.headers["X-Request-ID"] = rid
+        return response
 
     @app.exception_handler(AppError)
     async def _app_error_handler(_: Request, exc: AppError):

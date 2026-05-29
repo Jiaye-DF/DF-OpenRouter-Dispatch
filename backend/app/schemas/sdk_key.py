@@ -21,9 +21,11 @@ class SdkKeyResponse(BaseModel):
     name: str
     key_prefix: str
     is_active: bool
+    # 完整明文(admin 後台可隨時檢視;舊資料無法復原時為 None)
+    key_plaintext: str | None = None
 
 
 class SdkKeyCreateResponse(SdkKeyResponse):
-    """建立時一次性回明文 key。"""
+    """建立時一次性回明文 key(向後相容欄位)。"""
 
     key: str

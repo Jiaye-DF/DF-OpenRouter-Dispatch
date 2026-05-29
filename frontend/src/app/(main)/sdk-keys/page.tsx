@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Copy, Plus, Trash2 } from "lucide-react";
 import { PageTitle } from "@/components/common/PageTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageHint } from "@/components/common/PageHint";
 import { useDialog } from "@/lib/dialog";
+import { useToast } from "@/components/ui/toaster";
 import { useConfirm } from "@/components/common/ConfirmDialog";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
@@ -32,6 +33,7 @@ export default function SdkKeysPage() {
   const role = useAppSelector((s) => s.auth.actor?.role);
   const { showDialog } = useDialog();
   const { confirm } = useConfirm();
+  const { toast } = useToast();
 
   const [items, setItems] = React.useState<SdkKey[]>([]);
   const [depts, setDepts] = React.useState<Department[]>([]);
@@ -170,7 +172,7 @@ export default function SdkKeysPage() {
       <PageHint title="這把 Key 是做什麼用的?">
         代表「<strong>哪個部門的程式在呼叫</strong>」,綁部門。呼叫代理時放入
         {" "}<code className="text-xs font-mono">X-SDK-Key</code>,搭配 User Token + Project Code。
-        明文僅一次性顯示。
+        部門金鑰明文於本頁可隨時複製;v1.5 之前建立的舊資料無法復原,需重新建立。
       </PageHint>
       <Card>
         <CardContent className="pt-6">
@@ -189,7 +191,7 @@ export default function SdkKeysPage() {
                   <TH>操作</TH>
                   <TH>部門</TH>
                   <TH>名稱</TH>
-                  <TH>Prefix</TH>
+                  <TH>部門金鑰</TH>
                   <TH>狀態</TH>
                 </TR>
               </THead>
@@ -208,7 +210,32 @@ export default function SdkKeysPage() {
                     </TD>
                     <TD>{deptName(k.department_uid)}</TD>
                     <TD>{k.name}</TD>
-                    <TD className="font-mono text-sm">{k.key_prefix}···</TD>
+                    <TD>
+                      {k.key_plaintext ? (
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono text-xs break-all">
+                            {k.key_plaintext}
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="複製部門金鑰"
+                            onClick={() => {
+                              navigator.clipboard
+                                .writeText(k.key_plaintext!)
+                                .then(() => toast("已複製部門金鑰", "success"))
+                                .catch(() => {});
+                            }}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {k.key_prefix}··· (舊資料,請重新建立)
+                        </span>
+                      )}
+                    </TD>
                     <TD>
                       <button
                         onClick={() => onToggleActive(k)}
@@ -296,11 +323,11 @@ export default function SdkKeysPage() {
       <Dialog open={plain !== null} onOpenChange={(o) => !o && setPlain(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>SDK Key 明文</DialogTitle>
+            <DialogTitle>部門金鑰</DialogTitle>
           </DialogHeader>
           <div className="pt-4 flex flex-col gap-2">
-            <p className="text-sm text-destructive">
-              請立即複製，關閉後無法再取得。
+            <p className="text-sm text-muted-foreground">
+              已建立完成,亦可從列表的「部門金鑰」欄位隨時複製。
             </p>
             <div className="rounded-xl border border-border bg-muted/40 p-3 font-mono text-sm break-all">
               {plain}

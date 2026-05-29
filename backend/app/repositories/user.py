@@ -47,12 +47,24 @@ class UserRepository:
         page: int,
         size: int,
         department_uid: UUID | None = None,
+        role: str | None = None,
+        q: str | None = None,
     ) -> tuple[list[User], int]:
         stmt = select(User).where(User.is_deleted.is_(False))
         count_stmt = select(func.count()).select_from(User).where(User.is_deleted.is_(False))
         if department_uid is not None:
             stmt = stmt.where(User.department_uid == department_uid)
             count_stmt = count_stmt.where(User.department_uid == department_uid)
+        if role is not None and role.strip():
+            stmt = stmt.where(User.role == role)
+            count_stmt = count_stmt.where(User.role == role)
+        if q is not None and q.strip():
+            kw = f"%{q.strip().lower()}%"
+            cond = func.lower(User.username).like(kw) | func.lower(
+                func.coalesce(User.email, "")
+            ).like(kw)
+            stmt = stmt.where(cond)
+            count_stmt = count_stmt.where(cond)
         stmt = stmt.order_by(User.pid.desc()).offset((page - 1) * size).limit(size)
         items = list((await self.db.execute(stmt)).scalars().all())
         total = int((await self.db.execute(count_stmt)).scalar_one())

@@ -52,6 +52,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = React.useState(true);
   const [page, setPage] = React.useState(1);
   const [total, setTotal] = React.useState(0);
+  const [deptFilter, setDeptFilter] = React.useState<string>(""); // "" = 全部
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = React.useState(false);
@@ -61,9 +62,11 @@ export default function ProjectsPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
+      const projQuery: Record<string, string | number> = { page, size };
+      if (deptFilter) projQuery.department_uid = deptFilter;
       const [list, deptList] = await Promise.all([
         apiClient.get<Paginated<Project>>(API_ENDPOINTS.projects, {
-          query: { page, size },
+          query: projQuery,
         }),
         apiClient.get<Paginated<Department>>(API_ENDPOINTS.departments, {
           query: { page: 1, size: 200 },
@@ -79,7 +82,7 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, showDialog]);
+  }, [page, deptFilter, showDialog]);
 
   React.useEffect(() => {
     load();
@@ -187,7 +190,27 @@ export default function ProjectsPage() {
         }
       />
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-20 shrink-0 text-sm text-muted-foreground">
+              部門：
+            </span>
+            <select
+              className="h-10 min-w-[200px] rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+              value={deptFilter}
+              onChange={(e) => {
+                setDeptFilter(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">全部部門</option>
+              {depts.map((d) => (
+                <option key={d.department_uid} value={d.department_uid}>
+                  {d.name}（{d.code}）
+                </option>
+              ))}
+            </select>
+          </div>
           {loading ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 5 }).map((_, i) => (

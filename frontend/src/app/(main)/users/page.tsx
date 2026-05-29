@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { KeyRound, Pencil, Plus, ShieldOff, Ticket } from "lucide-react";
+import { KeyRound, Pencil, Plus, Search, ShieldOff, Ticket } from "lucide-react";
 import { PageTitle } from "@/components/common/PageTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/EmptyState";
+import { FilterChip } from "@/components/ui/FilterChip";
 import { PageHint } from "@/components/common/PageHint";
 import { useDialog } from "@/lib/dialog";
 import { useConfirm } from "@/components/common/ConfirmDialog";
@@ -103,13 +104,32 @@ export default function UsersPage() {
   const [revealValue, setRevealValue] = React.useState("");
   const [revealCopied, setRevealCopied] = React.useState(false);
 
+  // 工具列篩選
+  const [searchInput, setSearchInput] = React.useState("");
+  const [debouncedSearch, setDebouncedSearch] = React.useState("");
+  const [roleFilter, setRoleFilter] = React.useState<"" | "admin" | "user">("");
+  const [deptFilter, setDeptFilter] = React.useState<string>("");
+
+  // 輸入後 300ms 才打 API,避免逐字觸發
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // 篩選變動時回第 1 頁
+  React.useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, roleFilter, deptFilter]);
+
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
+      const query: Record<string, string | number> = { page, size };
+      if (debouncedSearch) query.q = debouncedSearch;
+      if (roleFilter) query.role = roleFilter;
+      if (deptFilter) query.department_uid = deptFilter;
       const [users, deptList] = await Promise.all([
-        apiClient.get<Paginated<User>>(API_ENDPOINTS.users, {
-          query: { page, size },
-        }),
+        apiClient.get<Paginated<User>>(API_ENDPOINTS.users, { query }),
         apiClient.get<Paginated<Department>>(API_ENDPOINTS.departments, {
           query: { page: 1, size: 200 },
         }),
@@ -128,7 +148,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, showDialog]);
+  }, [page, debouncedSearch, roleFilter, deptFilter, showDialog]);
 
   React.useEffect(() => {
     if (role === "admin") load();
@@ -410,7 +430,67 @@ export default function UsersPage() {
         <ShieldOff className="inline h-3 w-3 mx-1 text-destructive" />撤銷:該人名下<strong>所有現存 token 立即失效</strong>。
       </PageHint>
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 flex flex-col gap-4">
+          {/* 工具列:搜尋 + 角色 + 部門 */}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-20 shrink-0 text-sm text-muted-foreground">
+                搜尋：
+              </span>
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="姓名或 Email"
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-20 shrink-0 text-sm text-muted-foreground">
+                  角色：
+                </span>
+                <FilterChip
+                  active={roleFilter === ""}
+                  onClick={() => setRoleFilter("")}
+                >
+                  全部
+                </FilterChip>
+                <FilterChip
+                  active={roleFilter === "admin"}
+                  onClick={() => setRoleFilter("admin")}
+                >
+                  管理員
+                </FilterChip>
+                <FilterChip
+                  active={roleFilter === "user"}
+                  onClick={() => setRoleFilter("user")}
+                >
+                  成員
+                </FilterChip>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  部門：
+                </span>
+                <select
+                  className="h-10 min-w-[200px] rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  value={deptFilter}
+                  onChange={(e) => setDeptFilter(e.target.value)}
+                >
+                  <option value="">全部部門</option>
+                  {depts.map((d) => (
+                    <option key={d.department_uid} value={d.department_uid}>
+                      {d.name}（{d.code}）
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
           {loading ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 5 }).map((_, i) => (

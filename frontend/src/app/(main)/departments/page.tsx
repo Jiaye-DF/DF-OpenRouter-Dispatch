@@ -307,9 +307,9 @@ export default function DepartmentsPage() {
   };
 
   const copyPlain = (k: SdkKey) => {
-    if (!k.key_plaintext) return;
+    if (!k.key_values) return;
     navigator.clipboard
-      .writeText(k.key_plaintext)
+      .writeText(k.key_values)
       .then(() => toast("已複製部門金鑰", "success"))
       .catch(() => {});
   };
@@ -644,10 +644,10 @@ function DepartmentKeysPanel({
                 <TR key={k.sdk_api_key_uid}>
                   <TD>{k.name}</TD>
                   <TD>
-                    {k.key_plaintext ? (
+                    {k.key_values ? (
                       <div className="flex items-center gap-2">
                         <code className="font-mono text-xs break-all">
-                          {k.key_plaintext}
+                          {k.key_values}
                         </code>
                         <Button
                           variant="ghost"

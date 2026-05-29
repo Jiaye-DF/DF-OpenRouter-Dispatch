@@ -33,7 +33,7 @@
   - 表格新增右側「部門金鑰數量」欄(KeyRound icon + 數字);admin only
   - 展開後在原 row 下方插入 second row(`colSpan=7`)渲染 `<DepartmentKeysPanel>`,內容包含:
     - 該部門所有 SDK Keys mini-table:名稱 / 部門金鑰明文 / 啟停 badge / 刪除 icon
-    - 部門金鑰明文欄:v1.5+ 建立的 row 顯示完整 `key_plaintext` + 複製 icon;v1.5 之前的 row 顯示 `key_prefix··· (舊資料,請重新建立)`
+    - 部門金鑰明文欄:有 `key_values` 的 row 顯示完整明文 + 複製 icon;`key_values=null`(舊資料)的 row 顯示「(舊資料,請重新建立)」(v1.5 Fix 04 後改為純 TEXT `key_values` 欄儲存,admin 可在 DB 直接補)
     - 「+ 新增 SDK Key」inline 輸入框(支援 Enter 觸發);成功後一次性明文 Dialog
   - 進頁時批次拉一次 `/api/v1/sdk-keys?page=1&size=200`(admin only),前端依 `department_uid` group 為 `Record<department_uid, SdkKey[]>`;之後 SDK Key 操作(新增 / 啟停 / 刪除)用 `reloadKeys()` 重抓,不重抓部門列表
   - 「新增部門」對話框新增「主金鑰名稱」欄(預設 placeholder「{部門名稱} 主金鑰」),留空時送出 `${dept.name.trim()} 主金鑰`

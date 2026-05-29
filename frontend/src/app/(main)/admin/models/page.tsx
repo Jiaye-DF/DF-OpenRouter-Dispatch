@@ -513,7 +513,8 @@ export default function ModelsAdminPage() {
                       <TH>Model Key</TH>
                       <TH>分級</TH>
                       <TH className="text-right">上下文長度</TH>
-                      <TH>可輸入 / 可輸出</TH>
+                      <TH>輸入</TH>
+                      <TH>輸出</TH>
                       <TH className="text-right">輸入價格(US$ / 每百萬 tokens)</TH>
                       <TH className="text-right">輸出價格(US$ / 每百萬 tokens)</TH>
                       <TH>狀態</TH>
@@ -546,11 +547,18 @@ export default function ModelsAdminPage() {
                             ? contextLengthDisplay(m.context_length)
                             : "-"}
                         </TD>
-                        <TD className="text-sm">
-                          <ModalityTags
-                            input={m.input_modalities}
-                            output={m.output_modalities}
+                        <TD className="text-sm align-top">
+                          <ModalityTagsVertical
+                            tokens={m.input_modalities}
                             fallback={m.modality}
+                            side="input"
+                          />
+                        </TD>
+                        <TD className="text-sm align-top">
+                          <ModalityTagsVertical
+                            tokens={m.output_modalities}
+                            fallback={m.modality}
+                            side="output"
                           />
                         </TD>
                         <TD className="text-right font-mono text-sm">
@@ -930,6 +938,36 @@ function ModalityPill({ token }: { token: string }) {
       {Icon && <Icon className="h-3 w-3" />}
       {meta?.label ?? token}
     </span>
+  );
+}
+
+// 表格用:輸入 / 輸出 各自獨立欄,tag 垂直排列(避免水平排列把欄寬撐爆)
+function ModalityTagsVertical({
+  tokens,
+  fallback,
+  side,
+}: {
+  tokens: string[];
+  fallback: string | null;
+  side: "input" | "output";
+}) {
+  // 若 tokens 為空,退回舊的 `modality` 字串(歷史相容):取 "x->y" 的對應側為單一 token
+  let list = tokens;
+  if (list.length === 0 && fallback) {
+    const parts = fallback.split("->");
+    const idx = side === "input" ? 0 : 1;
+    const raw = parts[idx]?.trim();
+    if (raw) list = [raw];
+  }
+  if (list.length === 0) {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+  return (
+    <div className="flex flex-col items-start gap-1">
+      {list.map((t) => (
+        <ModalityPill key={t} token={t} />
+      ))}
+    </div>
   );
 }
 

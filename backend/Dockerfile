@@ -21,5 +21,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload
 # ---- prod ----
 FROM base AS prod
 COPY . .
-ENV UVICORN_WORKERS=2
+# 預設單 worker:速率限制器(rate_limit.py)為進程內狀態,multi-worker 會失效。
+# 確定要水平擴展時才調高,並同步把 limiter 換成共享後端。
+ENV UVICORN_WORKERS=1
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS}"]

@@ -94,7 +94,7 @@ export function DailyTimeseriesLine({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
-        <CardTitle>成本時序 (USD,UTC+8)</CardTitle>
+        <CardTitle>成本統計 (USD)</CardTitle>
         <div className="flex items-center gap-2">
           <FilterChip
             active={granularity === "day"}
@@ -149,11 +149,12 @@ export function DailyTimeseriesLine({
                 }}
               />
               <Line
-                type="monotone"
+                type="linear"
                 dataKey="cost"
                 stroke="rgb(var(--color-primary))"
                 strokeWidth={2}
-                dot={granularity === "day"}
+                dot={{ r: granularity === "hour" ? 2 : 3 }}
+                activeDot={{ r: 5 }}
               />
             </LineChart>
           </ResponsiveContainer>

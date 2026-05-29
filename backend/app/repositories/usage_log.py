@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -322,4 +322,21 @@ class UsageLogRepository:
             status=None,
         )
         rows = (await self.db.execute(stmt)).all()
-        return [(r[0], int(r[1]), int(r[2]), Decimal(r[3])) for r in rows]
+        # 後端只回有資料的桶,中間沒用量的小時/日要補 0,否則前端折線圖會把不連續的點直接連起來,
+        # 看起來不像「每小時一個點」而是「跳著畫」。以 min..max bucket 為範圍,每 step 一個桶填充。
+        if not rows:
+            return []
+        step = timedelta(hours=1) if granularity == "hour" else timedelta(days=1)
+        by_bucket: dict[datetime, tuple] = {r[0]: r for r in rows}
+        start: datetime = rows[0][0]
+        end: datetime = rows[-1][0]
+        out: list[tuple[datetime, int, int, Decimal]] = []
+        cur = start
+        while cur <= end:
+            r = by_bucket.get(cur)
+            if r is not None:
+                out.append((r[0], int(r[1]), int(r[2]), Decimal(r[3])))
+            else:
+                out.append((cur, 0, 0, Decimal(0)))
+            cur += step
+        return out

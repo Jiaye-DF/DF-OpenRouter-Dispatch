@@ -610,76 +610,71 @@ function DepartmentKeysPanel({
   onCopy: (k: SdkKey) => void;
 }) {
   return (
-    <div className="px-6 py-4 flex flex-col gap-3">
-      <div className="flex items-center gap-2 text-sm">
-        <KeyRound className="h-4 w-4 text-muted-foreground" />
-        <span className="font-medium">{dept.name} 的部門金鑰</span>
-        <span className="text-muted-foreground">({keys.length})</span>
-      </div>
-
+    <div className="px-4 py-3 flex flex-col gap-3">
       {keys.length === 0 ? (
         <p className="text-sm text-muted-foreground">尚無金鑰,從下方建立第一把。</p>
       ) : (
-        <div className="rounded-xl border border-border bg-card">
-          <Table>
-            <THead>
-              <TR>
-                <TH>名稱</TH>
-                <TH>部門金鑰</TH>
-                <TH>狀態</TH>
-                <TH className="text-right">操作</TH>
+        <Table>
+          <THead>
+            <TR>
+              <TH>名稱</TH>
+              <TH>金鑰</TH>
+              <TH>狀態</TH>
+              <TH className="text-right">操作</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {keys.map((k) => (
+              <TR key={k.sdk_api_key_uid}>
+                <TD className="whitespace-nowrap">{k.name}</TD>
+                <TD>
+                  {k.key_values ? (
+                    <div className="flex items-center gap-1">
+                      <code
+                        className="font-mono text-sm text-muted-foreground truncate max-w-[260px]"
+                        title={k.key_values}
+                      >
+                        {k.key_values}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="複製部門金鑰"
+                        onClick={() => onCopy(k)}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <span className="font-mono text-sm text-muted-foreground">
+                      {k.key_prefix}··· (舊資料,請重新建立)
+                    </span>
+                  )}
+                </TD>
+                <TD>
+                  <button
+                    onClick={() => onToggle(k)}
+                    className="hover:cursor-pointer"
+                  >
+                    <Badge variant={k.is_active ? "success" : "secondary"}>
+                      {k.is_active ? "啟用" : "停用"}
+                    </Badge>
+                  </button>
+                </TD>
+                <TD className="text-right">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="刪除"
+                    onClick={() => onDelete(k)}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </TD>
               </TR>
-            </THead>
-            <TBody>
-              {keys.map((k) => (
-                <TR key={k.sdk_api_key_uid}>
-                  <TD>{k.name}</TD>
-                  <TD>
-                    {k.key_values ? (
-                      <div className="flex items-center gap-2">
-                        <code className="font-mono text-sm break-all">
-                          {k.key_values}
-                        </code>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="複製部門金鑰"
-                          onClick={() => onCopy(k)}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="font-mono text-sm text-muted-foreground">
-                        {k.key_prefix}··· (舊資料,請重新建立)
-                      </span>
-                    )}
-                  </TD>
-                  <TD>
-                    <button
-                      onClick={() => onToggle(k)}
-                      className="hover:cursor-pointer"
-                    >
-                      <Badge variant={k.is_active ? "success" : "secondary"}>
-                        {k.is_active ? "啟用" : "停用"}
-                      </Badge>
-                    </button>
-                  </TD>
-                  <TD className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="刪除"
-                      onClick={() => onDelete(k)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        </div>
+            ))}
+          </TBody>
+        </Table>
       )}
 
       <div className="flex items-center gap-2">

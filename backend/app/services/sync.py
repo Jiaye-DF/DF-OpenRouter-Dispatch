@@ -110,6 +110,31 @@ def match_tier(price: Decimal | None, tiers: list[ModelTier]) -> str | None:
     return None
 
 
+def _normalize_modalities(v: Any) -> list[str]:
+    """OpenRouter 的 input_modalities / output_modalities 通常是 list[str];
+    保險起見也接受字串(以 / 或 , 切)、None 視為空陣列。內容統一 lower-case + 去重保序。
+    """
+    if v is None:
+        return []
+    items: list[str]
+    if isinstance(v, list):
+        items = [str(x) for x in v]
+    elif isinstance(v, str):
+        # "text+image" / "text,image" / "text/image" 都拆開
+        items = [p for p in v.replace("+", ",").replace("/", ",").split(",")]
+    else:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in items:
+        token = raw.strip().lower()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
 def _parse_or_model(item: dict[str, Any]) -> dict[str, Any]:
     """將 OpenRouter /models 單筆 dict 解構為 Model 欄位。"""
     pricing = item.get("pricing") or {}
@@ -124,6 +149,8 @@ def _parse_or_model(item: dict[str, Any]) -> dict[str, Any]:
         "modality": (arch.get("modality") or arch.get("input_modalities") or None)
         if not isinstance(arch.get("modality"), list)
         else ",".join(str(x) for x in arch.get("modality") or []),
+        "input_modalities": _normalize_modalities(arch.get("input_modalities")),
+        "output_modalities": _normalize_modalities(arch.get("output_modalities")),
         "tokenizer": arch.get("tokenizer"),
         "price_prompt_per_token": _to_decimal(pricing.get("prompt")),
         "price_completion_per_token": _to_decimal(pricing.get("completion")),
@@ -216,6 +243,8 @@ async def _sync_models(
                 context_length=parsed["context_length"],
                 max_completion_tokens=parsed["max_completion_tokens"],
                 modality=parsed["modality"],
+                input_modalities=parsed["input_modalities"],
+                output_modalities=parsed["output_modalities"],
                 tokenizer=parsed["tokenizer"],
                 price_prompt_per_token=parsed["price_prompt_per_token"],
                 price_completion_per_token=parsed["price_completion_per_token"],
@@ -237,6 +266,8 @@ async def _sync_models(
             existing.context_length = parsed["context_length"]
             existing.max_completion_tokens = parsed["max_completion_tokens"]
             existing.modality = parsed["modality"]
+            existing.input_modalities = parsed["input_modalities"]
+            existing.output_modalities = parsed["output_modalities"]
             existing.tokenizer = parsed["tokenizer"]
             existing.price_prompt_per_token = parsed["price_prompt_per_token"]
             existing.price_completion_per_token = parsed["price_completion_per_token"]

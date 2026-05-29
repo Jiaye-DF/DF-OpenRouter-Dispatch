@@ -59,7 +59,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/admin/models", label: "模型管理", icon: Box, adminOnly: true },
       {
         href: "/admin/allowed-models",
-        label: "Sync 白名單",
+        label: "模型白名單",
         icon: CheckSquare,
         adminOnly: true,
       },

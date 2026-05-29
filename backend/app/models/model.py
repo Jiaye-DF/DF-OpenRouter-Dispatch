@@ -3,6 +3,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import BigInteger, DateTime, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,6 +32,14 @@ class Model(Base, TimestampMixin):
     context_length: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     modality: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # 可接受 / 可產出之模態 tag(OpenRouter architecture.input_modalities / output_modalities)。
+    # 例:["text", "image", "file"] / ["text"]。OpenRouter 模型由 sync 覆寫;internal 模型可由 admin 自訂。
+    input_modalities: Mapped[list[str]] = mapped_column(
+        PG_ARRAY(String(32)), nullable=False, default=list, server_default="{}"
+    )
+    output_modalities: Mapped[list[str]] = mapped_column(
+        PG_ARRAY(String(32)), nullable=False, default=list, server_default="{}"
+    )
     tokenizer: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     price_prompt_per_token: Mapped[Decimal | None] = mapped_column(

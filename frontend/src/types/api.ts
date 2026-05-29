@@ -201,6 +201,10 @@ export interface Model {
   context_length: number | null;
   max_completion_tokens: number | null;
   modality: string | null;
+  // 模態 tag(v1.5):可輸入 / 可輸出之型別,例 ["text","image"]。
+  // OpenRouter 模型由 sync 自動填入;internal 模型由 admin 自訂。
+  input_modalities: string[];
+  output_modalities: string[];
   tokenizer: string | null;
 
   price_prompt_per_token: string | null;

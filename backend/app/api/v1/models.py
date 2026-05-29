@@ -34,8 +34,17 @@ allowed_router = APIRouter(prefix="/allowed/models", tags=["models"])
 
 # openrouter 模型編輯只可改的欄位(沿用 v1.1)
 _OPENROUTER_PATCHABLE = {"is_active", "tier_key"}
-# internal 模型編輯可改的欄位(v1.2 新增 internal-only 欄位)
-_INTERNAL_PATCHABLE = {"is_active", "tier_key", "name", "description", "context_length", "modality"}
+# internal 模型編輯可改的欄位(v1.2 新增 internal-only 欄位;v1.5 加入 modality tag)
+_INTERNAL_PATCHABLE = {
+    "is_active",
+    "tier_key",
+    "name",
+    "description",
+    "context_length",
+    "modality",
+    "input_modalities",
+    "output_modalities",
+}
 
 
 @router.get(
@@ -117,6 +126,8 @@ async def create_model(
         description=body.description,
         context_length=body.context_length,
         modality=body.modality,
+        input_modalities=body.input_modalities,
+        output_modalities=body.output_modalities,
         tier_key=body.tier_key,
         is_moderated=False,
         last_synced_at=now,
@@ -201,7 +212,9 @@ async def sync(
 
 
 def _safe_json(v):
-    """audit_log.extra 為 JSONB;Bool / str / None 直接過,其他轉 str。"""
+    """audit_log.extra 為 JSONB;Bool / str / None / list 直接過,其他轉 str。"""
     if v is None or isinstance(v, (bool, int, float, str)):
         return v
+    if isinstance(v, list):
+        return [_safe_json(x) for x in v]
     return str(v)

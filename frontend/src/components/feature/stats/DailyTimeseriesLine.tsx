@@ -149,11 +149,12 @@ export function DailyTimeseriesLine({
                 }}
               />
               <Line
-                type="monotone"
+                type="linear"
                 dataKey="cost"
                 stroke="rgb(var(--color-primary))"
                 strokeWidth={2}
-                dot={granularity === "day"}
+                dot={{ r: granularity === "hour" ? 2 : 3 }}
+                activeDot={{ r: 5 }}
               />
             </LineChart>
           </ResponsiveContainer>

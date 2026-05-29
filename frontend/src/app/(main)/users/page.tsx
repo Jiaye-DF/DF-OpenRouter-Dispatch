@@ -490,7 +490,7 @@ export default function UsersPage() {
                       <Badge
                         variant={u.role === "admin" ? "default" : "secondary"}
                       >
-                        {u.role}
+                        {u.role === "admin" ? "管理員" : "成員"}
                       </Badge>
                     </TD>
                     <TD>{deptName(u.department_uid)}</TD>
@@ -555,14 +555,14 @@ export default function UsersPage() {
                 }
                 className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
               >
-                <option value="user">一般使用者(僅 SDK 身分,無法登入後台)</option>
+                <option value="user">成員(僅 SDK 身分,無法登入後台)</option>
                 <option value="admin">管理員(可登入後台 + SDK 身分)</option>
               </select>
             </FormField>
             <p className="text-sm text-muted-foreground">
               {createForm.role === "admin"
                 ? "管理員以 DF-SSO 登入後台(Email 須與 SSO 一致),亦可產生 User Token 作為 SDK 呼叫身分。"
-                : "一般使用者僅作為 SDK 呼叫的身分識別,無法登入後台。"}
+                : "成員僅作為 SDK 呼叫的身分識別,無法登入後台。"}
             </p>
             <FormField label="姓名">
               <Input

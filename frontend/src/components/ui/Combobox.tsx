@@ -76,7 +76,7 @@ export function Combobox({
         <span className={cn("truncate", !selected && "text-muted-foreground")}>
           {selected ? selected.label : placeholder}
         </span>
-        <span className="shrink-0 text-xs text-muted-foreground">▾</span>
+        <span className="shrink-0 text-sm text-muted-foreground">▾</span>
       </button>
 
       {open && (

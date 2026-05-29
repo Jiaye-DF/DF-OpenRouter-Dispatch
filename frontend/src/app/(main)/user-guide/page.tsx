@@ -54,7 +54,7 @@ function CodeBlock({
       )}
     >
       {language && (
-        <div className="px-4 py-1.5 text-xs text-muted-foreground border-b border-border font-mono">
+        <div className="px-4 py-1.5 text-sm text-muted-foreground border-b border-border font-mono">
           {language}
         </div>
       )}
@@ -66,7 +66,7 @@ function CodeBlock({
         onClick={onCopy}
         aria-label="複製"
         className={cn(
-          "absolute top-2 right-2 flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-1 text-xs",
+          "absolute top-2 right-2 flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-1 text-sm",
           "opacity-0 group-hover:opacity-100 hover:cursor-pointer transition-opacity"
         )}
       >
@@ -177,7 +177,7 @@ interface ErrorRow {
 
 const ERRORS: ErrorRow[] = [
   { status: 400, code: "feature_not_supported", desc: "請求帶了不支援的欄位(目前 videos 暫不支援)" },
-  { status: 400, code: "project_code_required", desc: "未帶 X-Project-Code header(v1.5+ 必填)" },
+  { status: 400, code: "project_code_required", desc: "未帶 X-Project-Code header" },
   { status: 400, code: "project_invalid", desc: "X-Project-Code 對應專案不存在 / 已停用 / 不屬於 SDK Key 的部門" },
   { status: 401, code: "unauthorized", desc: "SDK Key 或 User Token 無效 / 已被撤銷 / 兩者不屬同一部門" },
   { status: 403, code: "model_forbidden", desc: "模型未在白名單,或已被 admin 停用" },
@@ -216,18 +216,18 @@ export default function UserGuidePage() {
               <div className="flex items-center gap-2 mb-2">
                 <Badge>X-SDK-Key</Badge>
               </div>
-              <p className="text-xs text-muted-foreground mb-1">部門層級 · 存取金鑰</p>
+              <p className="text-sm text-muted-foreground mb-1">部門層級 · 存取金鑰</p>
               <p className="text-sm">
                 以部門為單位發放,代表「<strong>哪個部門的程式在呼叫</strong>」。
                 由 admin 於後台「存取金鑰 / SDK Keys」建立,格式類似
-                <code className="font-mono text-xs"> ordsk_xxxxxxxxxxxx_xxxx…</code>。
+                <code className="font-mono text-sm"> ordsk_xxxxxxxxxxxx_xxxx…</code>。
               </p>
             </div>
             <div className="rounded-xl border border-border p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Badge>X-User-Token</Badge>
               </div>
-              <p className="text-xs text-muted-foreground mb-1">使用者層級 · 加密 payload</p>
+              <p className="text-sm text-muted-foreground mb-1">使用者層級 · 加密 payload</p>
               <p className="text-sm">
                 以個別使用者為單位發放,代表「<strong>哪個人在呼叫</strong>」。
                 由 admin 於「使用者管理」頁針對 role=user 的使用者產生,
@@ -238,10 +238,10 @@ export default function UserGuidePage() {
               <div className="flex items-center gap-2 mb-2">
                 <Badge>X-Project-Code</Badge>
               </div>
-              <p className="text-xs text-muted-foreground mb-1">專案層級 · 代碼</p>
+              <p className="text-sm text-muted-foreground mb-1">專案層級 · 代碼</p>
               <p className="text-sm">
                 以部門下的專案為單位發放,代表「<strong>這次呼叫歸到哪個專案算用量</strong>」。
-                值為「專案管理」頁顯示的 <code className="font-mono text-xs">代碼</code>欄(系統自動產生的數字字串)。
+                值為「專案管理」頁顯示的 <code className="font-mono text-sm">代碼</code>欄(系統自動產生的數字字串)。
                 同把 SDK Key 可呼叫同部門任一專案。
               </p>
             </div>
@@ -270,7 +270,7 @@ export default function UserGuidePage() {
                 {API_ENVIRONMENTS.map((e) => (
                   <TR key={e.label}>
                     <TD>{e.label}</TD>
-                    <TD className="font-mono text-xs">
+                    <TD className="font-mono text-sm">
                       {e.base || (
                         <span className="text-muted-foreground">(待補)</span>
                       )}
@@ -328,7 +328,7 @@ export default function UserGuidePage() {
               </TBody>
             </Table>
           </div>
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-sm">
             可用的 <code>model</code> 清單由管理員集中維護。你可隨時查詢已啟用的模型清單(見下方<strong>查詢可用模型清單</strong>),從中複製 <code>model_key</code> 填入此欄位;若呼叫時收到 <code>403 model_forbidden</code>,請向管理員確認該模型是否已啟用。
           </p>
 
@@ -349,7 +349,7 @@ export default function UserGuidePage() {
                   href={MODELS_URL}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-mono text-xs underline underline-offset-2 hover:text-foreground"
+                  className="font-mono text-sm underline underline-offset-2 hover:text-foreground"
                 >
                   {MODELS_URL}
                 </a>
@@ -411,7 +411,7 @@ export default function UserGuidePage() {
                         {e.status}
                       </Badge>
                     </TD>
-                    <TD className="font-mono text-xs">{e.code}</TD>
+                    <TD className="font-mono text-sm">{e.code}</TD>
                     <TD className="text-muted-foreground">{e.desc}</TD>
                   </TR>
                 ))}

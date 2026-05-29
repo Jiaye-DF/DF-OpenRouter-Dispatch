@@ -46,6 +46,7 @@ export default function DashboardPage() {
   const [byProject, setByProject] = React.useState<StatsByProject[]>();
   const [byUser, setByUser] = React.useState<StatsByUser[]>();
   const [timeseries, setTimeseries] = React.useState<StatsTimeseriesPoint[]>();
+  const [granularity, setGranularity] = React.useState<"day" | "hour">("day");
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -68,7 +69,7 @@ export default function DashboardPage() {
         }),
         apiClient.get<StatsByUser[]>(API_ENDPOINTS.statsByUser, { query }),
         apiClient.get<StatsTimeseriesPoint[]>(API_ENDPOINTS.statsTimeseries, {
-          query: { ...query, granularity: "day" },
+          query: { ...query, granularity },
         }),
       ]);
       if (cancelled) return;
@@ -84,7 +85,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters]);
+  }, [filters, granularity]);
 
   const hasAnyData =
     (byDept?.length ?? 0) +
@@ -144,7 +145,11 @@ export default function DashboardPage() {
           <ByProjectBar data={byProject} />
           <ByUserBar data={byUser} />
         </div>
-        <DailyTimeseriesLine data={timeseries} />
+        <DailyTimeseriesLine
+          data={timeseries}
+          granularity={granularity}
+          onGranularityChange={setGranularity}
+        />
       </div>
     </>
   );

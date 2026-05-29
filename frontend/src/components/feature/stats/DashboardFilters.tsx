@@ -104,7 +104,7 @@ export function DashboardFilters({
         <div className="grid gap-4 md:grid-cols-3">
           {/* 部門 */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-muted-foreground">部門</label>
+            <label className="text-sm text-muted-foreground">部門</label>
             {isAdmin ? (
               <select
                 className={SELECT_CLASS}
@@ -121,7 +121,7 @@ export function DashboardFilters({
             ) : (
               <div className="h-10 flex items-center">
                 <Badge variant="secondary">{currentDeptName}</Badge>
-                <span className="ml-2 text-xs text-muted-foreground">
+                <span className="ml-2 text-sm text-muted-foreground">
                   (僅 admin 可跨部門檢視)
                 </span>
               </div>
@@ -130,7 +130,7 @@ export function DashboardFilters({
 
           {/* 專案 */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-muted-foreground">專案</label>
+            <label className="text-sm text-muted-foreground">專案</label>
             <select
               className={SELECT_CLASS}
               value={value.project_uid}
@@ -149,7 +149,7 @@ export function DashboardFilters({
 
           {/* 使用者 */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-muted-foreground">使用者</label>
+            <label className="text-sm text-muted-foreground">使用者</label>
             <select
               className={SELECT_CLASS}
               value={value.user_uid}

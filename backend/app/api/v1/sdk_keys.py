@@ -18,9 +18,9 @@ from app.services.sdk_key import create_sdk_key, reveal_sdk_key
 
 
 def _to_response(row) -> SdkKeyResponse:
-    """ORM → schema;同時嘗試解密 key_plaintext。"""
+    """ORM → schema;讀取 row.key_values 寫入回應。"""
     base = SdkKeyResponse.model_validate(row)
-    base.key_plaintext = reveal_sdk_key(row)
+    base.key_values = reveal_sdk_key(row)
     return base
 
 router = APIRouter(prefix="/sdk-keys", tags=["sdk-keys"])
@@ -72,7 +72,7 @@ async def create_key(
         key_prefix=row.key_prefix,
         is_active=row.is_active,
         key=full,
-        key_plaintext=full,
+        key_values=full,
     )
     return success_response(data=resp.model_dump(mode="json"), detail="success")
 

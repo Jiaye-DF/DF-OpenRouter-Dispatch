@@ -14,6 +14,7 @@ import {
   Layers,
   LayoutDashboard,
   ScrollText,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -94,7 +95,15 @@ const NAV_SECTIONS: NavSection[] = [
   // 此處不再單獨列出;舊書籤直打 /sdk-keys 仍可進得去。
   {
     label: "說明",
-    items: [{ href: "/user-guide", label: "使用者使用說明", icon: BookOpen }],
+    items: [
+      { href: "/user-guide", label: "使用者使用說明", icon: BookOpen },
+      {
+        href: "/admin-guide",
+        label: "管理者使用說明",
+        icon: ShieldCheck,
+        adminOnly: true,
+      },
+    ],
   },
 ];
 

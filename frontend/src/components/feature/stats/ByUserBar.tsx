@@ -12,28 +12,30 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/EmptyState";
 import { RankingTable } from "@/components/feature/stats/RankingTable";
+import { formatUSD, toUSDNumber } from "@/lib/utils/format";
 import type { StatsByUser } from "@/types/api";
 
 interface Props {
   data?: StatsByUser[];
 }
 
-// 使用者 × 總 tokens 長條圖 + 排行表(v1.5)
 export function ByUserBar({ data }: Props) {
   const items = (data ?? []).map((d) => ({
     name: d.username ?? "(未知使用者)",
+    cost: toUSDNumber(d.total_cost_usd),
     tokens: d.total_tokens,
-  }));
-  const tableItems = (data ?? []).map((d) => ({
-    name: d.username ?? "(未知使用者)",
     requests: d.total_requests,
-    tokens: d.total_tokens,
+  }));
+  const tableItems = items.map((d) => ({
+    name: d.name,
+    requests: d.requests,
+    cost: d.cost,
   }));
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>使用者用量(Tokens)</CardTitle>
+        <CardTitle>使用者成本 (USD)</CardTitle>
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (
@@ -44,16 +46,29 @@ export function ByUserBar({ data }: Props) {
               <BarChart data={items}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                 <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
+                <YAxis
+                  tick={{ fontSize: 12 }}
+                  tickFormatter={(v) => formatUSD(v, 2)}
+                />
                 <Tooltip
                   contentStyle={{
                     background: "rgb(var(--color-card))",
                     border: "1px solid rgb(var(--color-border))",
                     borderRadius: 12,
                   }}
+                  formatter={(_v, _n, p) => {
+                    const row = p?.payload as
+                      | { cost: number; tokens: number; requests: number }
+                      | undefined;
+                    if (!row) return null;
+                    return [
+                      `${formatUSD(row.cost)} · ${row.tokens.toLocaleString()} tokens · ${row.requests.toLocaleString()} 次`,
+                      "用量",
+                    ];
+                  }}
                 />
                 <Bar
-                  dataKey="tokens"
+                  dataKey="cost"
                   fill="rgb(var(--color-primary))"
                   radius={[6, 6, 0, 0]}
                 />

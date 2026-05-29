@@ -39,9 +39,17 @@ async def list_users(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=200),
     department_uid: UUID | None = None,
+    role: str | None = Query(None, description="admin / user;不傳代表不過濾"),
+    q: str | None = Query(None, description="模糊搜尋姓名或 Email(不分大小寫)"),
 ):
     repo = UserRepository(db)
-    items, total = await repo.list(page=page, size=size, department_uid=department_uid)
+    items, total = await repo.list(
+        page=page,
+        size=size,
+        department_uid=department_uid,
+        role=role,
+        q=q,
+    )
     data = Page[UserResponse](
         items=[UserResponse.model_validate(x) for x in items],
         total=total,

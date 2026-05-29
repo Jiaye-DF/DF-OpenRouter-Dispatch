@@ -13,13 +13,14 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/EmptyState";
 import { RankingTable } from "@/components/feature/stats/RankingTable";
+import { formatUSD, toUSDNumber } from "@/lib/utils/format";
 import type { StatsByModel } from "@/types/api";
 
 interface Props {
   data?: StatsByModel[];
 }
 
-// 模型 × 總 tokens 堆疊柱狀 + 排行表;若資料僅單層(無 department 分組)則退化為單條柱
+// 模型 × 總成本堆疊柱狀 + 排行表;依部門堆疊,若資料僅單層(無 department 分組)則退化為單條柱。
 export function ModelTokensStacked({ data }: Props) {
   const grouped = new Map<string, Record<string, number | string>>();
   const deptSet = new Set<string>();
@@ -29,25 +30,25 @@ export function ModelTokensStacked({ data }: Props) {
     const dept = row.department_name ?? "總計";
     deptSet.add(dept);
     const entry = grouped.get(key) ?? { model: key };
-    entry[dept] = ((entry[dept] as number) ?? 0) + row.total_tokens;
+    entry[dept] = ((entry[dept] as number) ?? 0) + toUSDNumber(row.total_cost_usd);
     grouped.set(key, entry);
   }
   const chartData = Array.from(grouped.values());
   const depts = Array.from(deptSet);
 
   // 排行表:依模型彙總(跨部門加總)
-  const modelTotals = new Map<string, { requests: number; tokens: number }>();
+  const modelTotals = new Map<string, { requests: number; cost: number }>();
   for (const row of data ?? []) {
-    const prev = modelTotals.get(row.model) ?? { requests: 0, tokens: 0 };
+    const prev = modelTotals.get(row.model) ?? { requests: 0, cost: 0 };
     modelTotals.set(row.model, {
       requests: prev.requests + row.total_requests,
-      tokens: prev.tokens + row.total_tokens,
+      cost: prev.cost + toUSDNumber(row.total_cost_usd),
     });
   }
   const tableItems = Array.from(modelTotals.entries()).map(([name, v]) => ({
     name,
     requests: v.requests,
-    tokens: v.tokens,
+    cost: v.cost,
   }));
 
   // 色盤:以主色與輔色為基底循環
@@ -63,7 +64,7 @@ export function ModelTokensStacked({ data }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>總模型用量 (Tokens)</CardTitle>
+        <CardTitle>模型成本 (USD)</CardTitle>
       </CardHeader>
       <CardContent>
         {chartData.length === 0 ? (
@@ -74,20 +75,24 @@ export function ModelTokensStacked({ data }: Props) {
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                 <XAxis dataKey="model" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 12 }} />
+                <YAxis
+                  tick={{ fontSize: 12 }}
+                  tickFormatter={(v) => formatUSD(v, 2)}
+                />
                 <Tooltip
                   contentStyle={{
                     background: "rgb(var(--color-card))",
                     border: "1px solid rgb(var(--color-border))",
                     borderRadius: 12,
                   }}
+                  formatter={(v) => formatUSD(v as number)}
                 />
                 <Legend />
                 {depts.map((d, idx) => (
                   <Bar
                     key={d}
                     dataKey={d}
-                    stackId="tokens"
+                    stackId="cost"
                     fill={palette[idx % palette.length]}
                     radius={idx === depts.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
                   />

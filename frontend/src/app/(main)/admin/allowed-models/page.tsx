@@ -26,7 +26,7 @@ import { API_ENDPOINTS } from "@/lib/api/endpoints";
 import type { AllowedModel } from "@/types/api";
 import { useAppSelector } from "@/store/hooks";
 
-// Sync 白名單管理(admin only):編輯後下次 sync 自動生效。
+// 模型白名單管理(admin only):編輯後下次 sync 自動生效。
 // - is_active=TRUE 的 model_key 才會被 sync 啟用;FALSE 仍保留紀錄(可一鍵重新啟用)
 // - 刪除為軟刪除(is_deleted=TRUE),重新新增同 key 會自動還原為 active
 
@@ -75,7 +75,7 @@ export default function AllowedModelsPage() {
   if (role !== "admin") {
     return (
       <>
-        <PageTitle title="Sync 白名單" />
+        <PageTitle title="模型白名單" />
         <Card>
           <CardContent className="pt-6">
             <EmptyState title="權限不足" description="本頁僅限 admin 存取" />
@@ -168,7 +168,7 @@ export default function AllowedModelsPage() {
   return (
     <>
       <PageTitle
-        title="Sync 白名單"
+        title="模型白名單"
         description="編輯後下次 sync 自動套用;白名單以外的 OpenRouter 模型一律停用"
         actions={
           <Button onClick={() => setCreateOpen(true)}>

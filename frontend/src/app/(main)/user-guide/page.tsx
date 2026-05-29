@@ -355,7 +355,7 @@ export default function UserGuidePage() {
                 </a>
               </li>
               <li>
-                回應 <code>data[]</code>(陣列)每筆的 <code>model_key</code> 即為呼叫上方端點時 <code>model</code> 欄位要填入的值;<code>name</code> 為顯示名稱、<code>description</code> / <code>context_length</code> / <code>modality</code> 供參考。
+                回應 <code>data[]</code>(陣列)每筆的 <code>model_key</code> 即為呼叫上方端點時 <code>model</code> 欄位要填入的值;<code>name</code> 為顯示名稱、<code>description</code> / <code>context_length</code> / <code>modality</code> / <code>input_modalities</code> / <code>output_modalities</code> 供參考(modality tag 為陣列,例 [&quot;text&quot;,&quot;image&quot;])。
               </li>
               <li>僅回傳已啟用(白名單內)的模型;定價、tokenizer 等內部欄位不對外。</li>
             </ul>

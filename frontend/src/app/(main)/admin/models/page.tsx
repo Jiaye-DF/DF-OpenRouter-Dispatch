@@ -1,7 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Plus, X } from "lucide-react";
+import {
+  ArrowRight,
+  AudioLines,
+  FileText,
+  Image as ImageIcon,
+  Plus,
+  Type,
+  Video,
+  X,
+} from "lucide-react";
 import { PageTitle } from "@/components/common/PageTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -424,7 +433,7 @@ export default function ModelsAdminPage() {
                       <TH>Model Key</TH>
                       <TH>分級</TH>
                       <TH className="text-right">上下文長度</TH>
-                      <TH>模態</TH>
+                      <TH>可輸入 / 可輸出</TH>
                       <TH className="text-right">輸入價格(US$ / 每百萬 tokens)</TH>
                       <TH className="text-right">輸出價格(US$ / 每百萬 tokens)</TH>
                       <TH>狀態</TH>
@@ -458,7 +467,11 @@ export default function ModelsAdminPage() {
                             : "-"}
                         </TD>
                         <TD className="text-sm">
-                          {m.modality ? m.modality.replace("->", " → ") : "-"}
+                          <ModalityTags
+                            input={m.input_modalities}
+                            output={m.output_modalities}
+                            fallback={m.modality}
+                          />
                         </TD>
                         <TD className="text-right font-mono text-sm">
                           {priceToMtokDisplay(m.price_prompt_per_token)}
@@ -516,11 +529,13 @@ export default function ModelsAdminPage() {
                             tier={m.tier_key ? tierMap[m.tier_key] : undefined}
                           />
                         </div>
-                        <div>
-                          <span className="text-muted-foreground">模態:</span>{" "}
-                          {m.modality
-                            ? m.modality.replace("->", " → ")
-                            : "未指定"}
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">模態:</span>
+                          <ModalityTags
+                            input={m.input_modalities}
+                            output={m.output_modalities}
+                            fallback={m.modality}
+                          />
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
@@ -616,12 +631,12 @@ export default function ModelsAdminPage() {
                       : "未指定"}
                   </span>
                 </Field>
-                <Field label="模態">
-                  <span className="text-sm">
-                    {editing.modality
-                      ? editing.modality.replace("->", " → ")
-                      : "未指定"}
-                  </span>
+                <Field label="可輸入 / 可輸出">
+                  <ModalityTags
+                    input={editing.input_modalities}
+                    output={editing.output_modalities}
+                    fallback={editing.modality}
+                  />
                 </Field>
                 <Field label="斷詞器 (Tokenizer)">
                   <span className="text-sm">{editing.tokenizer ?? "未指定"}</span>
@@ -787,6 +802,75 @@ export default function ModelsAdminPage() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// 模態 tag — 將後端的 input_modalities / output_modalities(英文 code)轉為帶 icon 的中文標籤,
+// 並以「輸入 → 輸出」兩組形式顯示。若兩邊皆空,退回舊的 `modality` 字串(歷史相容)。
+const MODALITY_META: Record<
+  string,
+  { label: string; icon: React.ComponentType<{ className?: string }>; color: string }
+> = {
+  text: { label: "文字", icon: Type, color: "blue" },
+  image: { label: "圖片", icon: ImageIcon, color: "purple" },
+  file: { label: "檔案", icon: FileText, color: "amber" },
+  audio: { label: "音訊", icon: AudioLines, color: "emerald" },
+  video: { label: "影片", icon: Video, color: "rose" },
+};
+
+const MODALITY_COLOR_CLASS: Record<string, string> = {
+  blue: "border-blue-500/30 bg-blue-500/10 text-blue-600",
+  purple: "border-purple-500/30 bg-purple-500/10 text-purple-600",
+  amber: "border-amber-500/30 bg-amber-500/10 text-amber-600",
+  emerald: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600",
+  rose: "border-rose-500/30 bg-rose-500/10 text-rose-600",
+  gray: "border-border bg-muted text-muted-foreground",
+};
+
+function ModalityPill({ token }: { token: string }) {
+  const meta = MODALITY_META[token];
+  const Icon = meta?.icon;
+  const color = MODALITY_COLOR_CLASS[meta?.color ?? "gray"];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-medium ${color}`}
+    >
+      {Icon && <Icon className="h-3 w-3" />}
+      {meta?.label ?? token}
+    </span>
+  );
+}
+
+function ModalityTags({
+  input,
+  output,
+  fallback,
+}: {
+  input: string[];
+  output: string[];
+  fallback: string | null;
+}) {
+  if ((!input || input.length === 0) && (!output || output.length === 0)) {
+    return (
+      <span className="text-sm text-muted-foreground">
+        {fallback ? fallback.replace("->", " → ") : "未指定"}
+      </span>
+    );
+  }
+  return (
+    <div className="inline-flex flex-wrap items-center gap-1">
+      {input.length > 0 ? (
+        input.map((t) => <ModalityPill key={`in-${t}`} token={t} />)
+      ) : (
+        <span className="text-xs text-muted-foreground">無</span>
+      )}
+      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/70" aria-hidden />
+      {output.length > 0 ? (
+        output.map((t) => <ModalityPill key={`out-${t}`} token={t} />)
+      ) : (
+        <span className="text-xs text-muted-foreground">無</span>
+      )}
+    </div>
   );
 }
 

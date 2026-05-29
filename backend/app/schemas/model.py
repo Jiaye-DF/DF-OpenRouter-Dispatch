@@ -35,6 +35,8 @@ class ModelRead(BaseModel):
     context_length: int | None = None
     max_completion_tokens: int | None = None
     modality: str | None = None
+    input_modalities: list[str] = Field(default_factory=list)
+    output_modalities: list[str] = Field(default_factory=list)
     tokenizer: str | None = None
 
     price_prompt_per_token: Decimal | None = None
@@ -68,6 +70,8 @@ class AllowedModelRead(BaseModel):
     description: str | None = None
     context_length: int | None = None
     modality: str | None = None
+    input_modalities: list[str] = Field(default_factory=list)
+    output_modalities: list[str] = Field(default_factory=list)
 
 
 class ModelPatch(BaseModel):
@@ -84,6 +88,8 @@ class ModelPatch(BaseModel):
     description: str | None = None
     context_length: int | None = Field(default=None, ge=0)
     modality: str | None = Field(default=None, max_length=64)
+    input_modalities: list[str] | None = Field(default=None, max_length=16)
+    output_modalities: list[str] | None = Field(default=None, max_length=16)
 
 
 class ModelCreateRequest(BaseModel):
@@ -95,6 +101,8 @@ class ModelCreateRequest(BaseModel):
     description: str | None = None
     context_length: int | None = Field(default=None, ge=0)
     modality: str | None = Field(default="text->text", max_length=64)
+    input_modalities: list[str] = Field(default_factory=lambda: ["text"], max_length=16)
+    output_modalities: list[str] = Field(default_factory=lambda: ["text"], max_length=16)
     tier_key: str | None = Field(default=None, max_length=32)
 
 

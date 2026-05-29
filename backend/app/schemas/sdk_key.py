@@ -21,8 +21,8 @@ class SdkKeyResponse(BaseModel):
     name: str
     key_prefix: str
     is_active: bool
-    # 完整明文(admin 後台可隨時檢視;舊資料無法復原時為 None)
-    key_plaintext: str | None = None
+    # 完整明文(admin 後台可隨時檢視;舊資料未填 → None)
+    key_values: str | None = None
 
 
 class SdkKeyCreateResponse(SdkKeyResponse):

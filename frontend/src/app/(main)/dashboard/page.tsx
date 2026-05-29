@@ -26,18 +26,39 @@ import type {
   StatsTimeseriesPoint,
 } from "@/types/api";
 
-// 儀錶板首頁(v1.5):
-// - 頂部三層篩選(部門 / 專案 / 使用者),admin 可任選、non-admin 鎖在自己部門
-// - KPI / 各維度長條 / 時序折線皆套用相同篩選
+// 本地時區(瀏覽器=台北)的 YYYY-MM-DD
+function localYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// 預設日期區間:當月 1 號 ~ 今天
+function defaultRange(): { from: string; to: string } {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { from: localYmd(first), to: localYmd(now) };
+}
+
+// 儀錶板首頁(v1.5 / v1.6):
+// - 頂部篩選(部門 / 專案 / 使用者 / 日期區間),admin 可任選、non-admin 鎖在自己部門
+// - 日期區間預設當月,起訖以台北日界送至後端(+08:00),所有彙總共用同一範圍
+// - KPI / 各維度長條 / 時序折線 / Excel 匯出皆套用相同篩選
 export default function DashboardPage() {
   const actor = useAppSelector((s) => s.auth.actor);
   const isAdmin = actor?.role === "admin";
   const actorDeptUid = actor?.department_uid ?? null;
 
-  const [filters, setFilters] = React.useState<DashboardFilterValue>({
-    department_uid: "",
-    project_uid: "",
-    user_uid: "",
+  const [filters, setFilters] = React.useState<DashboardFilterValue>(() => {
+    const r = defaultRange();
+    return {
+      department_uid: "",
+      project_uid: "",
+      user_uid: "",
+      from: r.from,
+      to: r.to,
+    };
   });
 
   const [overview, setOverview] = React.useState<StatsOverview>();
@@ -57,6 +78,9 @@ export default function DashboardPage() {
       if (filters.department_uid) query.department_uid = filters.department_uid;
       if (filters.project_uid) query.project_uid = filters.project_uid;
       if (filters.user_uid) query.user_uid = filters.user_uid;
+      // 以台北日界(+08:00)送出:起始含當日 00:00:00、結束含當日 23:59:59
+      if (filters.from) query.from = `${filters.from}T00:00:00+08:00`;
+      if (filters.to) query.to = `${filters.to}T23:59:59+08:00`;
 
       const [ov, dept, model, project, user, ts] = await Promise.allSettled([
         apiClient.get<StatsOverview>(API_ENDPOINTS.statsOverview, { query }),
@@ -98,10 +122,14 @@ export default function DashboardPage() {
     setExporting(true);
     try {
       const { exportDashboardToExcel } = await import("@/lib/export/excel");
-      const today = new Date().toISOString().slice(0, 10);
+      // 檔名帶篩選的日期區間(資料本身已是該區間彙總結果)
+      const range =
+        filters.from && filters.to
+          ? `${filters.from}_${filters.to}`
+          : localYmd(new Date());
       exportDashboardToExcel(
         { byDept, byProject, byUser },
-        `dashboard_${today}.xlsx`,
+        `dashboard_${range}.xlsx`,
       );
     } finally {
       setExporting(false);
@@ -112,7 +140,7 @@ export default function DashboardPage() {
     <>
       <PageTitle
         title="儀錶板"
-        description="檢視本月份平台整體成本與用量;可依部門、專案、使用者篩選"
+        description="檢視指定期間平台成本與用量;可依日期、部門、專案、使用者篩選"
         actions={
           <Button
             variant="outline"

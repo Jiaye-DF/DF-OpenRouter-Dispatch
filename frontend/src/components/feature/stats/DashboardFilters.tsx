@@ -21,6 +21,9 @@ export interface DashboardFilterValue {
   department_uid: string;
   project_uid: string;
   user_uid: string;
+  // 日期區間(YYYY-MM-DD,以台北日界為準);空字串代表不設該端點
+  from: string;
+  to: string;
 }
 
 interface Props {
@@ -91,16 +94,26 @@ export function DashboardFilters({
   }, [filterDept]);
 
   const onDeptChange = (next: string) => {
-    // 切部門:同時把專案 / 使用者重設(避免殘留跨部門 ID)
-    onChange({ department_uid: next, project_uid: "", user_uid: "" });
+    // 切部門:同時把專案 / 使用者重設(避免殘留跨部門 ID),日期區間保留
+    onChange({
+      ...value,
+      department_uid: next,
+      project_uid: "",
+      user_uid: "",
+    });
   };
 
   const currentDeptName =
     depts.find((d) => d.department_uid === actorDeptUid)?.name ?? "(未指派)";
 
+  const INPUT_CLASS =
+    "h-10 w-full rounded-xl border border-border bg-background px-3 text-sm " +
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 " +
+    "hover:cursor-pointer";
+
   return (
     <Card>
-      <CardContent className="pt-6">
+      <CardContent className="flex flex-col gap-4 pt-6">
         <div className="grid gap-4 md:grid-cols-3">
           {/* 部門 */}
           <div className="flex flex-col gap-1.5">
@@ -165,6 +178,30 @@ export function DashboardFilters({
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+
+        {/* 日期區間(起訖以台北日界計;空白代表該端點不限) */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm text-muted-foreground">起始日期</label>
+            <input
+              type="date"
+              className={INPUT_CLASS}
+              value={value.from}
+              max={value.to || undefined}
+              onChange={(e) => onChange({ ...value, from: e.target.value })}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm text-muted-foreground">結束日期</label>
+            <input
+              type="date"
+              className={INPUT_CLASS}
+              value={value.to}
+              min={value.from || undefined}
+              onChange={(e) => onChange({ ...value, to: e.target.value })}
+            />
           </div>
         </div>
       </CardContent>

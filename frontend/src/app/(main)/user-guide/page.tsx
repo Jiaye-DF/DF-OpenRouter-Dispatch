@@ -205,7 +205,7 @@ export default function UserGuidePage() {
             使用者<strong>不需要</strong>登入此網站,只需要拿到管理員發放的三組憑證,即可在自己的程式碼或工具裡呼叫代理端點。
           </p>
           <p className="text-muted-foreground">
-            管理員(admin)透過本網站集中發放與管理憑證、模型白名單與部門金鑰;一般使用者只接觸下面提到的「SDK Key + User Token + Project Code」三因子組合。
+            管理員(admin)透過本網站集中發放與管理憑證、模型白名單與部門金鑰;成員(user)只接觸下面提到的「SDK Key + User Token + Project Code」三因子組合。
           </p>
         </Section>
 

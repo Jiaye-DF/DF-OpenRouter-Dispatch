@@ -14,7 +14,14 @@ from app.schemas.sdk_key import (
     SdkKeyResponse,
     SdkKeyUpdateRequest,
 )
-from app.services.sdk_key import create_sdk_key
+from app.services.sdk_key import create_sdk_key, reveal_sdk_key
+
+
+def _to_response(row) -> SdkKeyResponse:
+    """ORM → schema;同時嘗試解密 key_plaintext。"""
+    base = SdkKeyResponse.model_validate(row)
+    base.key_plaintext = reveal_sdk_key(row)
+    return base
 
 router = APIRouter(prefix="/sdk-keys", tags=["sdk-keys"])
 
@@ -30,7 +37,7 @@ async def list_sdk_keys(
     repo = SdkApiKeyRepository(db)
     items, total = await repo.list(page=page, size=size, department_uid=department_uid)
     data = Page[SdkKeyResponse](
-        items=[SdkKeyResponse.model_validate(x) for x in items],
+        items=[_to_response(x) for x in items],
         total=total,
         page=page,
         size=size,
@@ -65,6 +72,7 @@ async def create_key(
         key_prefix=row.key_prefix,
         is_active=row.is_active,
         key=full,
+        key_plaintext=full,
     )
     return success_response(data=resp.model_dump(mode="json"), detail="success")
 
@@ -97,7 +105,7 @@ async def update_key(
     )
     await db.commit()
     return success_response(
-        data=SdkKeyResponse.model_validate(row).model_dump(mode="json"), detail="success"
+        data=_to_response(row).model_dump(mode="json"), detail="success"
     )
 
 

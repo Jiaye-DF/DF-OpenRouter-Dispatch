@@ -215,7 +215,7 @@ export function Sidebar() {
             )}
           >
             <BarChart3 className="h-3.5 w-3.5" />
-            {!collapsed && <span>一般使用者檢視</span>}
+            {!collapsed && <span>成員檢視</span>}
           </div>
         )}
       </nav>

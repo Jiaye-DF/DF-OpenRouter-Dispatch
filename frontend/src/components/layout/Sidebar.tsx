@@ -131,11 +131,11 @@ export function Sidebar() {
                 <div className="mx-2 my-2 h-px bg-border" aria-hidden />
               ) : (
                 <div className="px-3 pt-4 pb-1">
-                  <div className="text-xs font-medium tracking-wider text-muted-foreground/70 uppercase">
+                  <div className="text-sm font-medium tracking-wider text-muted-foreground/70 uppercase">
                     {sec.label ?? ""}
                   </div>
                   {sec.hint && (
-                    <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+                    <div className="text-sm text-muted-foreground/60 mt-0.5">
                       {sec.hint}
                     </div>
                   )}
@@ -143,11 +143,11 @@ export function Sidebar() {
               ))}
             {!collapsed && idx === 0 && sec.label && (
               <div className="px-3 pb-1">
-                <div className="text-xs font-medium tracking-wider text-muted-foreground/70 uppercase">
+                <div className="text-sm font-medium tracking-wider text-muted-foreground/70 uppercase">
                   {sec.label}
                 </div>
                 {sec.hint && (
-                  <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+                  <div className="text-sm text-muted-foreground/60 mt-0.5">
                     {sec.hint}
                   </div>
                 )}
@@ -181,7 +181,7 @@ export function Sidebar() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate">{item.label}</div>
                         {item.subtitle && (
-                          <div className="truncate text-[10px] text-muted-foreground/70 leading-tight">
+                          <div className="truncate text-sm text-muted-foreground/70 leading-tight">
                             {item.subtitle}
                           </div>
                         )}

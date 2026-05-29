@@ -41,6 +41,10 @@ type AvailabilityFilter = "all" | "active" | "inactive";
 
 const PAGE_SIZE = 20;
 
+// 模態篩選順序 — 與 MODALITY_META 對齊;改動時同步調整
+const MODALITY_ORDER = ["text", "image", "file", "audio", "video"] as const;
+type Modality = (typeof MODALITY_ORDER)[number];
+
 // 將 USD/token 顯示為每百萬 tokens 的價格(乘以 1_000_000),保留 4 位小數
 function priceToMtokDisplay(perToken: string | null): string {
   if (perToken === null || perToken === undefined) return "-";
@@ -75,6 +79,9 @@ export default function ModelsAdminPage() {
   const [selectedModelUid, setSelectedModelUid] = React.useState(""); // Combobox 搜尋:選中即定位該模型
   const [availability, setAvailability] = React.useState<AvailabilityFilter>("active");
   const [tierFilter, setTierFilter] = React.useState<string>("all"); // 'all' / '__none__' / tier.key
+  // 模態篩選:輸入 / 輸出 分軸獨立,多選為 OR(任一符合即顯示);空陣列代表不限
+  const [inputModalityFilter, setInputModalityFilter] = React.useState<Modality[]>([]);
+  const [outputModalityFilter, setOutputModalityFilter] = React.useState<Modality[]>([]);
 
   // 前端分頁
   const [page, setPage] = React.useState(1);
@@ -142,7 +149,7 @@ export default function ModelsAdminPage() {
     [items]
   );
 
-  // 前端過濾:選中模型則只顯示該筆,否則依可用性 + 分級篩選
+  // 前端過濾:選中模型則只顯示該筆,否則依可用性 + 分級 + 模態篩選
   const visible = React.useMemo(() => {
     if (selectedModelUid) {
       return items.filter((it) => it.model_uid === selectedModelUid);
@@ -155,9 +162,17 @@ export default function ModelsAdminPage() {
       } else if (tierFilter !== "all" && it.tier_key !== tierFilter) {
         return false;
       }
+      if (inputModalityFilter.length > 0) {
+        const inp = it.input_modalities ?? [];
+        if (!inputModalityFilter.some((m) => inp.includes(m))) return false;
+      }
+      if (outputModalityFilter.length > 0) {
+        const out = it.output_modalities ?? [];
+        if (!outputModalityFilter.some((m) => out.includes(m))) return false;
+      }
       return true;
     });
-  }, [items, selectedModelUid, availability, tierFilter]);
+  }, [items, selectedModelUid, availability, tierFilter, inputModalityFilter, outputModalityFilter]);
 
   const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const pageSafe = Math.min(page, totalPages);
@@ -403,9 +418,74 @@ export default function ModelsAdminPage() {
               </div>
             </div>
 
+            {/* 模態篩選 — 輸入 / 輸出 分軸,多選為 OR */}
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-20 shrink-0 text-sm text-muted-foreground">
+                  可輸入:
+                </span>
+                <FilterChip
+                  active={inputModalityFilter.length === 0}
+                  onClick={() => {
+                    setInputModalityFilter([]);
+                    setPage(1);
+                  }}
+                >
+                  不限
+                </FilterChip>
+                {MODALITY_ORDER.map((m) => (
+                  <FilterChip
+                    key={`in-${m}`}
+                    active={inputModalityFilter.includes(m)}
+                    onClick={() => {
+                      setInputModalityFilter((prev) =>
+                        prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
+                      );
+                      setPage(1);
+                    }}
+                  >
+                    <ModalityChipLabel token={m} />
+                  </FilterChip>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-20 shrink-0 text-sm text-muted-foreground">
+                  可輸出:
+                </span>
+                <FilterChip
+                  active={outputModalityFilter.length === 0}
+                  onClick={() => {
+                    setOutputModalityFilter([]);
+                    setPage(1);
+                  }}
+                >
+                  不限
+                </FilterChip>
+                {MODALITY_ORDER.map((m) => (
+                  <FilterChip
+                    key={`out-${m}`}
+                    active={outputModalityFilter.includes(m)}
+                    onClick={() => {
+                      setOutputModalityFilter((prev) =>
+                        prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
+                      );
+                      setPage(1);
+                    }}
+                  >
+                    <ModalityChipLabel token={m} />
+                  </FilterChip>
+                ))}
+              </div>
+              {(inputModalityFilter.length > 0 || outputModalityFilter.length > 0) && (
+                <p className="text-sm text-muted-foreground">
+                  同軸多選為「任一符合」(OR);兩軸之間需同時滿足。
+                </p>
+              )}
+            </div>
+
             {selectedModelUid && (
               <p className="text-sm text-muted-foreground">
-                已鎖定單一模型;清為「全部模型」後可依可用性 / 分級瀏覽。
+                已鎖定單一模型;清為「全部模型」後可依可用性 / 分級 / 模態瀏覽。
               </p>
             )}
           </div>
@@ -827,13 +907,25 @@ const MODALITY_COLOR_CLASS: Record<string, string> = {
   gray: "border-border bg-muted text-muted-foreground",
 };
 
+// 篩選 chip 內的標籤 — icon + 中文,不額外套色(由 FilterChip 自帶 active/inactive 樣式)
+function ModalityChipLabel({ token }: { token: string }) {
+  const meta = MODALITY_META[token];
+  const Icon = meta?.icon;
+  return (
+    <span className="inline-flex items-center gap-1">
+      {Icon && <Icon className="h-3.5 w-3.5" />}
+      {meta?.label ?? token}
+    </span>
+  );
+}
+
 function ModalityPill({ token }: { token: string }) {
   const meta = MODALITY_META[token];
   const Icon = meta?.icon;
   const color = MODALITY_COLOR_CLASS[meta?.color ?? "gray"];
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-medium ${color}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-sm font-medium ${color}`}
     >
       {Icon && <Icon className="h-3 w-3" />}
       {meta?.label ?? token}
@@ -862,13 +954,13 @@ function ModalityTags({
       {input.length > 0 ? (
         input.map((t) => <ModalityPill key={`in-${t}`} token={t} />)
       ) : (
-        <span className="text-xs text-muted-foreground">無</span>
+        <span className="text-sm text-muted-foreground">無</span>
       )}
       <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/70" aria-hidden />
       {output.length > 0 ? (
         output.map((t) => <ModalityPill key={`out-${t}`} token={t} />)
       ) : (
-        <span className="text-xs text-muted-foreground">無</span>
+        <span className="text-sm text-muted-foreground">無</span>
       )}
     </div>
   );

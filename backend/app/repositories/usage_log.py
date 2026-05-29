@@ -296,7 +296,11 @@ class UsageLogRepository:
     ) -> list[tuple[datetime, int, int, Decimal]]:
         if granularity not in ("day", "hour"):
             granularity = "day"
-        bucket = func.date_trunc(granularity, UsageLog.created_at).label("bucket")
+        # 切桶以 UTC+8(Asia/Taipei)為準 — 業務在台灣,使用者期望「一天」=「台北一天」。
+        # Postgres timezone(zone, timestamptz) 等於 SQL 標準的 `col AT TIME ZONE zone`,
+        # 把 timestamptz 轉成台北 wall-clock 的 naive timestamp,再 date_trunc。
+        local_ts = func.timezone("Asia/Taipei", UsageLog.created_at)
+        bucket = func.date_trunc(granularity, local_ts).label("bucket")
         stmt = (
             select(
                 bucket,

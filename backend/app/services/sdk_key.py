@@ -6,14 +6,10 @@ from argon2 import PasswordHasher
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
-from app.core.crypto import decrypt_bytes, encrypt_bytes
 from app.core.exceptions import AppError
-from app.core.logging import get_logger
 from app.models.sdk_api_key import SdkApiKey
 from app.repositories.department import DepartmentRepository
 from app.repositories.sdk_api_key import SdkApiKeyRepository
-
-logger = get_logger(__name__)
 
 _ph = PasswordHasher()
 _SECRET_ALPHABET = string.ascii_letters + string.digits
@@ -46,7 +42,7 @@ async def create_sdk_key(
         name=name,
         key_hash=_ph.hash(full),
         key_prefix=prefix,
-        key_encrypted=encrypt_bytes(full.encode("utf-8")),
+        key_values=full,
     )
     repo = SdkApiKeyRepository(db)
     repo.add(row)
@@ -57,14 +53,7 @@ async def create_sdk_key(
 def reveal_sdk_key(row: SdkApiKey) -> str | None:
     """還原 SDK Key 完整明文(供 admin 後台檢視)。
 
-    舊資料(key_encrypted 為 NULL)無法回填,回傳 None。
+    v1.5 改為直接從 DB 欄位 key_values 讀取(放棄加密);
+    舊資料未填 → 回 None,UI 顯示「請重新建立」或由 admin 直接在 DB 填入。
     """
-    if row.key_encrypted is None:
-        return None
-    try:
-        return decrypt_bytes(bytes(row.key_encrypted)).decode("utf-8")
-    except Exception:  # noqa: BLE001
-        logger.exception(
-            "SDK Key 解密失敗 uid=%s", row.sdk_api_key_uid
-        )
-        return None
+    return row.key_values

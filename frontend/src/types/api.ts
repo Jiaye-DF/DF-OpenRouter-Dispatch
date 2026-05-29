@@ -103,8 +103,8 @@ export interface SdkKey {
   department_uid: string;
   name: string;
   key_prefix: string;
-  // 完整明文(v1.5+ 建立的 key 才有;舊資料為 null,代表不可顯示)
-  key_plaintext: string | null;
+  // 完整 key 明文(v1.5+ 建立才有;舊資料為 null → admin 可在 DB 直接補)
+  key_values: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

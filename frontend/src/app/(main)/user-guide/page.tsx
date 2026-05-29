@@ -177,7 +177,7 @@ interface ErrorRow {
 
 const ERRORS: ErrorRow[] = [
   { status: 400, code: "feature_not_supported", desc: "請求帶了不支援的欄位(目前 videos 暫不支援)" },
-  { status: 400, code: "project_code_required", desc: "未帶 X-Project-Code header(v1.5+ 必填)" },
+  { status: 400, code: "project_code_required", desc: "未帶 X-Project-Code header" },
   { status: 400, code: "project_invalid", desc: "X-Project-Code 對應專案不存在 / 已停用 / 不屬於 SDK Key 的部門" },
   { status: 401, code: "unauthorized", desc: "SDK Key 或 User Token 無效 / 已被撤銷 / 兩者不屬同一部門" },
   { status: 403, code: "model_forbidden", desc: "模型未在白名單,或已被 admin 停用" },

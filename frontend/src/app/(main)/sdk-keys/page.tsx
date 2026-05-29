@@ -211,10 +211,10 @@ export default function SdkKeysPage() {
                     <TD>{deptName(k.department_uid)}</TD>
                     <TD>{k.name}</TD>
                     <TD>
-                      {k.key_plaintext ? (
+                      {k.key_values ? (
                         <div className="flex items-center gap-2">
                           <code className="font-mono text-xs break-all">
-                            {k.key_plaintext}
+                            {k.key_values}
                           </code>
                           <Button
                             variant="ghost"
@@ -222,7 +222,7 @@ export default function SdkKeysPage() {
                             aria-label="複製部門金鑰"
                             onClick={() => {
                               navigator.clipboard
-                                .writeText(k.key_plaintext!)
+                                .writeText(k.key_values!)
                                 .then(() => toast("已複製部門金鑰", "success"))
                                 .catch(() => {});
                             }}

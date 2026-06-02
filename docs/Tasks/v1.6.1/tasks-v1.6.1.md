@@ -38,11 +38,19 @@
   - `_chat_handler` 透傳 `body.tools` 給 `run_chat`
   - `_chat_handler` / `chat` / `chat_deprecated` 補 docstring 與參數說明
 
+### 前端
+
+- [x] `frontend/src/app/(main)/user-guide/page.tsx`(後台內建「使用者使用說明」頁):
+  - Request Body 欄位表新增 `tools` 列(標註僅 server 端工具、function calling 未開放)
+  - 新增「啟用 web search 的 Request 範例」`TOOLS_EXAMPLE` 與說明 3 點(回應仍純文字 / 透傳不驗證 / 會額外計費)
+  - `npm run type-check` 通過
+
 ### 文件
 
 - [x] `docs/INTEGRATION.md`:
   - §5 Request Body 欄位表新增 `tools` 列(標註僅 server 端工具、function calling 未開放)
   - 新增 §5.2「啟用工具(web search)」:JSON 範例 + 3 點注意事項(透傳不驗證 / 會額外計費 / tool_calls 未開放)
+- [x] `docs/Design-Base/50-openrouter.md`:§5 代理端點規範 + §6 請求改寫表格 各補 tools 透傳說明
 - [x] `docs/Tasks/v1.6.1/propose-v1.6.1.md`:任務提案
 - [x] `docs/Tasks/v1.6.1/tasks-v1.6.1.md`(本檔):實作契約
 

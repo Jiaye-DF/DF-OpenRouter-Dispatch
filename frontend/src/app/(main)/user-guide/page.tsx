@@ -155,6 +155,12 @@ const IMAGE_EXAMPLE = `{
   ]
 }`;
 
+const TOOLS_EXAMPLE = `{
+  "model": "google/gemini-2.5-flash",
+  "text": "今天台積電(2330)的最新股價與相關新聞?",
+  "tools": [{ "type": "openrouter:web_search" }]
+}`;
+
 const RESPONSE_EXAMPLE = `{
   "success": true,
   "code": 200,
@@ -325,6 +331,12 @@ export default function UserGuidePage() {
                   <TD>否</TD>
                   <TD>暫不支援,送出即回 <code>400 feature_not_supported</code></TD>
                 </TR>
+                <TR>
+                  <TD className="font-mono">tools</TD>
+                  <TD>object[]</TD>
+                  <TD>否</TD>
+                  <TD>工具清單,格式同 OpenAI <code>tools</code> 規格,原樣轉發給下游。<strong>目前僅支援 OpenRouter server 端內建工具</strong>(如 web search,見下方範例);會回 <code>tool_calls</code> 的 function calling 尚未開放</TD>
+                </TR>
               </TBody>
             </Table>
           </div>
@@ -363,6 +375,14 @@ export default function UserGuidePage() {
 
           <p className="font-medium mt-2">含圖片的 Request 範例:</p>
           <CodeBlock language="JSON" code={IMAGE_EXAMPLE} />
+
+          <p className="font-medium mt-2">啟用 web search 的 Request 範例:</p>
+          <CodeBlock language="JSON" code={TOOLS_EXAMPLE} />
+          <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+            <li>帶 <code>tools</code> 即可啟用 OpenRouter <strong>server 端內建工具</strong>;web search 由 OpenRouter 在伺服器端執行搜尋後讓模型生成回覆,<strong>回應仍是純文字</strong>,呼叫與處理方式與一般請求完全相同。</li>
+            <li><code>tools</code> 內容原樣轉發給 OpenRouter,平台不另行驗證;格式 / 可用工具型別以 OpenRouter 官方文件為準,傳錯會由 OpenRouter 回對應錯誤。</li>
+            <li>啟用 web search 會由 OpenRouter 額外計費,費用一併反映在用量統計中。</li>
+          </ul>
           {/* 本地模型區塊暫時隱藏(待實際導入企業內部模型再開啟)
           <div className="mt-4 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 text-sm">
             <p className="font-medium text-purple-700 mb-1">本地模型(企業內部 server)</p>

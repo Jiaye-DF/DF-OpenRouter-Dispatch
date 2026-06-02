@@ -135,6 +135,13 @@ Response 回傳給 Client 前：
 | 移除內部識別欄位 | **禁止**回傳 `department_uid`、`user_uid`、`openrouter_key_uid` 等內部資訊 |
 | **禁止**回傳任何包含 API Key 的欄位 | 即使 OpenRouter 未回傳，代碼層仍需防禦性過濾 |
 
+usage_logs 記帳(`response_summary`)：
+
+| 處理 | 說明 |
+| --- | --- |
+| `output_text`(v1.6.2) | 改存**完整**模型回覆文字(原僅存截斷 500 字的 `first_text`);供用量紀錄詳情頁完整檢視 Input/Output。本版本前舊紀錄仍只有 `first_text`,詳情頁需 fallback |
+| `used_tools`(v1.6.2) | 布林欄(非 JSONB),由請求快照的 `tools` 是否非空推導;tools 可能觸發額外計費,標記供後台篩選與計費分析。partial index 只索引稀少的 TRUE 列 |
+
 ## 7. 串流（Streaming）
 
 本版本（v1）**不**實作串流；後續版本若擴充，規範如下（預留）：

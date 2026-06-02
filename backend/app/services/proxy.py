@@ -131,28 +131,19 @@ def _extract_content(resp: dict[str, Any]) -> str:
 
 
 def _summarize_response(resp: dict[str, Any]) -> dict[str, Any]:
-    """把下游回應壓成寫入 usage_logs.response_summary 的精簡摘要。
+    """把下游回應壓成寫入 usage_logs.response_summary 的摘要。
 
-    只留 dashboard 需要的:首段文字(截斷 500 字)與 usage,避免整包回應佔用儲存。
+    v1.6.2 起改存**完整**模型回覆文字(`output_text`),供用量紀錄詳情頁完整檢視
+    (本版本前的舊紀錄僅有截斷的 `first_text`,詳情頁需做相容 fallback)。同保留 usage。
 
     Args:
         resp: 下游 `/chat/completions` 的原始 JSON body。
 
     Returns:
-        含 `first_text`(若有文字)與 `usage`(若有)的字典。
+        含 `output_text`(完整文字,沿用 `_extract_content` 抽取邏輯)與
+        `usage`(若有)的字典。
     """
-    summary: dict[str, Any] = {}
-    choices = resp.get("choices") or []
-    if choices:
-        msg = choices[0].get("message") or {}
-        raw = msg.get("content")
-        if isinstance(raw, str):
-            summary["first_text"] = raw[:500]
-        elif isinstance(raw, list):
-            for blk in raw:
-                if isinstance(blk, dict) and blk.get("type") == "text":
-                    summary["first_text"] = (blk.get("text") or "")[:500]
-                    break
+    summary: dict[str, Any] = {"output_text": _extract_content(resp)}
     if "usage" in resp:
         summary["usage"] = resp["usage"]
     return summary
@@ -212,7 +203,8 @@ def schedule_usage_log(
         latency_ms: 本次呼叫耗時(毫秒)。
         status: "success" 或 "error"。
         error_code: 失敗時的錯誤碼(如 rate_limited / model_not_found);成功為 None。
-        request_log: 請求快照(見 `_build_request_log`)。
+        request_log: 請求快照(見 `_build_request_log`);本 fn 另由其 `tools` 鍵
+            推導 `used_tools` 欄(有非空 tools → True)。
     """
 
     async def _task() -> None:
@@ -225,6 +217,8 @@ def schedule_usage_log(
                 # OpenRouter 用 `cost`;保留 total_cost 作為 fallback。internal 一般無 cost,預設 0。
                 cost = Decimal(str(usage.get("cost") or usage.get("total_cost") or 0))
                 gen_id = (resp or {}).get("id")
+                # used_tools 直接由請求快照推導,避免在 6 個呼叫點各自傳參。
+                used_tools = bool((request_log or {}).get("tools"))
 
                 row = UsageLog(
                     usage_log_uid=UUID(str(uuid7())),
@@ -244,6 +238,7 @@ def schedule_usage_log(
                     request_content=request_log,
                     response_summary=_summarize_response(resp) if resp else None,
                     openrouter_generation_id=gen_id,
+                    used_tools=used_tools,
                 )
                 session.add(row)
                 await session.commit()

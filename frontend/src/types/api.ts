@@ -110,7 +110,7 @@ export interface SdkKey {
   updated_at: string;
 }
 
-// 用量紀錄
+// 用量紀錄(列表精簡視圖 — 不含 request_content / response_summary)
 export interface UsageLog {
   usage_log_uid: string;
   user_uid: string | null;
@@ -125,7 +125,30 @@ export interface UsageLog {
   latency_ms: number;
   status: "success" | "error";
   error_code: string | null;
+  used_tools: boolean;
+  openrouter_generation_id: string | null;
   created_at: string;
+}
+
+// 用量紀錄請求快照(寫入時的使用者原始輸入)
+export interface UsageRequestContent {
+  model?: string;
+  text?: string | null;
+  images?: string[];
+  tools?: Record<string, unknown>[];
+}
+
+// 用量紀錄回應摘要(v1.6.2 起 output_text 為完整回覆;舊紀錄僅有截斷的 first_text)
+export interface UsageResponseSummary {
+  output_text?: string;
+  first_text?: string;
+  usage?: Record<string, unknown>;
+}
+
+// 用量紀錄單筆詳情(列表欄位 + 完整 Input / Output)
+export interface UsageLogDetail extends UsageLog {
+  request_content: UsageRequestContent | null;
+  response_summary: UsageResponseSummary | null;
 }
 
 // 儀錶板彙總

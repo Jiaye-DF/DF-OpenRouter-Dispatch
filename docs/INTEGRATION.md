@@ -226,6 +226,62 @@ if __name__ == "__main__":
     print(result["choices"][0]["message"]["content"])
 ```
 
+### web search(查今日美元換台幣即時匯率)
+
+帶 `tools: [{ "type": "openrouter:web_search" }]` 啟用 OpenRouter server 端 web search;模型會即時查網路後回答,**回應仍為純文字**,呼叫方式與一般請求相同。web search 會由 OpenRouter 額外計費。
+
+```bash
+curl -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat' \
+  -H 'Content-Type: application/json' \
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \
+  -H 'X-User-Token: <admin 發放的 User Token>' \
+  -H 'X-Project-Code: 53299897503322112' \
+  -d '{
+    "model": "openai/gpt-4o-mini",
+    "text": "今天 1 美元可以換多少新台幣?請用最新即時匯率回答,並標註資料來源與查詢時間。",
+    "tools": [{ "type": "openrouter:web_search" }]
+  }'
+```
+
+```python
+import httpx
+
+API_URL = "https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "<admin 發放的 User Token>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
+
+def chat_with_web_search(model: str, text: str) -> dict:
+    resp = httpx.post(
+        API_URL,
+        headers={
+            "X-SDK-Key": SDK_KEY,
+            "X-User-Token": USER_TOKEN,
+            "X-Project-Code": PROJECT_CODE,
+            "Content-Type": "application/json",
+        },
+        # 帶 tools 啟用 OpenRouter server 端 web search;回應仍為純文字
+        json={
+            "model": model,
+            "text": text,
+            "tools": [{"type": "openrouter:web_search"}],
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if not body["success"]:
+        raise RuntimeError(f"{body['code']} {body['detail']}")
+    return body["data"]
+
+if __name__ == "__main__":
+    result = chat_with_web_search(
+        "openai/gpt-4o-mini",
+        "今天 1 美元可以換多少新台幣?請用最新即時匯率回答,並標註資料來源與查詢時間。",
+    )
+    print(result["choices"][0]["message"]["content"])
+```
+
 ---
 
 ## 8. 錯誤碼對照

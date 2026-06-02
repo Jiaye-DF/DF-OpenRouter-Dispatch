@@ -146,6 +146,55 @@ if __name__ == "__main__":
     answer = chat("google/gemini-2.5-flash", "用一句話介紹台灣")
     print(answer)`;
 
+// Web 搜尋範例:查今日美元換台幣即時匯率(帶 openrouter:web_search 工具)
+const CURL_WEBSEARCH_EXAMPLE = `curl -X POST '${CHAT_URL}' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \\
+  -H 'X-User-Token: <admin 發放的 User Token>' \\
+  -H 'X-Project-Code: 53299897503322112' \\
+  -d '{
+    "model": "google/gemini-2.5-flash",
+    "text": "今天 1 美元可以換多少新台幣?請用最新即時匯率回答,並標註資料來源與查詢時間。",
+    "tools": [{ "type": "openrouter:web_search" }]
+  }'`;
+
+const PYTHON_WEBSEARCH_EXAMPLE = `import httpx
+
+API_URL = "${CHAT_URL}"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "<admin 發放的 User Token>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
+
+def chat_with_web_search(model: str, text: str) -> dict:
+    resp = httpx.post(
+        API_URL,
+        headers={
+            "X-SDK-Key": SDK_KEY,
+            "X-User-Token": USER_TOKEN,
+            "X-Project-Code": PROJECT_CODE,
+            "Content-Type": "application/json",
+        },
+        # 帶 tools 啟用 OpenRouter server 端 web search;回應仍為純文字
+        json={
+            "model": model,
+            "text": text,
+            "tools": [{"type": "openrouter:web_search"}],
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if not body["success"]:
+        raise RuntimeError(f"{body['code']} {body['detail']}")
+    return body["data"]
+
+if __name__ == "__main__":
+    answer = chat_with_web_search(
+        "google/gemini-2.5-flash",
+        "今天 1 美元可以換多少新台幣?請用最新即時匯率回答,並標註資料來源與查詢時間。",
+    )
+    print(answer)`;
+
 const IMAGE_EXAMPLE = `{
   "model": "google/gemini-2.5-flash",
   "text": "請描述這張圖片",
@@ -196,7 +245,17 @@ const ERRORS: ErrorRow[] = [
   { status: 500, code: "操作失敗", desc: "後端異常,請聯絡管理員並提供時間點" },
 ];
 
+// 範例區的 nav bar 分頁:基本對話 / Web 搜尋
+const EXAMPLE_TABS = [
+  { value: "basic", label: "基本對話" },
+  { value: "websearch", label: "Web 搜尋（即時匯率）" },
+] as const;
+
+type ExampleTab = (typeof EXAMPLE_TABS)[number]["value"];
+
 export default function UserGuidePage() {
+  const [exampleTab, setExampleTab] = React.useState<ExampleTab>("basic");
+
   return (
     <>
       <PageTitle
@@ -407,10 +466,46 @@ export default function UserGuidePage() {
         </Section>
 
         <Section id="examples" title="完整範例">
-          <p className="font-medium">curl</p>
-          <CodeBlock language="bash" code={CURL_EXAMPLE} />
-          <p className="font-medium">Python (httpx)</p>
-          <CodeBlock language="python" code={PYTHON_EXAMPLE} />
+          {/* nav bar:切換基本對話 / Web 搜尋範例 */}
+          <div className="flex gap-1 border-b border-border">
+            {EXAMPLE_TABS.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => setExampleTab(t.value)}
+                className={cn(
+                  "-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors hover:cursor-pointer",
+                  exampleTab === t.value
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {exampleTab === "basic" ? (
+            <>
+              <p className="font-medium">curl</p>
+              <CodeBlock language="bash" code={CURL_EXAMPLE} />
+              <p className="font-medium">Python (httpx)</p>
+              <CodeBlock language="python" code={PYTHON_EXAMPLE} />
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                帶 <code>tools: [{`{ "type": "openrouter:web_search" }`}]</code> 啟用
+                OpenRouter server 端 web search;模型會即時查網路後回答(如查今日匯率),
+                <strong>回應仍為純文字</strong>,呼叫方式與一般請求相同。web search 會由
+                OpenRouter 額外計費。
+              </p>
+              <p className="font-medium">curl</p>
+              <CodeBlock language="bash" code={CURL_WEBSEARCH_EXAMPLE} />
+              <p className="font-medium">Python (httpx)</p>
+              <CodeBlock language="python" code={PYTHON_WEBSEARCH_EXAMPLE} />
+            </>
+          )}
         </Section>
 
         <Section id="errors" title="錯誤碼對照">

@@ -8,7 +8,7 @@ from app.core.exceptions import AppError
 from app.core.response import success_response
 from app.repositories.usage_log import UsageLogRepository
 from app.schemas.common import Page
-from app.schemas.usage_log import UsageLogResponse
+from app.schemas.usage_log import UsageLogDetail, UsageLogListItem
 
 router = APIRouter(prefix="/usage-logs", tags=["usage-logs"])
 
@@ -34,6 +34,7 @@ async def list_usage_logs(
     from_time: datetime | None = Query(default=None, alias="from"),
     to_time: datetime | None = Query(default=None, alias="to"),
     status: str | None = None,
+    used_tools: bool | None = None,
 ):
     dept = _resolve_dept_filter(actor, department_uid)
     if not actor.is_admin and user_uid is not None and user_uid != actor.user_uid:
@@ -50,9 +51,10 @@ async def list_usage_logs(
         from_time=from_time,
         to_time=to_time,
         status=status,
+        used_tools=used_tools,
     )
-    data = Page[UsageLogResponse](
-        items=[UsageLogResponse.model_validate(x) for x in items],
+    data = Page[UsageLogListItem](
+        items=[UsageLogListItem.model_validate(x) for x in items],
         total=total,
         page=page,
         size=size,
@@ -69,5 +71,5 @@ async def get_usage_log(uid: UUID, actor: UserDep, db: DbDep):
     if not actor.is_admin and row.department_uid != actor.department_uid:
         raise AppError("forbidden", code=403)
     return success_response(
-        data=UsageLogResponse.model_validate(row).model_dump(mode="json"), detail="success"
+        data=UsageLogDetail.model_validate(row).model_dump(mode="json"), detail="success"
     )

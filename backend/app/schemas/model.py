@@ -7,10 +7,24 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatRequest(BaseModel):
+    """Chat 代理的請求 body。
+
+    輸入刻意收斂為「純文字 / 多模態 + 可選工具」,不暴露 OpenAI 全部欄位:
+
+    - `text` / `images`:組成單一 user 訊息的多模態內容。
+    - `videos`:本版本不支援,送出即回 400(僅佔位,待未來版本)。
+    - `tools`:見下方欄位說明。
+    """
+
     model: str = Field(min_length=1, max_length=128)
     text: str | None = None
     images: list[str] | None = None
     videos: list[str] | None = None  # 本版本不支援；送出即回 400
+    # 直接透傳給下游(OpenRouter / internal),格式同 OpenAI tools 規格。
+    # 例:OpenRouter 內建工具 [{"type": "openrouter:web_search"}]。
+    # 注意:本版本僅支援「server 端工具」(回應仍為純文字);尚未開放會回
+    # tool_calls 的 function calling。
+    tools: list[dict[str, Any]] | None = None
 
 
 class ChatResponse(BaseModel):

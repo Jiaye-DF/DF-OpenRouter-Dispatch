@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 from datetime import UTC, datetime
 from uuid import UUID
@@ -91,7 +92,7 @@ async def create_user(
     if not body.email:
         raise AppError("user_requires_identity", code=400)
     account = _gen_internal_account()
-    password_hash = hash_password(secrets.token_urlsafe(32))
+    password_hash = await asyncio.to_thread(hash_password, secrets.token_urlsafe(32))
 
     existing = await repo.get_by_account(account)
     if existing is not None:

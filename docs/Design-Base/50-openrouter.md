@@ -111,8 +111,8 @@ SDK
 
 - v1.2 起代理 canonical path 為 **`POST /api/v1/model/chat`**;所有 provider 共用,後端依 `model_key` 對應的 `models.provider` 自動分流。
 - 舊路徑 `POST /api/v1/model/openrouter/chat` 保留為 **deprecated alias**（內部 forward 到同 handler;Swagger 標 `deprecated: true`),**至少保留至 v1.4**。
-- Request 採**平台簡化 schema**（`{ model, text, images }`),由後端改寫為各 provider 的 chat/completions 格式;目前 OpenRouter 與 Internal 都是 OpenAI-compatible,改寫邏輯一致。
-- 本版本**不**做 OpenAI passthrough;後續版本若需擴充新 action,於同 `/model/` 命名空間下新增。
+- Request 採**平台簡化 schema**（`{ model, text, images }`,v1.6.1 起可選帶 `tools`),由後端改寫為各 provider 的 chat/completions 格式;目前 OpenRouter 與 Internal 都是 OpenAI-compatible,改寫邏輯一致。
+- 本版本**不**做 OpenAI passthrough;唯一例外是 `tools`(v1.6.1)受控放行,原樣透傳給下游以啟用 OpenRouter server 端內建工具(如 web search);會回 `tool_calls` 的 function calling 尚未開放。後續版本若需擴充新 action,於同 `/model/` 命名空間下新增。
 - 非代理端點（管理 UI 用）使用 `/api/v1/<resource>`,遵循 [20-backend.md § 3](./20-backend.md#3-路由與-api-命名)。
 
 ## 6. 請求改寫與欄位過濾
@@ -122,6 +122,7 @@ SDK
 | 處理 | 說明 |
 | --- | --- |
 | Schema 展開 | `{ model, text, images }` → `messages:[{role:"user", content:[{type:"text", text}, {type:"image_url", image_url:{url}}]}]` |
+| 工具透傳(v1.6.1) | `tools` 若有值,原樣加入 payload(`payload["tools"]`)透傳給下游;不驗證格式,格式錯由下游回對應錯誤。僅支援 server 端工具(回應仍為純文字),function calling 未開放 |
 | 白名單檢查 | 依 `models.is_active` DB 查詢（`models WHERE model_key=? AND is_active=TRUE AND is_deleted=FALSE`）；未通過或不存在均回 403 `model_forbidden`,不揭露差異 |
 | 影片輸入 | 本版本**禁止**（`videos` 若出現 → 400 `feature_not_supported`） |
 | 模型別名展開 | 可定義短別名對應 OpenRouter 實際模型字串（本版本不實作） |

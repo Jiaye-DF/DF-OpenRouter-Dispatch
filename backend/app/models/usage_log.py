@@ -1,7 +1,7 @@
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Integer, Numeric, String
+from sqlalchemy import BigInteger, Boolean, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,3 +33,8 @@ class UsageLog(Base, TimestampMixin):
     request_content: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     response_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     openrouter_generation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # v1.6.2 加入;本次呼叫是否帶 tools(如 web search)。tools 可能觸發額外計費,
+    # 標記供後台篩選與計費分析。server_default false → 既有歷史自動回填 false。
+    used_tools: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
+    )

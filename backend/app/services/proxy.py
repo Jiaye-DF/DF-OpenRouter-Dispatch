@@ -50,7 +50,21 @@ logger = get_logger(__name__)
 _MAX_RETRIES = 5
 
 
-def _rewrite_request(model: str, text: str | None, images: list[str] | None) -> dict[str, Any]:
+def _rewrite_request(
+    model: str,
+    text: str | None,
+    images: list[str] | None,
+    tools: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """把精簡輸入重組為 OpenAI-compatible 的 `/chat/completions` payload。
+
+    刻意「從頭建構」而非 pass-through:SDK 使用者只給 text / images / tools,
+    其餘 OpenAI 欄位(temperature / response_format 等)一律不開放。
+
+    - text / images 合併為單一 user 訊息的多模態 content;兩者皆空時補一個
+      空白 text block,確保 messages 不為空。
+    - tools 有值才放進 payload(格式同 OpenAI tools 規格,原樣透傳給下游)。
+    """
     content: list[dict[str, Any]] = []
     if text:
         content.append({"type": "text", "text": text})
@@ -58,16 +72,30 @@ def _rewrite_request(model: str, text: str | None, images: list[str] | None) -> 
         content.append({"type": "image_url", "image_url": {"url": img}})
     if not content:
         content.append({"type": "text", "text": ""})
-    return {
+    payload: dict[str, Any] = {
         "model": model,
         "messages": [{"role": "user", "content": content}],
     }
+    if tools:
+        payload["tools"] = tools
+    return payload
 
 
 def _build_request_log(
-    model: str, text: str | None, images: list[str] | None
+    model: str,
+    text: str | None,
+    images: list[str] | None,
+    tools: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    return {"model": model, "text": text, "images": list(images or [])}
+    """組出寫入 usage_logs.request_content 的請求快照。
+
+    與 `_rewrite_request` 分開:這裡保留使用者「原始輸入語意」(text / images /
+    tools)供 dashboard 檢視,而非下游實際送出的 messages 結構。tools 有值才記。
+    """
+    log: dict[str, Any] = {"model": model, "text": text, "images": list(images or [])}
+    if tools:
+        log["tools"] = tools
+    return log
 
 
 def _extract_content(resp: dict[str, Any]) -> str:
@@ -75,6 +103,13 @@ def _extract_content(resp: dict[str, Any]) -> str:
 
     SDK 使用者只關心「模型講了什麼」,內部 id / usage / provider / metadata 一律不外露
     (但仍會完整寫入 usage_logs 供 dashboard 統計)。
+
+    Args:
+        resp: 下游 `/chat/completions` 的原始 JSON body。
+
+    Returns:
+        第一個 choice 的文字內容;content 為多模態 list 時串接所有 text block,
+        非 text 區塊(及尚未開放的 tool_calls)一律忽略。無 choices 時回空字串。
     """
     choices = resp.get("choices") or []
     if not choices:
@@ -96,25 +131,37 @@ def _extract_content(resp: dict[str, Any]) -> str:
 
 
 def _summarize_response(resp: dict[str, Any]) -> dict[str, Any]:
-    summary: dict[str, Any] = {}
-    choices = resp.get("choices") or []
-    if choices:
-        msg = choices[0].get("message") or {}
-        raw = msg.get("content")
-        if isinstance(raw, str):
-            summary["first_text"] = raw[:500]
-        elif isinstance(raw, list):
-            for blk in raw:
-                if isinstance(blk, dict) and blk.get("type") == "text":
-                    summary["first_text"] = (blk.get("text") or "")[:500]
-                    break
+    """把下游回應壓成寫入 usage_logs.response_summary 的摘要。
+
+    v1.6.2 起改存**完整**模型回覆文字(`output_text`),供用量紀錄詳情頁完整檢視
+    (本版本前的舊紀錄僅有截斷的 `first_text`,詳情頁需做相容 fallback)。同保留 usage。
+
+    Args:
+        resp: 下游 `/chat/completions` 的原始 JSON body。
+
+    Returns:
+        含 `output_text`(完整文字,沿用 `_extract_content` 抽取邏輯)與
+        `usage`(若有)的字典。
+    """
+    summary: dict[str, Any] = {"output_text": _extract_content(resp)}
     if "usage" in resp:
         summary["usage"] = resp["usage"]
     return summary
 
 
 async def _check_model_whitelist(db: AsyncSession, model: str) -> Model:
-    """白名單由 DB 驅動;不存在 / 停用 / 軟刪除 一律 403 model_forbidden(避免列舉差異)。"""
+    """白名單由 DB 驅動;不存在 / 停用 / 軟刪除 一律 403 model_forbidden(避免列舉差異)。
+
+    Args:
+        db: 本次 request 的 DB session。
+        model: 使用者指定的 model_key。
+
+    Returns:
+        命中白名單且啟用中的 Model 資料列。
+
+    Raises:
+        AppError: code=403 model_forbidden — 查無此模型或已停用 / 軟刪除。
+    """
     stmt = select(Model).where(
         Model.model_key == model,
         Model.is_active.is_(True),
@@ -140,7 +187,25 @@ def schedule_usage_log(
     error_code: str | None,
     request_log: dict[str, Any],
 ) -> None:
-    """Fire-and-forget 寫入一筆 usage_logs(獨立 session,不受主 request 影響)。"""
+    """Fire-and-forget 寫入一筆 usage_logs(獨立 session,不受主 request 影響)。
+
+    以 asyncio.create_task 背景寫入,不阻塞回應;寫入失敗只記 log 不影響主流程。
+
+    Args:
+        department_uid: 呼叫者所屬部門 uid(歸戶用)。
+        project_uid: 呼叫者所屬專案 uid。
+        user_uid: 呼叫者使用者 uid。
+        openrouter_key_uid: 本次實際使用的 OpenRouter Key uid;internal 路徑或
+            全失敗無對應 Key 時為 None。
+        model: 使用者指定的 model_key。
+        model_uid: 對應的 Model 主鍵;無法解析時為 None。
+        resp: 下游原始回應 body,用於抽 usage / cost / generation id;失敗時為 None。
+        latency_ms: 本次呼叫耗時(毫秒)。
+        status: "success" 或 "error"。
+        error_code: 失敗時的錯誤碼(如 rate_limited / model_not_found);成功為 None。
+        request_log: 請求快照(見 `_build_request_log`);本 fn 另由其 `tools` 鍵
+            推導 `used_tools` 欄(有非空 tools → True)。
+    """
 
     async def _task() -> None:
         async with SessionLocal() as session:
@@ -152,6 +217,8 @@ def schedule_usage_log(
                 # OpenRouter 用 `cost`;保留 total_cost 作為 fallback。internal 一般無 cost,預設 0。
                 cost = Decimal(str(usage.get("cost") or usage.get("total_cost") or 0))
                 gen_id = (resp or {}).get("id")
+                # used_tools 直接由請求快照推導,避免在 6 個呼叫點各自傳參。
+                used_tools = bool((request_log or {}).get("tools"))
 
                 row = UsageLog(
                     usage_log_uid=UUID(str(uuid7())),
@@ -171,6 +238,7 @@ def schedule_usage_log(
                     request_content=request_log,
                     response_summary=_summarize_response(resp) if resp else None,
                     openrouter_generation_id=gen_id,
+                    used_tools=used_tools,
                 )
                 session.add(row)
                 await session.commit()
@@ -195,18 +263,41 @@ async def run_chat(
     text: str | None,
     images: list[str] | None,
     videos: list[str] | None,
+    tools: list[dict[str, Any]] | None = None,
 ) -> str:
     """依 model.provider 分流到對應路徑;白名單檢查由本 fn 統一執行。
 
     回傳值刻意精簡為純文字內容(模型回應的 first content);usage / id / provider 等
     OpenRouter 原始欄位完整寫入 usage_logs 供 dashboard,但不暴露給 SDK 使用者。
+
+    `tools` 直接透傳給下游(格式同 OpenAI tools 規格);OpenRouter 內建工具
+    (如 `openrouter:web_search`)由 OpenRouter server 端執行,最終回應仍為純文字。
+
+    Args:
+        db: 本次 request 的 DB session。
+        client_factory: 產生 OpenRouter / internal HTTP client 的工廠。
+        department_uid: 呼叫者所屬部門 uid(白名單 Key 範圍與歸戶用)。
+        project_uid: 呼叫者所屬專案 uid。
+        user_uid: 呼叫者使用者 uid。
+        model: 使用者指定的 model_key(須通過白名單)。
+        text: 使用者文字輸入,可為 None。
+        images: 圖片 URL / data URI 清單,可為 None。
+        videos: 影片清單;本版本不支援,非空即回 400。
+        tools: 可選工具清單,原樣透傳給下游;目前僅支援 server 端工具。
+
+    Returns:
+        模型回應的純文字內容。
+
+    Raises:
+        AppError: 各種失敗狀況,如 feature_not_supported(400)、model_forbidden(403)、
+            rate_limited(429)、openrouter_unavailable / internal_unavailable(502) 等。
     """
     if videos:
         raise AppError("feature_not_supported", code=400)
     model_row = await _check_model_whitelist(db, model)
 
-    payload = _rewrite_request(model, text, images)
-    request_log = _build_request_log(model, text, images)
+    payload = _rewrite_request(model, text, images, tools)
+    request_log = _build_request_log(model, text, images, tools)
 
     if model_row.provider == "internal":
         return await _run_chat_internal(
@@ -242,7 +333,28 @@ async def _run_chat_openrouter(
     payload: dict[str, Any],
     request_log: dict[str, Any],
 ) -> str:
-    """OpenRouter 流程 — 每把 Key 經 rate limiter,撞限額 failover 換下一把。"""
+    """OpenRouter 流程 — 每把 Key 經 rate limiter,撞限額 failover 換下一把。
+
+    最多重試 `_MAX_RETRIES` 把 Key;全部撞速率 → 429 rate_limited,
+    曾實際打過 OR 仍失敗 → 502 openrouter_unavailable。
+
+    Args:
+        db: 本次 request 的 DB session。
+        client_factory: HTTP client 工廠。
+        model_row: 已通過白名單的 Model 資料列。
+        department_uid: 呼叫者部門 uid(決定可用的 OpenRouter Key 範圍)。
+        project_uid: 呼叫者專案 uid(記帳用)。
+        user_uid: 呼叫者使用者 uid(記帳用)。
+        payload: 已重組好的 `/chat/completions` payload(含 model / messages / tools)。
+        request_log: 請求快照,寫入 usage_logs 用。
+
+    Returns:
+        模型回應的純文字內容。
+
+    Raises:
+        AppError: model_not_found(404)、model_forbidden(403)、rate_limited(429)、
+            openrouter_unavailable(502)。
+    """
     client = client_factory.openrouter()
     model = payload["model"]
     model_uid = model_row.model_uid
@@ -386,7 +498,19 @@ async def _internal_call_once(
     key_row: InternalKey,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
-    """以一把 InternalKey 構造 InternalClient 並發出呼叫。"""
+    """以一把 InternalKey 構造 InternalClient 並發出單次呼叫。
+
+    Args:
+        client_factory: HTTP client 工廠(提供共用 httpx client)。
+        key_row: 本次要使用的 internal_key 資料列(含 base_url 與加密 api_key)。
+        payload: 已重組好的 `/chat/completions` payload。
+
+    Returns:
+        下游原始回應 body。
+
+    Raises:
+        InternalError 及其子類:由 InternalClient 依 HTTP 狀態碼拋出。
+    """
     raw_key = decrypt_internal_key(key_row)
     client = InternalClient(
         client_factory.internal_httpx(),
@@ -413,6 +537,23 @@ async def _run_chat_internal(
     2. **Phase 1 failover**:對每把 Key acquire(wait_timeout=0);拿到的直接打,撞限額 / 連線錯 → 換下一把
     3. **Phase 2 wait**:全部 Key 撞限額 → 對其中一把(隨機)acquire(wait_timeout=RATE_WAIT_TIMEOUT),
        拿到了就打;再失敗 → 429 internal_busy
+
+    Args:
+        db: 本次 request 的 DB session。
+        client_factory: HTTP client 工廠。
+        model_row: 已通過白名單的 Model 資料列。
+        department_uid: 呼叫者部門 uid(記帳用)。
+        project_uid: 呼叫者專案 uid(記帳用)。
+        user_uid: 呼叫者使用者 uid(記帳用)。
+        payload: 已重組好的 `/chat/completions` payload。
+        request_log: 請求快照,寫入 usage_logs 用。
+
+    Returns:
+        模型回應的純文字內容。
+
+    Raises:
+        AppError: provider_misconfigured(500,無任何 active key)、
+            internal_busy(429,Phase 2 仍撞速率)、internal_unavailable(502,全失敗)。
     """
     settings = get_settings()
     model = payload["model"]
@@ -532,10 +673,25 @@ async def _try_internal_call(
     model: str,
     model_uid: UUID,
 ) -> str | None:
-    """用單一 Key 嘗試呼叫;成功 → 寫 success log + 回 sanitized body;
-    失敗 → 寫 error log + 回 None(供呼叫端決定 failover 或 abort)。
+    """用單一 Key 嘗試呼叫;成功 → 寫 success log + 回純文字內容;
+    失敗 → 記 log + 回 None(供呼叫端決定 failover 或 abort)。
 
-    InternalAuthError / Unavailable 都當成「換下一把」可接受。
+    InternalAuthError / RateLimit / Unavailable 都當成「換下一把」可接受。
+
+    Args:
+        client_factory: HTTP client 工廠。
+        key_row: 本次嘗試使用的 internal_key 資料列。
+        payload: 已重組好的 `/chat/completions` payload。
+        request_log: 請求快照,寫入 usage_logs 用。
+        started: 本次請求起算的 time.monotonic() 起點,用於算 latency。
+        department_uid: 呼叫者部門 uid(記帳用)。
+        project_uid: 呼叫者專案 uid(記帳用)。
+        user_uid: 呼叫者使用者 uid(記帳用)。
+        model: 使用者指定的 model_key。
+        model_uid: 對應的 Model 主鍵。
+
+    Returns:
+        成功時回模型回應的純文字內容;失敗(可 failover)時回 None。
     """
     try:
         resp_body = await _internal_call_once(

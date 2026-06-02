@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { PageTitle } from "@/components/common/PageTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,10 +43,18 @@ const STATUS_OPTIONS = [
   { value: "error", label: "失敗" },
 ] as const;
 
+// 是否使用工具(tools,如 web search;可能觸發額外計費)
+const TOOLS_OPTIONS = [
+  { value: "", label: "全部" },
+  { value: "true", label: "有用工具" },
+  { value: "false", label: "未用工具" },
+] as const;
+
 const statusLabel = (s: string) =>
   s === "success" ? "成功" : s === "error" ? "失敗" : s;
 
 export default function UsageLogsPage() {
+  const router = useRouter();
   const { showDialog } = useDialog();
   const [items, setItems] = React.useState<UsageLog[]>([]);
   const [depts, setDepts] = React.useState<Department[]>([]);
@@ -59,6 +68,7 @@ export default function UsageLogsPage() {
     department_uid: "",
     model: "",
     status: "",
+    used_tools: "", // "" | "true" | "false"
     from: daysAgo(2), // 預設最近 3 日
     to: daysAgo(0),
   });
@@ -70,6 +80,7 @@ export default function UsageLogsPage() {
       if (filters.department_uid) query.department_uid = filters.department_uid;
       if (filters.model) query.model = filters.model;
       if (filters.status) query.status = filters.status;
+      if (filters.used_tools) query.used_tools = filters.used_tools;
       if (filters.from) query.from = `${filters.from}T00:00:00`;
       if (filters.to) query.to = `${filters.to}T23:59:59`;
       const data = await apiClient.get<Paginated<UsageLog>>(
@@ -133,6 +144,7 @@ export default function UsageLogsPage() {
       department_uid: "",
       model: "",
       status: "",
+      used_tools: "",
       from: daysAgo(2),
       to: daysAgo(0),
     });
@@ -201,6 +213,20 @@ export default function UsageLogsPage() {
                   emptyText="查無模型"
                 />
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  工具：
+                </span>
+                {TOOLS_OPTIONS.map((o) => (
+                  <FilterChip
+                    key={o.value || "all"}
+                    active={filters.used_tools === o.value}
+                    onClick={() => update({ used_tools: o.value })}
+                  >
+                    {o.label}
+                  </FilterChip>
+                ))}
+              </div>
             </div>
 
             {/* 時間 */}
@@ -265,12 +291,19 @@ export default function UsageLogsPage() {
                   <TH className="text-right">合計 Token</TH>
                   <TH className="text-right">花費 (USD)</TH>
                   <TH className="text-right">延遲</TH>
+                  <TH>工具</TH>
                   <TH>狀態</TH>
                 </TR>
               </THead>
               <TBody>
                 {items.map((log) => (
-                  <TR key={log.usage_log_uid}>
+                  <TR
+                    key={log.usage_log_uid}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() =>
+                      router.push(`/usage-logs/${log.usage_log_uid}`)
+                    }
+                  >
                     <TD className="text-sm text-muted-foreground whitespace-nowrap">
                       {new Date(log.created_at).toLocaleString()}
                     </TD>
@@ -289,6 +322,13 @@ export default function UsageLogsPage() {
                       {formatUSD(log.cost_usd)}
                     </TD>
                     <TD className="text-right">{log.latency_ms} ms</TD>
+                    <TD>
+                      {log.used_tools ? (
+                        <Badge variant="secondary">工具</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TD>
                     <TD>
                       <Badge
                         variant={log.status === "success" ? "success" : "destructive"}

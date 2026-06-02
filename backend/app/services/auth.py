@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -81,7 +82,7 @@ async def login(
     if not user.is_active:
         raise AppError("invalid_credentials", code=401)
 
-    if not verify_password(password, user.password_hash):
+    if not await asyncio.to_thread(verify_password, password, user.password_hash):
         user.failed_login_count += 1
         if user.failed_login_count >= _MAX_FAILED:
             user.locked_until = now + timedelta(minutes=_LOCK_MINUTES)
@@ -195,7 +196,7 @@ async def admin_reset_password(
         raise AppError("not_found", code=404)
     validate_password(new_password)
     now = datetime.now(tz=UTC)
-    user.password_hash = hash_password(new_password)
+    user.password_hash = await asyncio.to_thread(hash_password, new_password)
     user.password_changed_at = now
     user.failed_login_count = 0
     user.locked_until = None

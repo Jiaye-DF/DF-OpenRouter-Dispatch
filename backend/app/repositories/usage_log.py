@@ -38,6 +38,7 @@ class UsageLogRepository:
         from_time: datetime | None,
         to_time: datetime | None,
         status: str | None,
+        used_tools: bool | None = None,
     ):
         stmt = stmt.where(UsageLog.is_deleted.is_(False))
         if department_uid is not None:
@@ -54,6 +55,8 @@ class UsageLogRepository:
             stmt = stmt.where(UsageLog.created_at <= to_time)
         if status:
             stmt = stmt.where(UsageLog.status == status)
+        if used_tools is not None:
+            stmt = stmt.where(UsageLog.used_tools.is_(used_tools))
         return stmt
 
     async def list(
@@ -68,6 +71,7 @@ class UsageLogRepository:
         from_time: datetime | None = None,
         to_time: datetime | None = None,
         status: str | None = None,
+        used_tools: bool | None = None,
     ) -> tuple[list[UsageLog], int]:
         stmt = select(UsageLog)
         stmt = self._apply_filters(
@@ -79,6 +83,7 @@ class UsageLogRepository:
             from_time=from_time,
             to_time=to_time,
             status=status,
+            used_tools=used_tools,
         )
         count_stmt = self._apply_filters(
             select(func.count()).select_from(UsageLog),
@@ -89,6 +94,7 @@ class UsageLogRepository:
             from_time=from_time,
             to_time=to_time,
             status=status,
+            used_tools=used_tools,
         )
         stmt = stmt.order_by(UsageLog.pid.desc()).offset((page - 1) * size).limit(size)
         items = list((await self.db.execute(stmt)).scalars().all())

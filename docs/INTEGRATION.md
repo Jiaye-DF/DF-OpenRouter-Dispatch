@@ -71,6 +71,7 @@ JSON body 欄位如下:
 | `text` | string | 否 | 使用者輸入的文字 |
 | `images` | string[] | 否 | 圖片 URL 或 `data:image/...;base64,...` 字串陣列 |
 | `videos` | string[] | 否 | 暫不支援,送出即回 `400 feature_not_supported` |
+| `tools` | object[] | 否 | 工具清單,格式同 OpenAI `tools` 規格,原樣透傳給下游。**目前僅支援 OpenRouter server 端內建工具**(如 web search,見 §5.2);會回 `tool_calls` 的 function calling 尚未開放 |
 
 可用的 `model` 清單由管理員集中維護。你可隨時查詢已啟用的模型清單(見下方 §5.1),從中複製 `model_key` 填入此欄位;若呼叫時收到 `403 model_forbidden`,請向管理員確認該模型是否已啟用。
 
@@ -99,6 +100,22 @@ GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/allowed/models
   ]
 }
 ```
+
+### 5.2 啟用工具(web search)
+
+帶 `tools` 即可啟用 OpenRouter server 端內建工具。最常用的是 **web search** —— 由 OpenRouter 在伺服器端執行搜尋後,讓模型結合搜尋結果生成回覆;**回應仍是純文字**,呼叫方式與一般請求完全相同,無須額外處理 `tool_calls`。
+
+```json
+{
+  "model": "openai/gpt-4o-mini",
+  "text": "今天台積電(2330)的最新股價與相關新聞?",
+  "tools": [{ "type": "openrouter:web_search" }]
+}
+```
+
+- `tools` 內容原樣透傳給 OpenRouter;格式 / 可用工具型別以 OpenRouter 官方文件為準,本平台不另行驗證,傳錯會由 OpenRouter 回對應錯誤。
+- 啟用 web search 會由 OpenRouter 額外計費,費用一併反映在用量統計中。
+- 目前**僅支援 server 端工具**(回應為純文字);會回 `tool_calls` 的 function calling 尚未開放,如有需求請向管理員提出。
 
 <!--
 本段「本地模型」目前停用,等實際導入企業內部模型再開啟。
@@ -206,6 +223,62 @@ def chat(model: str, text: str) -> dict:
 
 if __name__ == "__main__":
     result = chat("openai/gpt-4o-mini", "用一句話介紹台灣")
+    print(result["choices"][0]["message"]["content"])
+```
+
+### web search(查今日美元換台幣即時匯率)
+
+帶 `tools: [{ "type": "openrouter:web_search" }]` 啟用 OpenRouter server 端 web search;模型會即時查網路後回答,**回應仍為純文字**,呼叫方式與一般請求相同。web search 會由 OpenRouter 額外計費。
+
+```bash
+curl -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat' \
+  -H 'Content-Type: application/json' \
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \
+  -H 'X-User-Token: <admin 發放的 User Token>' \
+  -H 'X-Project-Code: 53299897503322112' \
+  -d '{
+    "model": "openai/gpt-4o-mini",
+    "text": "今天 1 美元可以換多少新台幣?請用最新即時匯率回答,並標註資料來源與查詢時間。",
+    "tools": [{ "type": "openrouter:web_search" }]
+  }'
+```
+
+```python
+import httpx
+
+API_URL = "https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "<admin 發放的 User Token>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
+
+def chat_with_web_search(model: str, text: str) -> dict:
+    resp = httpx.post(
+        API_URL,
+        headers={
+            "X-SDK-Key": SDK_KEY,
+            "X-User-Token": USER_TOKEN,
+            "X-Project-Code": PROJECT_CODE,
+            "Content-Type": "application/json",
+        },
+        # 帶 tools 啟用 OpenRouter server 端 web search;回應仍為純文字
+        json={
+            "model": model,
+            "text": text,
+            "tools": [{"type": "openrouter:web_search"}],
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if not body["success"]:
+        raise RuntimeError(f"{body['code']} {body['detail']}")
+    return body["data"]
+
+if __name__ == "__main__":
+    result = chat_with_web_search(
+        "openai/gpt-4o-mini",
+        "今天 1 美元可以換多少新台幣?請用最新即時匯率回答,並標註資料來源與查詢時間。",
+    )
     print(result["choices"][0]["message"]["content"])
 ```
 

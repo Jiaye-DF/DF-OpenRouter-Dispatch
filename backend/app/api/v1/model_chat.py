@@ -28,6 +28,20 @@ async def _chat_handler(
     db: DbDep,
     client_factory: ClientFactoryDep,
 ):
+    """canonical 與 deprecated 兩端點共用的實際處理邏輯。
+
+    把 HTTP 層的依賴拆解後轉交 service 層 `run_chat`,本身不含商業邏輯。
+
+    Args:
+        body: 已驗證的請求 body(model / text / images / videos / tools)。
+        caller: 由 SDK Key 解析出的呼叫者身分(department / project / user uid),
+            用於白名單、速率限制歸戶與 usage_logs 記帳。
+        db: 本次 request 的 DB session。
+        client_factory: 產生 OpenRouter / internal HTTP client 的工廠。
+
+    Returns:
+        包成統一格式的成功回應,data 為模型回應的純文字內容。
+    """
     data = await run_chat(
         db,
         client_factory=client_factory,
@@ -38,6 +52,7 @@ async def _chat_handler(
         text=body.text,
         images=body.images,
         videos=body.videos,
+        tools=body.tools,
     )
     return success_response(data=data, detail="success")
 
@@ -49,6 +64,10 @@ async def chat(
     db: DbDep,
     client_factory: ClientFactoryDep,
 ):
+    """canonical 端點:`POST /api/v1/model/chat`,所有 provider 共用。
+
+    參數意義同 `_chat_handler`;此處僅作路由註冊,實作轉交該 handler。
+    """
     return await _chat_handler(body, caller, db, client_factory)
 
 
@@ -63,4 +82,9 @@ async def chat_deprecated(
     db: DbDep,
     client_factory: ClientFactoryDep,
 ):
+    """[Deprecated] 舊端點:`POST /api/v1/model/openrouter/chat`。
+
+    內部直接 forward 到同一 handler,行為與 canonical 完全一致;至少保留到 v1.4。
+    參數意義同 `_chat_handler`。
+    """
     return await _chat_handler(body, caller, db, client_factory)

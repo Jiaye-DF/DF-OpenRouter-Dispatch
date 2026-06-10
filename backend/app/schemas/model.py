@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -130,3 +130,24 @@ class ModelSyncResult(BaseModel):
     credits_synced: int
     credits_failed: int
     synced_at: datetime
+
+
+class ModelBulkActivateRequest(BaseModel):
+    """批次切換 OpenRouter 模型可用性(admin)。
+
+    - `all`:啟用全部 OpenRouter 模型(is_active=TRUE)。
+    - `defaults`:僅保留白名單(allowed_models)模型 —— 白名單內的啟用、其餘停用,
+      等同重新套用 sync 的白名單規則(但不向 OpenRouter 重新拉取)。
+
+    兩種模式皆只作用於 provider='openrouter' 的模型,不影響 internal 模型。
+    """
+
+    mode: Literal["all", "defaults"]
+
+
+class ModelBulkActivateResult(BaseModel):
+    """批次切換結果計數。"""
+
+    mode: Literal["all", "defaults"]
+    activated: int
+    deactivated: int

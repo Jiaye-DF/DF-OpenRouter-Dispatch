@@ -247,7 +247,7 @@ export default function AdminGuidePage() {
                 </TR>
                 <TR>
                   <TD><PageLink href="/admin/models">模型管理</PageLink></TD>
-                  <TD>主檔、分級、同步 OpenRouter；可依模態 tag 篩選</TD>
+                  <TD>主檔、分級、同步 OpenRouter；可依模態 tag 篩選；可一鍵「啟用全部模型」或「僅保留預設模型」(依白名單)</TD>
                 </TR>
                 <TR>
                   <TD><PageLink href="/admin/allowed-models">模型白名單</PageLink></TD>

@@ -25,6 +25,7 @@ const API_BASE = (
   "https://<正式站網址>"
 ).replace(/\/$/, "");
 const CHAT_URL = `${API_BASE}/api/v1/model/chat`;
+const STREAM_URL = `${API_BASE}/api/v1/model/chat/stream`;
 const MODELS_URL = `${API_BASE}/api/v1/allowed/models`;
 
 function CodeBlock({
@@ -194,6 +195,67 @@ if __name__ == "__main__":
         "今天 1 美元可以換多少新台幣?請用最新即時匯率回答,並標註資料來源與查詢時間。",
     )
     print(answer)`;
+
+// 串流(SSE)範例 —— /model/chat/stream
+const CURL_STREAM_EXAMPLE = `curl -N -X POST '${STREAM_URL}' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \\
+  -H 'X-User-Token: <admin 發放的 User Token>' \\
+  -H 'X-Project-Code: 53299897503322112' \\
+  -d '{"model":"anthropic/claude-3.5-haiku","text":"用三句話介紹台灣"}'`;
+
+// Windows PowerShell:用 curl.exe(行尾為 PowerShell 續行的反引號)
+const CURL_STREAM_PWSH_EXAMPLE = `curl.exe -N -X POST '${STREAM_URL}' \`
+  -H 'Content-Type: application/json' \`
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \`
+  -H 'X-User-Token: <admin 發放的 User Token>' \`
+  -H 'X-Project-Code: 53299897503322112' \`
+  -d '{\\"model\\":\\"anthropic/claude-3.5-haiku\\",\\"text\\":\\"用三句話介紹台灣\\"}'`;
+
+const STREAM_OUTPUT_EXAMPLE = `data: {"id":"gen-1781149616-d2ysVJPcqDRdHy6sxYBm","content":"以"}
+
+data: {"id":"gen-1781149616-d2ysVJPcqDRdHy6sxYBm","content":"下是用"}
+
+data: {"id":"gen-1781149616-d2ysVJPcqDRdHy6sxYBm","content":"三句話介紹台灣："}
+
+data: [DONE]`;
+
+const PYTHON_STREAM_EXAMPLE = `import json
+import httpx
+
+API_URL = "${STREAM_URL}"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "<admin 發放的 User Token>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
+
+def chat_stream(model: str, text: str):
+    headers = {
+        "X-SDK-Key": SDK_KEY,
+        "X-User-Token": USER_TOKEN,
+        "X-Project-Code": PROJECT_CODE,
+        "Content-Type": "application/json",
+    }
+    with httpx.stream(
+        "POST", API_URL, headers=headers,
+        json={"model": model, "text": text}, timeout=None,
+    ) as resp:
+        # 開串流前的錯誤仍是一般 JSON,先擋下來
+        if "text/event-stream" not in resp.headers.get("content-type", ""):
+            raise RuntimeError(f"{resp.status_code} {resp.read().decode()}")
+        for line in resp.iter_lines():
+            if not line.startswith("data:"):
+                continue  # 略過空行 / keep-alive 註解
+            data = line[len("data:"):].strip()
+            if data == "[DONE]":
+                break
+            chunk = json.loads(data)          # 簡化格式:{"id": ..., "content": ...}
+            if "error" in chunk:
+                raise RuntimeError(chunk["error"])
+            print(chunk.get("content", ""), end="", flush=True)  # 逐字輸出
+    print()
+
+if __name__ == "__main__":
+    chat_stream("anthropic/claude-3.5-haiku", "用三句話介紹台灣")`;
 
 const IMAGE_EXAMPLE = `{
   "model": "google/gemini-2.5-flash",
@@ -506,6 +568,73 @@ export default function UserGuidePage() {
               <CodeBlock language="python" code={PYTHON_WEBSEARCH_EXAMPLE} />
             </>
           )}
+        </Section>
+
+        <Section id="stream" title="串流回應(SSE)">
+          <p>
+            若希望像 ChatGPT 一樣<strong>逐字即時顯示</strong>回應(而非等整段生成完才一次回),
+            可改用串流端點。回應以 <strong>SSE(Server-Sent Events)</strong> 一段一段傳回,每段只含 <code>id</code> 與該段文字 <code>content</code>。
+          </p>
+          <CodeBlock
+            language="HTTP"
+            code={`POST ${STREAM_URL}\nContent-Type: application/json\nX-SDK-Key: <SDK Key 明文>\nX-User-Token: <User Token 明文>\nX-Project-Code: <專案代碼>`}
+          />
+          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+            <li>
+              Header 與 Request Body <strong>與 <code>/model/chat</code> 完全相同</strong>(<code>model</code> / <code>text</code> / <code>images</code> / <code>tools</code>);
+              <strong>不需</strong>額外帶 <code>stream</code> 欄位,端點本身即代表串流。
+            </li>
+            <li>
+              回應 <code>Content-Type</code> 為 <code>text/event-stream</code>,<strong>不</strong>套用統一
+              {" "}<code>{`{ success, code, data, detail }`}</code> 包裝;每筆事件為精簡的
+              {" "}<code>{`data: {"id":"...","content":"..."}`}</code>,最後以 <code>data: [DONE]</code> 收尾。
+              文字內容位於 <code>content</code>;OpenRouter 的 <code>provider</code> / <code>cost</code> / <code>usage</code> 等內部欄位<strong>不會</strong>外露。
+            </li>
+            <li>
+              <strong>開串流前</strong>的錯誤(憑證 / 白名單 / 速率限制等)仍以一般 HTTP 4xx/5xx +
+              {" "}<code>{`{ success:false, … }`}</code> JSON 回絕,<strong>不</strong>會進入串流;
+              程式應先檢查回應 <code>Content-Type</code> 再決定是否逐塊讀取。
+            </li>
+            <li>
+              本端點<strong>僅支援 OpenRouter 模型</strong>;internal 模型呼叫此端點會回 <code>400 feature_not_supported</code>。
+            </li>
+          </ul>
+
+          <p className="font-medium mt-2">curl(<code>-N</code> 關閉緩衝才看得到逐段輸出)</p>
+          <CodeBlock language="bash" code={CURL_STREAM_EXAMPLE} />
+
+          <p className="font-medium mt-2">curl(Windows PowerShell — 請用 <code>curl.exe</code>,勿用 <code>curl</code> 別名)</p>
+          <CodeBlock language="powershell" code={CURL_STREAM_PWSH_EXAMPLE} />
+
+          <p className="font-medium mt-2">預期輸出(成功時的 SSE 串流)</p>
+          <CodeBlock language="text/event-stream" code={STREAM_OUTPUT_EXAMPLE} />
+          <p className="text-sm text-muted-foreground">
+            把每筆 <code>data:</code> 的 <code>content</code> 依序串接即為完整回答,遇 <code>data: [DONE]</code> 結束;
+            <code>id</code> 為本次生成的識別碼(每段相同,可用於回報問題)。token 用量只記在後台,不隨串流回傳。
+          </p>
+
+          <p className="font-medium mt-2">Python (httpx 串流)</p>
+          <CodeBlock language="python" code={PYTHON_STREAM_EXAMPLE} />
+
+          <div className="mt-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">測試</Badge>
+              <span className="font-medium text-sm">怎麼確認串流正常運作</span>
+            </div>
+            <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+              <li>
+                <strong>串流成功</strong>:用上方 <code>curl -N</code> 應看到「逐段 <code>{`data: {"id":...,"content":...}`}</code> → 最後 <code>data: [DONE]</code>」逐字浮現;
+                若整段一次才出現,多半是中間 proxy 緩衝。
+              </li>
+              <li>
+                <strong>驗開串流前錯誤</strong>:故意把 <code>model</code> 填一個不在白名單的值,應回<strong>一般 JSON</strong>
+                {" "}<code>{`{"success":false,"detail":"model_forbidden"}`}</code>(而非 SSE)。
+              </li>
+              <li>
+                <strong>對照非串流</strong>:同參數打 <code>/model/chat</code> 應回 <code>{`{"success":true,"data":"…整段文字…"}`}</code>,可區分是串流問題還是基本鏈路問題。
+              </li>
+            </ul>
+          </div>
         </Section>
 
         <Section id="errors" title="錯誤碼對照">

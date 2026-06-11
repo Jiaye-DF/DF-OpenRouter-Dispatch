@@ -10,7 +10,9 @@
 
 讓代理端支援**串流回應**:SDK 呼叫後,模型生成的內容以 **SSE（Server-Sent Events）** 一段一段即時回傳,而非等整段生成完才一次回。對齊 [50-openrouter.md § 7](../../Design-Base/50-openrouter.md)(該章原為「預留」,本版落實)。
 
-核心是「**邊收邊轉發**」:後端把 OpenRouter `stream=true` 回的 SSE chunk **原樣**轉給 SDK,格式與 OpenRouter 一致(`data: {...}\n\n` … `data: [DONE]`)。
+核心是「**邊收邊轉發**」:後端把 OpenRouter `stream=true` 回的 SSE chunk **解析後簡化**為 `{ id, content }` 再轉給 SDK(`data: {"id":"...","content":"..."}\n\n` … `data: [DONE]`),OpenRouter 內部欄位(provider / cost / 路由 / usage 等)不外露。
+
+> 註:原規劃為「原樣轉發 OpenRouter SSE」,實測發現原始 chunk 會連 `provider` / `cost` 等內部欄位一起漏給 SDK,故改為簡化格式(對齊非串流端點只回純文字的精簡原則)。詳見 § 9 決議。
 
 **這不是上傳功能**:串流是「輸出」方向(模型 → SDK),與檔案 / 影片上傳(輸入方向,屬 S3 那條獨立路線)無關。影片輸入維持本版本不支援。
 
@@ -65,10 +67,10 @@ SDK ──▶ POST /api/v1/model/chat/stream   Headers: X-SDK-Key, X-User-Token
   │   6. 成功連上(HTTP 200、收到第一個 chunk)= commit point
   │
   ▼  [開串流後 — text/event-stream,不套 ApiResponse,禁止重試]
-SDK ◀── data: {...delta...}\n\n   (原樣轉發 OpenRouter SSE)
-     ◀── : OPENROUTER PROCESSING   (keep-alive comment 一併轉發)
-     ◀── data: {...usage...}\n\n   (最後一個 chunk 含 usage)
+SDK ◀── data: {"id":"...","content":"以"}\n\n   (簡化:只回 id + content)
+     ◀── data: {"id":"...","content":"下是用"}\n\n
      ◀── data: [DONE]\n\n
+        (keep-alive 註解 / usage / provider / cost 等內部 chunk 不轉發)
   │
   └─ finally:累積的 content + usage → schedule_usage_log
        (串完 → status=success;中途中斷 / 上游錯 → status=error,記部分內容)
@@ -89,15 +91,15 @@ SDK ◀── data: {...delta...}\n\n   (原樣轉發 OpenRouter SSE)
 
 消費端為自家 SDK,不需遷就 OpenAI 的 `stream:true` 同端點慣例;故採 **B**。Request body 沿用既有 `ChatRequest`(`model / text / images / tools`,`videos` 仍 400),**不**新增 `stream` 欄位(端點本身即代表串流)。
 
-### 5.2 回應格式:原樣轉發 OpenRouter SSE
+### 5.2 回應格式:簡化 SSE(只回 id + content)
 
 - `Content-Type: text/event-stream`,**不**套 `ApiResponse` 包裝([§ 5](../../Design-Base/90-task-spec.md) 串流端點例外)。
-- 逐行轉發 OpenRouter 回的 SSE,含 `data: {...}`、空行框架、`: OPENROUTER PROCESSING` keep-alive comment、`data: [DONE]` 結尾,**格式與 OpenRouter 一致**(SDK 可直接套用 OpenAI/OpenRouter 既有 SSE 解析)。
-- `stream_options={include_usage:true}` 由後端注入,確保最後一個 chunk 帶 `usage` 供記帳;此欄對 SDK 而言是 OpenAI 標準欄位,透明無害。
+- 逐 chunk 解析後**只回 `{ id, content }`**:`data: {"id":"<gen-id>","content":"<本段文字>"}\n\n` … `data: [DONE]\n\n`。OpenRouter 原始欄位(`provider` / `cost` / `model` 路由 / `role` / `finish_reason` / `usage`)**一律剝除**;`: OPENROUTER PROCESSING` keep-alive 與無文字的 chunk 不轉發。對齊非串流端點只回純文字的精簡原則,並避免洩漏成本 / 供應商等內部資訊。
+- `stream_options={include_usage:true}` 由後端注入,確保最後一個 chunk 帶 `usage` 供**記帳**(寫 usage_logs);usage **不**外露給 SDK。
 
 ### 5.3 敏感欄位過濾
 
-- 串流為原樣轉發 OpenRouter chunk,本就不含本平台內部識別(`department_uid` / `user_uid` / `openrouter_key_uid`);程式仍須確保 **不**在 SSE 或錯誤 chunk 中帶入解密後的 OpenRouter Key 或內部 uid。
+- 串流只回 `{ id, content }`,OpenRouter 內部欄位(`provider` / `cost` / 路由 / `usage`)與本平台內部識別(`department_uid` / `user_uid` / `openrouter_key_uid`)一律剝除;程式仍須確保 **不**在 SSE 或錯誤 chunk 中帶入解密後的 OpenRouter Key 或內部 uid。
 - OpenRouter 原始錯誤完整寫後端 Log(含 `X-Request-Id`),**不**额外回傳內部資訊。
 
 ## 6. 錯誤處理對照表
@@ -141,8 +143,10 @@ SDK ◀── data: {...delta...}\n\n   (原樣轉發 OpenRouter SSE)
 > - (1) Internal 串流 **不做**(本版只 OpenRouter,internal 走串流端點回 400)。
 > - (2) 上游中斷採 **(a)**:轉發 OpenRouter 自身 error chunk + 關閉連線;後端側無預警斷線才補送 `data:{"error":...}` + `data:[DONE]`。
 > - (3) SDK 對外文件 / `docs/INTEGRATION.md` **本版一併更新**。
-> - (4) `stream_options:{include_usage:true}` **直接注入**。
+> - (4) `stream_options:{include_usage:true}` **直接注入**(僅供記帳,usage 不外露)。
 > - 端點形狀採 **B(另開 `/model/chat/stream`)**(見 § 5.1)。
+>
+> **決議補充(2026-06-11,正式站實測後)**:回應格式由「原樣轉發 OpenRouter SSE」改為**簡化 `{ id, content }`**。原因:實測原始 chunk 會把 `provider`(如 "Amazon Bedrock")、`cost`、`upstream_inference_cost`、`model` 路由、`finish_reason` 等內部欄位漏給 SDK,違反 [§ 6](../../Design-Base/50-openrouter.md) / [§ 12](../../Design-Base/50-openrouter.md) 「不外露內部資訊、成本」原則,也與非串流端點只回純文字不一致。改為解析後只回 id + content;OpenRouter 中途 error chunk 轉成 `data:{"error":"upstream_error"}`,後端側斷線補 `data:{"error":"openrouter_unavailable"}`。連帶更新 § 1 / § 4 流程圖 / § 5.2 / § 5.3 / § 6 與 50-openrouter.md § 7、使用者指南。
 
 1. **Internal provider 串流是否本版納入?** 建議**否**(本版只做 OpenRouter,internal 回 400),先把 OpenRouter 串流穩定上線;同意則維持 § 3 Out of Scope。
 2. **上游中途中斷時的處理**:[§ 7](../../Design-Base/50-openrouter.md) 要求「不可靜默截斷」。兩種做法:

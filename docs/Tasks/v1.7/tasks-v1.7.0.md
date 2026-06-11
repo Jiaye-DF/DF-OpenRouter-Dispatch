@@ -3,7 +3,7 @@
 ## 版本資訊
 
 - 前置依賴:v1.2 多 provider 代理(`/model/chat`、Key failover、rate limiter、usage_logs)已完成。
-- 本版本範圍:新增 **OpenRouter 串流(SSE)回應端點** `POST /api/v1/model/chat/stream`,邊收邊原樣轉發 OpenRouter SSE chunk。
+- 本版本範圍:新增 **OpenRouter 串流(SSE)回應端點** `POST /api/v1/model/chat/stream`,邊收邊解析,簡化為只含 `{ id, content }` 的 SSE 轉給呼叫端(不外露 OpenRouter 內部欄位)。
 - 對齊的 Design-Base 章節:
   - [50-openrouter.md § 4 呼叫流程](../../Design-Base/50-openrouter.md)
   - [50-openrouter.md § 7 串流（Streaming）](../../Design-Base/50-openrouter.md)
@@ -21,7 +21,7 @@
 
 ### 後端
 
-- [ ] `POST /api/v1/model/chat/stream` 可用:OpenRouter 模型回應以 `text/event-stream` 逐 chunk 串流,格式與 OpenRouter 一致(`data: {...}\n\n` … `data: [DONE]`)。
+- [ ] `POST /api/v1/model/chat/stream` 可用:OpenRouter 模型回應以 `text/event-stream` 逐 chunk 串流,**簡化格式** `data: {"id":"...","content":"..."}\n\n` … `data: [DONE]`(OpenRouter 內部欄位不外露)。
 - [ ] 開串流**前**的錯誤(驗證 / 白名單 / provider=internal / Key 全失敗)以 HTTP 4xx/5xx + `ApiResponse` 回絕,**不**開串流。
 - [ ] 開串流**後**不重試;呼叫端斷線時取消上游 httpx stream(`aclose`)。
 - [ ] 每次串流(含成功 / 中斷 / 錯誤)寫入一筆 `usage_logs`,含完整 `output_text` 與 `usage`(若有)。
@@ -64,10 +64,10 @@
   - 對每把 Key:`candidate = client.stream_chat_completion(payload, api_key=raw_key)`;`first = await candidate.__anext__()` 試連:
     - `OpenRouterAuthError` → `aclose` 換下一把;`OpenRouterError`(連線 / 5xx)→ 換下一把。
     - `ModelNotFound`/`Forbidden`/`RateLimit` → 記 error log + 拋對應 `AppError`(pre-stream)。
-  - 成功取得 `first` = **commit point**:relay `first` 與後續 line(每行加 `\n` 還原 SSE 框架),同時逐行累積 `delta.content` / 擷取 `usage` / `id`。
+  - 成功取得 `first` = **commit point**:relay 階段對每行呼叫 `_simplify_sse_line` —— 解析後**只吐 `{ id, content }`**(空行 / keep-alive 註解 / 無文字的 role·結束·usage chunk 不轉發),同時累積 `delta.content` / `usage` / `id` 供記帳。
   - 全部失敗(未連上)→ `rate_limited`(429,全撞速率) / `openrouter_unavailable`(502)。
   - `finally`:`await agen.aclose()` 關上游;合成 `resp` dict 呼叫 `schedule_usage_log`(串完 `status=success`;中斷 / 上游錯 `status=error`,寫已累積部分內容)。
-  - 上游中途出錯:轉發 OpenRouter 自身 error chunk;後端側無預警斷線才補送 `data:{"error":...}` + `data:[DONE]`(不靜默截斷)。
+  - 上游中途出錯:OpenRouter 的 error chunk(無 content)由 `_simplify_sse_line` 轉成 `data: {"error":"upstream_error"}` 並標記 `state["error"]`(→ usage_log status=error);後端側無預警斷線(`OpenRouterError`)則補送 `data: {"error":"openrouter_unavailable"}` + `data: [DONE]`。皆不靜默截斷,且不外露 OpenRouter 原始錯誤明細。
 
 ### D. 設定
 
@@ -79,7 +79,7 @@
 | 欄位 | 來源 | 處理 |
 | --- | --- | --- |
 | 解密後 OpenRouter Key | 後端解密 | **禁止**出現於任何 SSE chunk / error chunk / response;只可進後端 Log 前後 4 字元 |
-| `department_uid` / `user_uid` / `openrouter_key_uid` | 內部 | 串流為原樣轉發 OR chunk,本不含;補送之 error chunk 亦**禁止**帶入 |
+| `department_uid` / `user_uid` / `openrouter_key_uid` / `provider` / `cost` / `usage` | 內部 | 串流只回 `{ id, content }`;OpenRouter 內部欄位(供應商 / 成本 / 路由 / role / finish_reason / usage)一律剝除不外露 |
 | OpenRouter 原始錯誤明細 | 上游 | 完整寫後端 Log(含 X-Request-Id);回呼叫端僅限 OR 原生 error chunk,不附加內部資訊 |
 
 ## 錯誤處理對照表
@@ -118,7 +118,7 @@
 
 ## 測試重點
 
-- 成功串流:mock OpenRouter SSE,驗證逐 chunk 原樣轉發 + `[DONE]` + usage_log 寫入完整文字。
+- 成功串流:mock OpenRouter SSE,驗證逐 chunk 簡化為 `{ id, content }` + `[DONE]`,且 usage_log 寫入完整文字與 usage。
 - pre-stream 錯誤:provider=internal / 白名單失敗 / 全 Key 撞速率 → 回 `ApiResponse` 且 **未** 開串流。
 - failover:第一把 Key 401 → 換第二把成功。
 - 斷線:消費端中途關閉 → 上游 `aclose` 被呼叫、usage_log 記 status=error + 部分內容。

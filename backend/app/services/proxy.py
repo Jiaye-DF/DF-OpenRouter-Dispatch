@@ -8,8 +8,10 @@
 """
 
 import asyncio
+import json
 import random
 import time
+from collections.abc import AsyncIterator
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -147,6 +149,52 @@ def _summarize_response(resp: dict[str, Any]) -> dict[str, Any]:
     if "usage" in resp:
         summary["usage"] = resp["usage"]
     return summary
+
+
+def _accumulate_sse_line(line: str, state: dict[str, Any]) -> None:
+    """從一行 OpenRouter SSE 累積記帳所需資訊(content / usage / id)。
+
+    僅解析 `data:` 行的 JSON;keep-alive comment(`:` 開頭)、空行、`[DONE]` 一律忽略。
+    解析失敗(非 JSON)亦靜默略過 —— 串流轉發本身不受影響,記帳盡力而為。
+
+    Args:
+        line: OpenRouter SSE 的單行字串(不含換行)。
+        state: 累積狀態,含 `parts`(文字片段)、`usage`、`id`;就地更新。
+    """
+    s = line.strip()
+    if not s.startswith("data:"):
+        return
+    data = s[len("data:") :].strip()
+    if not data or data == "[DONE]":
+        return
+    try:
+        obj = json.loads(data)
+    except (ValueError, TypeError):
+        return
+    if state.get("id") is None and obj.get("id"):
+        state["id"] = obj["id"]
+    if obj.get("usage"):
+        state["usage"] = obj["usage"]
+    for choice in obj.get("choices") or []:
+        delta = choice.get("delta") or {}
+        content = delta.get("content")
+        if isinstance(content, str):
+            state["parts"].append(content)
+
+
+def _stream_state_to_resp(state: dict[str, Any]) -> dict[str, Any]:
+    """把串流累積狀態合成 `schedule_usage_log` 可用的 resp dict。
+
+    形狀對齊非串流的下游 body(`choices[0].message.content` 為串接後完整文字),
+    使既有 `_extract_content` / `_summarize_response` 可直接沿用。
+    """
+    resp: dict[str, Any] = {
+        "id": state.get("id"),
+        "choices": [{"message": {"content": "".join(state["parts"])}}],
+    }
+    if state.get("usage"):
+        resp["usage"] = state["usage"]
+    return resp
 
 
 async def _check_model_whitelist(db: AsyncSession, model: str) -> Model:
@@ -724,3 +772,246 @@ async def _try_internal_call(
         request_log=request_log,
     )
     return _extract_content(resp_body)
+
+
+async def run_chat_stream(
+    db: AsyncSession,
+    *,
+    client_factory: ChatClientFactory,
+    department_uid: UUID,
+    project_uid: UUID,
+    user_uid: UUID,
+    model: str,
+    text: str | None,
+    images: list[str] | None,
+    videos: list[str] | None,
+    tools: list[dict[str, Any]] | None = None,
+) -> AsyncIterator[str]:
+    """串流版 chat 代理(v1.7;僅 OpenRouter)。
+
+    與 `run_chat` 對應,但回應改以 SSE 串流逐 chunk 回傳。白名單 / provider 檢查在
+    「吐出第一個 chunk 之前」完成,失敗以 AppError 拋出(由端點轉成 ApiResponse,
+    不開串流;對齊 docs/Design-Base/50-openrouter.md § 7)。
+
+    本版本串流**僅支援** provider=openrouter;internal 模型回 400 feature_not_supported。
+
+    Args:
+        db: 本次 request 的 DB session。
+        client_factory: HTTP client 工廠。
+        department_uid: 呼叫者部門 uid。
+        project_uid: 呼叫者專案 uid。
+        user_uid: 呼叫者使用者 uid。
+        model: 使用者指定的 model_key(須通過白名單)。
+        text: 文字輸入,可為 None。
+        images: 圖片 URL / data URI 清單,可為 None。
+        videos: 影片清單;本版本不支援,非空即 400。
+        tools: 可選工具清單,原樣透傳。
+
+    Yields:
+        OpenRouter SSE 字串(已含換行框架),可直接寫入 text/event-stream 回應。
+
+    Raises:
+        AppError: feature_not_supported(400,影片 / internal)、model_forbidden(403)、
+            model_not_found(404)、rate_limited(429)、openrouter_unavailable(502);
+            均於吐出第一個 chunk 之前拋出。
+    """
+    if videos:
+        raise AppError("feature_not_supported", code=400)
+    model_row = await _check_model_whitelist(db, model)
+    if model_row.provider != "openrouter":
+        # 本版本串流僅支援 OpenRouter;internal 串流留待後續版本。
+        raise AppError("feature_not_supported", code=400)
+
+    payload = _rewrite_request(model, text, images, tools)
+    payload["stream"] = True
+    # 確保最後一個 chunk 帶 usage,供記帳;對 SDK 為 OpenAI 標準欄位,透明無害。
+    payload["stream_options"] = {"include_usage": True}
+    request_log = _build_request_log(model, text, images, tools)
+
+    async for chunk in _stream_openrouter(
+        db,
+        client_factory=client_factory,
+        model_row=model_row,
+        department_uid=department_uid,
+        project_uid=project_uid,
+        user_uid=user_uid,
+        payload=payload,
+        request_log=request_log,
+    ):
+        yield chunk
+
+
+async def _stream_openrouter(
+    db: AsyncSession,
+    *,
+    client_factory: ChatClientFactory,
+    model_row: Model,
+    department_uid: UUID,
+    project_uid: UUID,
+    user_uid: UUID,
+    payload: dict[str, Any],
+    request_log: dict[str, Any],
+) -> AsyncIterator[str]:
+    """OpenRouter 串流流程 — Key failover 在「收到第一個 chunk 之前」完成。
+
+    連上(收到第一個 chunk)即為 commit point,之後進入不可重試的 relay 階段:
+    逐行原樣轉發 OpenRouter SSE,同時累積 content / usage 供記帳;串流結束、中途
+    出錯或呼叫端斷線,皆於 finally 寫入一筆 usage_logs。
+
+    Args:
+        db: 本次 request 的 DB session(僅 commit point 前使用)。
+        client_factory: HTTP client 工廠。
+        model_row: 已通過白名單的 Model 資料列。
+        department_uid: 呼叫者部門 uid(決定可用 Key 範圍)。
+        project_uid: 呼叫者專案 uid(記帳用)。
+        user_uid: 呼叫者使用者 uid(記帳用)。
+        payload: 已含 stream=True 的 `/chat/completions` payload。
+        request_log: 請求快照,寫入 usage_logs 用。
+
+    Yields:
+        OpenRouter SSE 字串(已含換行框架)。
+
+    Raises:
+        AppError: model_not_found / model_forbidden / rate_limited / openrouter_unavailable;
+            均於吐出第一個 chunk 之前拋出。
+    """
+    client = client_factory.openrouter()
+    model = payload["model"]
+    model_uid = model_row.model_uid
+
+    tried: set[UUID] = set()
+    last_err: Exception | None = None
+    rate_limited_all = True
+    started = time.monotonic()
+
+    agen: AsyncIterator[str] | None = None
+    first_line: str | None = None
+    key_uid: UUID | None = None
+
+    def _log_error(error_code: str, *, key: UUID | None) -> None:
+        schedule_usage_log(
+            department_uid=department_uid,
+            project_uid=project_uid,
+            user_uid=user_uid,
+            openrouter_key_uid=key,
+            model=model,
+            model_uid=model_uid,
+            resp=None,
+            latency_ms=int((time.monotonic() - started) * 1000),
+            status="error",
+            error_code=error_code,
+            request_log=request_log,
+        )
+
+    # --- Phase 1:Key failover,直到成功連上(收到第一個 chunk)---
+    for _ in range(_MAX_RETRIES):
+        key_row = await pick_random_active(
+            db, department_uid=department_uid, exclude_uids=tried
+        )
+        if key_row is None:
+            break
+        tried.add(key_row.openrouter_key_uid)
+
+        limiter = await get_limiter(key_row.openrouter_key_uid)
+        try:
+            await limiter.acquire(
+                rpm_limit=key_row.rpm_limit,
+                min_interval_ms=key_row.min_request_interval_ms,
+                wait_timeout=0,
+            )
+        except RateLimitExceeded:
+            logger.warning(
+                "OR 串流 Key uid=%s 速率限制;切下一把", key_row.openrouter_key_uid
+            )
+            continue
+
+        # 拿到 slot 後,後續失敗皆視為「實際打過 OR」,不再全 rate_limited
+        rate_limited_all = False
+
+        try:
+            raw_key = decrypt_key(key_row)
+        except Exception as exc:  # noqa: BLE001
+            last_err = exc
+            logger.exception("OpenRouter Key 解密失敗:%s", key_row.openrouter_key_uid)
+            continue
+
+        candidate = client.stream_chat_completion(payload, api_key=raw_key)
+        try:
+            first_line = await candidate.__anext__()
+        except StopAsyncIteration:
+            # 上游直接結束、無任何 chunk:視為成功但空輸出
+            first_line = None
+            agen = candidate
+            key_uid = key_row.openrouter_key_uid
+            break
+        except OpenRouterAuthError as exc:
+            last_err = exc
+            await candidate.aclose()
+            logger.warning("OR 串流 401;切換下一把 Key")
+            continue
+        except OpenRouterModelNotFoundError as exc:
+            await candidate.aclose()
+            _log_error("model_not_found", key=key_row.openrouter_key_uid)
+            raise AppError("model_not_found", code=404) from exc
+        except OpenRouterForbiddenError as exc:
+            await candidate.aclose()
+            _log_error("model_forbidden", key=key_row.openrouter_key_uid)
+            raise AppError("model_forbidden", code=403) from exc
+        except OpenRouterRateLimitError as exc:
+            await candidate.aclose()
+            _log_error("rate_limited", key=key_row.openrouter_key_uid)
+            raise AppError("rate_limited", code=429) from exc
+        except OpenRouterError as exc:
+            last_err = exc
+            await candidate.aclose()
+            logger.exception("OR 串流其他錯誤;嘗試下一把")
+            continue
+
+        # 成功連上 = commit point
+        agen = candidate
+        key_uid = key_row.openrouter_key_uid
+        break
+
+    # --- 全部失敗(未連上):pre-stream 回絕,轉成 ApiResponse ---
+    if agen is None:
+        error_code = "rate_limited" if rate_limited_all else "openrouter_unavailable"
+        code = 429 if rate_limited_all else 502
+        _log_error(error_code, key=None)
+        raise AppError(error_code, code=code) from last_err
+
+    # --- Phase 2:relay(不可重試)---
+    state: dict[str, Any] = {"parts": [], "usage": None, "id": None}
+    status = "error"
+    error_code: str | None = "stream_incomplete"  # 預設涵蓋呼叫端中途斷線
+    try:
+        if first_line is not None:
+            _accumulate_sse_line(first_line, state)
+            yield first_line + "\n"
+        async for line in agen:
+            _accumulate_sse_line(line, state)
+            yield line + "\n"
+        status = "success"
+        error_code = None
+    except OpenRouterError as exc:
+        # 後端側無預警斷線:不靜默截斷,補送 error chunk 後收尾(對齊 § 7)
+        last_err = exc
+        error_code = "openrouter_unavailable"
+        logger.exception("OR 串流中途失敗")
+        yield 'data: {"error":{"message":"openrouter_unavailable"}}\n\n'
+        yield "data: [DONE]\n\n"
+    finally:
+        await agen.aclose()
+        resp = _stream_state_to_resp(state)
+        schedule_usage_log(
+            department_uid=department_uid,
+            project_uid=project_uid,
+            user_uid=user_uid,
+            openrouter_key_uid=key_uid,
+            model=model,
+            model_uid=model_uid,
+            resp=resp,
+            latency_ms=int((time.monotonic() - started) * 1000),
+            status=status,
+            error_code=error_code,
+            request_log=request_log,
+        )

@@ -4,7 +4,7 @@
 
 > 此為 **proposal**(規劃草案),確認後即轉為正式 `tasks-v1.6.1.md`。
 >
-> 對應母本:[v1.6 部門+SDK Key 管理整合](../v1.6/propose-v1.6.0.md)。本版為 v1.6 之上的 patch 增量。
+> 對應母本:[v1.6 部門+SDK Key 管理整合](../propose-v1.6.0.md)。本版為 v1.6 之上的 patch 增量。
 
 ## 1. 目標
 

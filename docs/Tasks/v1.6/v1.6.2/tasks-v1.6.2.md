@@ -5,7 +5,7 @@
 - 前置依賴:v1.6.1(Chat 代理透傳 tools)
 - 本版本範圍:用量紀錄加 `used_tools` 標記與篩選;單筆 Input/Output 詳情頁(base64 圖片前端轉檔)
 - 對齊的 Design-Base 章節:
-  - [50-openrouter.md](../../Design-Base/50-openrouter.md)(§6 請求改寫 / Response 記帳)
+  - [50-openrouter.md](../../../Design-Base/50-openrouter.md)(§6 請求改寫 / Response 記帳)
 - 母本 propose:[`propose-v1.6.2.md`](./propose-v1.6.2.md)(包含設計推導與決議過程)
 
 > 本 Tasks 為**實作契約**;設計理由與替代方案請參考母本 propose。內容若與 propose 衝突,以本檔為準。

@@ -41,14 +41,14 @@ const NAV_SECTIONS: NavSection[] = [
   {
     items: [
       { href: "/dashboard", label: "儀錶板", icon: LayoutDashboard },
-      { href: "/usage-logs", label: "用量紀錄", icon: ScrollText },
+      { href: "/usage-logs", label: "用量紀錄", icon: ScrollText, adminOnly: true },
     ],
   },
   {
     label: "組織",
     items: [
-      { href: "/departments", label: "部門", icon: Building2 },
-      { href: "/projects", label: "專案", icon: FolderKanban },
+      { href: "/departments", label: "部門", icon: Building2, adminOnly: true },
+      { href: "/projects", label: "專案", icon: FolderKanban, adminOnly: true },
       { href: "/users", label: "使用者", icon: Users, adminOnly: true },
     ],
   },

@@ -17,11 +17,14 @@ from app.core.deps import AdminDep, ClientIpDep, DbDep, UserDep
 from app.core.exceptions import AppError
 from app.core.response import success_response
 from app.models.model import Model
+from app.repositories.allowed_model import AllowedModelRepository
 from app.repositories.model import ModelRepository
 from app.repositories.model_tier import ModelTierRepository
 from app.schemas.common import Page
 from app.schemas.model import (
     AllowedModelRead,
+    ModelBulkActivateRequest,
+    ModelBulkActivateResult,
     ModelCreateRequest,
     ModelPatch,
     ModelRead,
@@ -192,6 +195,44 @@ async def patch_model(
     return success_response(
         data=ModelRead.model_validate(row).model_dump(mode="json"), detail="success"
     )
+
+
+@router.post(
+    "/bulk-activate",
+    summary="批次切換 OpenRouter 模型可用性(admin)",
+    description="一鍵切換 OpenRouter 模型可用性,不向 OpenRouter 重新同步,只影響 provider='openrouter'。\n"
+    "- mode=all:啟用全部 OpenRouter 模型。\n"
+    "- mode=defaults:僅保留白名單(allowed_models)模型 —— 白名單內啟用、其餘停用。",
+)
+async def bulk_activate(
+    body: ModelBulkActivateRequest,
+    admin: AdminDep,
+    db: DbDep,
+    ip: ClientIpDep,
+):
+    repo = ModelRepository(db)
+    if body.mode == "all":
+        activated = await repo.activate_all_openrouter()
+        deactivated = 0
+    else:
+        whitelist = await AllowedModelRepository(db).list_active_keys()
+        activated, deactivated = await repo.apply_whitelist_openrouter(whitelist)
+
+    await write_audit(
+        db,
+        actor_user_uid=admin.user_uid,
+        actor_role=admin.role,
+        action="bulk_activate_models",
+        target_type="model",
+        target_uid=None,
+        ip=ip,
+        extra={"mode": body.mode, "activated": activated, "deactivated": deactivated},
+    )
+    await db.commit()
+    result = ModelBulkActivateResult(
+        mode=body.mode, activated=activated, deactivated=deactivated
+    )
+    return success_response(data=result.model_dump(mode="json"), detail="success")
 
 
 @router.post("/sync", summary="觸發 OpenRouter 模型 + 餘額同步(admin)")

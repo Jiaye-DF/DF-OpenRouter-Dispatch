@@ -49,6 +49,7 @@ export const API_ENDPOINTS = {
   models: "/api/v1/models",
   modelById: (uid: string) => `/api/v1/models/${uid}`,
   syncModels: "/api/v1/models/sync",
+  bulkActivateModels: "/api/v1/models/bulk-activate",
 
   // 模型分級(v1.1)
   modelTiers: "/api/v1/model-tiers",

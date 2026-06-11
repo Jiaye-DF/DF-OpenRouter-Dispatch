@@ -459,6 +459,36 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
   }'</code></pre>
       </div>
 
+      <p class="fw">curl(Windows PowerShell —— 請用 <code>curl.exe</code>,勿用 PowerShell 內建的 <code>curl</code> 別名)</p>
+      <div class="codeblock">
+        <div class="lang">powershell</div>
+        <button class="copy-btn" data-copy>複製</button>
+        <pre><code>curl.exe -N -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat/stream' `
+  -H 'Content-Type: application/json' `
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' `
+  -H 'X-User-Token: &lt;admin 發放的 User Token&gt;' `
+  -H 'X-Project-Code: 53299897503322112' `
+  -d '{\"model\":\"google/gemini-2.5-flash\",\"text\":\"用三句話介紹台灣\"}'</code></pre>
+      </div>
+
+      <p class="fw">預期輸出(成功時的 SSE 串流)</p>
+      <div class="codeblock">
+        <div class="lang">text/event-stream</div>
+        <button class="copy-btn" data-copy>複製</button>
+        <pre><code>data: {"id":"gen-...","choices":[{"delta":{"content":"台"}}]}
+
+data: {"choices":[{"delta":{"content":"灣"}}]}
+
+: OPENROUTER PROCESSING
+
+data: {"choices":[{"delta":{"content":"是一座島嶼…"}}]}
+
+data: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":12,"completion_tokens":48,"total_tokens":60}}
+
+data: [DONE]</code></pre>
+      </div>
+      <p class="small muted">把每筆 <code>data:</code> 的 <code>choices[0].delta.content</code> 依序串接,即為完整回答;<code>: OPENROUTER PROCESSING</code> 為 keep-alive 註解行,直接略過。最後一筆(<code>[DONE]</code> 前)會帶 <code>usage</code> token 統計。</p>
+
       <p class="fw">Python (httpx 串流)</p>
       <div class="codeblock">
         <div class="lang">python</div>
@@ -502,6 +532,17 @@ if __name__ == "__main__":
     chat_stream("google/gemini-2.5-flash", "用三句話介紹台灣")</code></pre>
       </div>
       <p class="small muted">適合聊天介面 / 長文生成等「有人即時在看」的情境;若只是後端批次處理或要拿完整結果再用,直接用 <code>/model/chat</code> 即可,不需串流。</p>
+
+      <div class="note-emerald">
+        <div class="head"><span class="badge gray">測試</span>怎麼確認串流正常運作</div>
+        <ul class="small muted">
+          <li><strong>挑可用模型</strong>:先 GET <code>/api/v1/allowed/models</code>(免憑證)從 <code>data[]</code> 取一個 <code>model_key</code>;<strong>串流僅支援 OpenRouter 模型</strong>。</li>
+          <li><strong>串流成功</strong>:用上方 <code>curl -N</code> 應看到「逐段 <code>data: {…delta…}</code> → 最後 <code>data: [DONE]</code>」逐字浮現;若整段一次才出現,多半是中間 proxy 緩衝,非平台行為。</li>
+          <li><strong>驗開串流前錯誤</strong>:故意把 <code>model</code> 填一個不在白名單的值,應回<strong>一般 JSON</strong> <code>{"success":false,"detail":"model_forbidden"}</code>(而非 SSE)—— 這證明憑證 / 白名單等錯誤會在開串流前以標準格式回絕。</li>
+          <li><strong>對照非串流</strong>:同樣參數打 <code>/model/chat</code> 應回 <code>{"success":true,"data":"…整段文字…"}</code>,可用來區分「是串流問題還是基本鏈路問題」。</li>
+          <li><strong>用量稽核</strong>:串流結束後,後台「用量紀錄」會新增一筆(含完整輸出文字與 token usage);呼叫端中途斷線則記為錯誤但保留已收到的部分內容。</li>
+        </ul>
+      </div>
     </div>
   </section>
 

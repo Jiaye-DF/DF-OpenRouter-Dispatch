@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -59,6 +60,67 @@ class OpenRouterClient:
             return resp.json()
         except Exception as exc:  # noqa: BLE001
             raise OpenRouterError(502, "invalid JSON response") from exc
+
+    async def stream_chat_completion(
+        self,
+        payload: dict[str, Any],
+        *,
+        api_key: str,
+    ) -> AsyncIterator[str]:
+        """串流版 chat completion — 逐行 yield OpenRouter 的 SSE 內容。
+
+        與 `chat_completion` 不同:以 httpx streaming 開連線,**先**依首個回應的 HTTP
+        狀態碼拋出對應錯誤(供 service 層在「吐出第一行之前」做 Key failover 判斷);
+        狀態為 200 才開始 `yield` SSE 行。一旦開始 yield 即進入「不可重試」階段
+        (對齊 docs/Design-Base/50-openrouter.md § 8)。
+
+        逾時採 `OPENROUTER_STREAM_TIMEOUT`(非一般 `OPENROUTER_API_TIMEOUT`),
+        以容許串流長時間維持與 chunk 間久無資料。
+
+        Args:
+            payload: 已含 `stream=True` 的 `/chat/completions` payload。
+            api_key: 解密後的 OpenRouter API Key。
+
+        Yields:
+            OpenRouter SSE 的單行字串(不含換行;呼叫端負責還原 `\\n\\n` 框架)。
+
+        Raises:
+            OpenRouterAuthError / OpenRouterForbiddenError / OpenRouterModelNotFoundError /
+            OpenRouterRateLimitError / OpenRouterError:依首個回應狀態碼,均於 yield
+            第一行之前拋出。串流中途的連線錯誤亦以 OpenRouterError(502) 拋出。
+        """
+        settings = get_settings()
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://df-openrouter-dispatch.local",
+            "X-Title": "DF-OpenRouter-Dispatch",
+        }
+        try:
+            async with self._client.stream(
+                "POST",
+                f"{self._base_url}/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=httpx.Timeout(settings.OPENROUTER_STREAM_TIMEOUT),
+            ) as resp:
+                if resp.status_code >= 400:
+                    await resp.aread()
+                    body = resp.text[:500]
+                    if resp.status_code == 401:
+                        raise OpenRouterAuthError(401, body)
+                    if resp.status_code == 403:
+                        raise OpenRouterForbiddenError(403, body)
+                    if resp.status_code == 404:
+                        raise OpenRouterModelNotFoundError(404, body)
+                    if resp.status_code == 429:
+                        raise OpenRouterRateLimitError(429, body)
+                    raise OpenRouterError(resp.status_code, body)
+                async for line in resp.aiter_lines():
+                    yield line
+        except httpx.HTTPError as exc:
+            logger.exception("OpenRouter 串流 HTTP 連線失敗")
+            raise OpenRouterError(502, str(exc)) from exc
 
     async def list_models(self, api_key: str) -> list[dict]:
         """GET /models — 回傳 data[]。同步流程拿任一把 active OR Key 即可。"""

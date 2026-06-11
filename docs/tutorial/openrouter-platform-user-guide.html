@@ -129,6 +129,7 @@
     <a href="#request">Request Body</a>
     <a href="#response">Response 格式</a>
     <a href="#examples">完整範例</a>
+    <a href="#stream">串流回應(SSE)</a>
     <a href="#errors">錯誤碼對照</a>
     <a href="#security">安全注意事項</a>
   </nav>
@@ -419,6 +420,88 @@ if __name__ == "__main__":
     print(answer)</code></pre>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- 串流回應(SSE) -->
+  <section id="stream">
+    <h2>串流回應(SSE)</h2>
+    <div class="card">
+      <p>若希望像 ChatGPT 一樣<strong>逐字即時顯示</strong>回應(而非等整段生成完才一次回),可改用串流端點。回應以 <strong>SSE(Server-Sent Events)</strong> 一段一段傳回,格式與 OpenRouter 一致。</p>
+      <div class="codeblock">
+        <div class="lang">HTTP</div>
+        <button class="copy-btn" data-copy>複製</button>
+        <pre><code>POST https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat/stream
+Content-Type: application/json
+X-SDK-Key: &lt;SDK Key 明文&gt;
+X-User-Token: &lt;User Token 明文&gt;
+X-Project-Code: &lt;專案代碼&gt;</code></pre>
+      </div>
+      <ul class="muted">
+        <li>Header 與 Request Body <strong>與 <code>/model/chat</code> 完全相同</strong>(<code>model</code> / <code>text</code> / <code>images</code> / <code>tools</code>);<strong>不需</strong>額外帶 <code>stream</code> 欄位,端點本身即代表串流。</li>
+        <li>回應 <code>Content-Type</code> 為 <code>text/event-stream</code>,<strong>不</strong>套用統一 <code>{ success, code, data, detail }</code> 包裝;每筆事件為 <code>data: {…}</code>,最後以 <code>data: [DONE]</code> 收尾(可能夾雜 <code>: OPENROUTER PROCESSING</code> keep-alive 註解行,直接忽略即可)。文字內容位於每筆事件的 <code>choices[0].delta.content</code>。</li>
+        <li><strong>開串流前</strong>的錯誤(憑證 / 白名單 / 速率限制等)仍以一般 HTTP 4xx/5xx + <code>{ success:false, … }</code> JSON 回絕,<strong>不</strong>會進入串流;因此程式應先檢查回應的 <code>Content-Type</code> / 狀態碼再決定是否逐塊讀取。</li>
+        <li>本端點<strong>僅支援 OpenRouter 模型</strong>;internal 模型呼叫此端點會回 <code>400 feature_not_supported</code>。</li>
+      </ul>
+
+      <p class="fw">curl(<code>-N</code> 關閉緩衝才看得到逐段輸出)</p>
+      <div class="codeblock">
+        <div class="lang">bash</div>
+        <button class="copy-btn" data-copy>複製</button>
+        <pre><code>curl -N -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat/stream' \
+  -H 'Content-Type: application/json' \
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \
+  -H 'X-User-Token: &lt;admin 發放的 User Token&gt;' \
+  -H 'X-Project-Code: 53299897503322112' \
+  -d '{
+    "model": "google/gemini-2.5-flash",
+    "text": "用三句話介紹台灣"
+  }'</code></pre>
+      </div>
+
+      <p class="fw">Python (httpx 串流)</p>
+      <div class="codeblock">
+        <div class="lang">python</div>
+        <button class="copy-btn" data-copy>複製</button>
+        <pre><code>import json
+import httpx
+
+API_URL = "https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat/stream"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "&lt;admin 發放的 User Token&gt;"
+PROJECT_CODE = "&lt;admin 後台「專案管理」頁複製的代碼&gt;"
+
+def chat_stream(model: str, text: str):
+    headers = {
+        "X-SDK-Key": SDK_KEY,
+        "X-User-Token": USER_TOKEN,
+        "X-Project-Code": PROJECT_CODE,
+        "Content-Type": "application/json",
+    }
+    with httpx.stream(
+        "POST", API_URL, headers=headers,
+        json={"model": model, "text": text}, timeout=None,
+    ) as resp:
+        # 開串流前的錯誤仍是一般 JSON,先擋下來
+        if "text/event-stream" not in resp.headers.get("content-type", ""):
+            body = resp.read().decode()
+            raise RuntimeError(f"{resp.status_code} {body}")
+        for line in resp.iter_lines():
+            if not line.startswith("data:"):
+                continue                      # 略過空行 / keep-alive 註解
+            data = line[len("data:"):].strip()
+            if data == "[DONE]":
+                break
+            chunk = json.loads(data)
+            delta = chunk["choices"][0]["delta"].get("content")
+            if delta:
+                print(delta, end="", flush=True)   # 逐字輸出
+    print()
+
+if __name__ == "__main__":
+    chat_stream("google/gemini-2.5-flash", "用三句話介紹台灣")</code></pre>
+      </div>
+      <p class="small muted">適合聊天介面 / 長文生成等「有人即時在看」的情境;若只是後端批次處理或要拿完整結果再用,直接用 <code>/model/chat</code> 即可,不需串流。</p>
     </div>
   </section>
 

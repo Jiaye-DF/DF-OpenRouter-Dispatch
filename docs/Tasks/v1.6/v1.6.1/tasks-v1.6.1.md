@@ -5,7 +5,7 @@
 - 前置依賴:v1.6.0(部門+SDK Key 管理整合)
 - 本版本範圍:Chat 代理 `POST /api/v1/model/chat` 支援透傳 `tools` 參數,啟用 OpenRouter server 端內建工具(如 web search);串接鏈路 docstring 補強
 - 對齊的 Design-Base 章節:
-  - [50-openrouter.md](../../Design-Base/50-openrouter.md)
+  - [50-openrouter.md](../../../Design-Base/50-openrouter.md)
 - 母本 propose:[`propose-v1.6.1.md`](./propose-v1.6.1.md)(包含設計推導與決議過程)
 
 > 本 Tasks 為**實作契約**;設計理由與替代方案請參考母本 propose。內容若與 propose 衝突,以本檔為準。

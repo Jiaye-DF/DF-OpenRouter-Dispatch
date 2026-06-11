@@ -6,15 +6,17 @@
 - Deprecated alias:`POST /api/v1/model/openrouter/chat`(內部 forward 到同 handler;至少保留到 v1.4)
 """
 
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 
 from app.clients.factory import ChatClientFactory, get_chat_client_factory
 from app.core.deps import DbDep, SdkCallerDep
 from app.core.response import success_response
 from app.schemas.model import ChatRequest
-from app.services.proxy import run_chat
+from app.services.proxy import run_chat, run_chat_stream
 
 router = APIRouter(prefix="/model", tags=["model-chat"])
 deprecated_router = APIRouter(prefix="/model/openrouter", tags=["model-chat (deprecated)"])
@@ -69,6 +71,64 @@ async def chat(
     參數意義同 `_chat_handler`;此處僅作路由註冊,實作轉交該 handler。
     """
     return await _chat_handler(body, caller, db, client_factory)
+
+
+@router.post(
+    "/chat/stream",
+    summary="Chat 代理(串流;SSE,僅 OpenRouter)",
+)
+async def chat_stream(
+    body: ChatRequest,
+    caller: SdkCallerDep,
+    db: DbDep,
+    client_factory: ClientFactoryDep,
+):
+    """串流端點:`POST /api/v1/model/chat/stream`。
+
+    回應為 **SSE(`text/event-stream`)**,逐 chunk 原樣轉發 OpenRouter 格式
+    (`data: {...}\\n\\n` … `data: [DONE]`),**不**套統一 ApiResponse 包裝
+    (對齊 docs/Design-Base/50-openrouter.md § 7)。
+
+    開串流前的錯誤(驗證 / 白名單 / provider=internal / Key 全失敗)仍以 HTTP
+    4xx/5xx + ApiResponse 回絕,不開串流;開串流後不重試,呼叫端斷線即取消上游。
+    本版本串流僅支援 provider=openrouter;internal 模型回 400 feature_not_supported。
+
+    參數意義同 `_chat_handler`(body / caller / db / client_factory)。
+    """
+    agen = run_chat_stream(
+        db,
+        client_factory=client_factory,
+        department_uid=caller.department_uid,
+        project_uid=caller.project_uid,
+        user_uid=caller.user_uid,
+        model=body.model,
+        text=body.text,
+        images=body.images,
+        videos=body.videos,
+        tools=body.tools,
+    )
+
+    # 先 prime 一次:開串流前的 AppError 於此拋出,由 exception handler 轉 ApiResponse
+    # (此時尚未送出 200 與 SSE);成功取得第一個 chunk 後才真正開啟串流。
+    try:
+        first = await agen.__anext__()
+    except StopAsyncIteration:
+        # 上游無任何內容:回一個僅含 [DONE] 的空串流
+        async def _empty() -> AsyncIterator[str]:
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(_empty(), media_type="text/event-stream")
+
+    async def _body() -> AsyncIterator[str]:
+        yield first
+        async for chunk in agen:
+            yield chunk
+
+    return StreamingResponse(
+        _body(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @deprecated_router.post(

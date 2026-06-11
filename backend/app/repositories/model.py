@@ -1,7 +1,7 @@
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.model import Model
@@ -57,3 +57,55 @@ class ModelRepository:
         for k, v in fields.items():
             setattr(row, k, v)
         await self.db.flush()
+
+    async def activate_all_openrouter(self) -> int:
+        """啟用全部 OpenRouter 模型;回傳本次被啟用(原為停用)的筆數。"""
+        stmt = (
+            update(Model)
+            .where(
+                Model.provider == "openrouter",
+                Model.is_deleted.is_(False),
+                Model.is_active.is_(False),
+            )
+            .values(is_active=True)
+        )
+        result = await self.db.execute(stmt)
+        await self.db.flush()
+        return result.rowcount or 0
+
+    async def apply_whitelist_openrouter(self, whitelist: set[str]) -> tuple[int, int]:
+        """以白名單重套 OpenRouter 模型可用性:白名單內啟用、其餘停用。
+
+        回傳 (activated, deactivated) —— 各為「狀態實際改變」的筆數。
+        whitelist 為空時等同停用全部 OpenRouter 模型。
+        """
+        # 白名單內、原為停用 → 啟用
+        activated = 0
+        if whitelist:
+            act_stmt = (
+                update(Model)
+                .where(
+                    Model.provider == "openrouter",
+                    Model.is_deleted.is_(False),
+                    Model.is_active.is_(False),
+                    Model.model_key.in_(whitelist),
+                )
+                .values(is_active=True)
+            )
+            activated = (await self.db.execute(act_stmt)).rowcount or 0
+
+        # 白名單外、原為啟用 → 停用(白名單為空時等同停用全部)
+        deact_stmt = (
+            update(Model)
+            .where(
+                Model.provider == "openrouter",
+                Model.is_deleted.is_(False),
+                Model.is_active.is_(True),
+            )
+            .values(is_active=False)
+        )
+        if whitelist:
+            deact_stmt = deact_stmt.where(Model.model_key.notin_(whitelist))
+        deactivated = (await self.db.execute(deact_stmt)).rowcount or 0
+        await self.db.flush()
+        return activated, deactivated

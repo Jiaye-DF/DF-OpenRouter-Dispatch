@@ -4,8 +4,10 @@ import * as React from "react";
 import {
   ArrowRight,
   AudioLines,
+  CheckCheck,
   FileText,
   Image as ImageIcon,
+  ListChecks,
   Plus,
   Type,
   Video,
@@ -31,6 +33,7 @@ import { FilterChip } from "@/components/ui/FilterChip";
 import { Combobox } from "@/components/ui/Combobox";
 import { SyncButton } from "@/components/admin/SyncButton";
 import { useDialog } from "@/lib/dialog";
+import { useConfirm } from "@/components/common/ConfirmDialog";
 import { useToast } from "@/components/ui/toaster";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
@@ -68,6 +71,7 @@ function contextLengthDisplay(contextLength: number): string {
 export default function ModelsAdminPage() {
   const role = useAppSelector((s) => s.auth.actor?.role);
   const { showDialog } = useDialog();
+  const { confirm } = useConfirm();
   const { toast } = useToast();
 
   // 後端一次回傳全部模型;分頁、搜尋、篩選一律前端處理
@@ -102,6 +106,9 @@ export default function ModelsAdminPage() {
     modality: "text->text",
   });
   const [creating, setCreating] = React.useState(false);
+
+  // 批次切換可用性的進行中狀態('all' / 'defaults' / null)
+  const [bulkMode, setBulkMode] = React.useState<"all" | "defaults" | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -218,6 +225,39 @@ export default function ModelsAdminPage() {
     }
   };
 
+  // 批次切換 OpenRouter 模型可用性(僅作用於 openrouter,internal 模型不受影響)
+  const onBulkActivate = async (mode: "all" | "defaults") => {
+    const ok = await confirm({
+      title: mode === "all" ? "啟用全部模型" : "僅保留預設模型",
+      message:
+        mode === "all"
+          ? "將啟用全部 OpenRouter 模型(internal 模型不受影響)。是否繼續?"
+          : "將依「模型白名單」重設:白名單內的 OpenRouter 模型啟用、其餘停用(internal 模型不受影響)。是否繼續?",
+      destructive: mode === "defaults",
+    });
+    if (!ok) return;
+    setBulkMode(mode);
+    try {
+      const res = await apiClient.post<{
+        mode: string;
+        activated: number;
+        deactivated: number;
+      }>(API_ENDPOINTS.bulkActivateModels, { mode });
+      toast(`已更新:啟用 ${res.activated} 筆、停用 ${res.deactivated} 筆`, "success");
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showDialog({
+          type: "error",
+          title: "操作失敗",
+          message: err.localizedDetail,
+        });
+      }
+    } finally {
+      setBulkMode(null);
+    }
+  };
+
   // 開啟編輯 Drawer
   const onRowClick = (m: Model) => {
     setEditing(m);
@@ -316,6 +356,26 @@ export default function ModelsAdminPage() {
               新增本地模型
             </Button>
             */}
+            <LoadingButton
+              variant="outline"
+              className="whitespace-nowrap"
+              loading={bulkMode === "all"}
+              disabled={bulkMode !== null}
+              onClick={() => onBulkActivate("all")}
+            >
+              <CheckCheck className="h-4 w-4" />
+              啟用全部模型
+            </LoadingButton>
+            <LoadingButton
+              variant="outline"
+              className="whitespace-nowrap"
+              loading={bulkMode === "defaults"}
+              disabled={bulkMode !== null}
+              onClick={() => onBulkActivate("defaults")}
+            >
+              <ListChecks className="h-4 w-4" />
+              僅保留預設模型
+            </LoadingButton>
             <SyncButton
               endpoint={API_ENDPOINTS.syncModels}
               onSuccess={() => load()}

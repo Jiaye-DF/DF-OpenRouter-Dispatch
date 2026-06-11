@@ -151,35 +151,54 @@ def _summarize_response(resp: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
-def _accumulate_sse_line(line: str, state: dict[str, Any]) -> None:
-    """從一行 OpenRouter SSE 累積記帳所需資訊(content / usage / id)。
+def _simplify_sse_line(line: str, state: dict[str, Any]) -> str | None:
+    """解析一行 OpenRouter SSE:更新記帳狀態,並回傳「簡化後」要轉給呼叫端的 SSE。
 
-    僅解析 `data:` 行的 JSON;keep-alive comment(`:` 開頭)、空行、`[DONE]` 一律忽略。
-    解析失敗(非 JSON)亦靜默略過 —— 串流轉發本身不受影響,記帳盡力而為。
+    平台**不**把 OpenRouter 原始 chunk(含 provider / cost / model 路由 / role /
+    finish_reason 等內部欄位)外露,只回 `{ id, content }`;對齊非串流端點僅回純文字
+    的精簡原則(見 50-openrouter.md § 6),並避免洩漏成本與供應商等內部資訊。
 
     Args:
         line: OpenRouter SSE 的單行字串(不含換行)。
-        state: 累積狀態,含 `parts`(文字片段)、`usage`、`id`;就地更新。
+        state: 記帳累積狀態,含 `parts`(文字片段)、`usage`、`id`;就地更新。
+
+    Returns:
+        要寫給呼叫端的簡化 SSE 字串(已含 `\\n\\n` 框架);遇 `[DONE]` 回簡化結束事件;
+        此行無需轉發(空行 / keep-alive 註解 / 僅 role 或結束、無文字的 chunk)時回 None
+        (但仍會把可記帳資訊累積進 state)。
     """
     s = line.strip()
     if not s.startswith("data:"):
-        return
+        return None  # 空行 / `: OPENROUTER PROCESSING` keep-alive 註解不轉發
     data = s[len("data:") :].strip()
-    if not data or data == "[DONE]":
-        return
+    if not data:
+        return None
+    if data == "[DONE]":
+        return "data: [DONE]\n\n"
     try:
         obj = json.loads(data)
     except (ValueError, TypeError):
-        return
+        return None
+    if obj.get("error"):
+        # OpenRouter 串流中途回報錯誤(無 content):不靜默吞掉,轉成簡化 error 事件,
+        # 並標記 state 供記帳判定 status=error;不外露 OpenRouter 原始錯誤明細。
+        state["error"] = True
+        return 'data: {"error":"upstream_error"}\n\n'
     if state.get("id") is None and obj.get("id"):
         state["id"] = obj["id"]
     if obj.get("usage"):
         state["usage"] = obj["usage"]
+    content_piece = ""
     for choice in obj.get("choices") or []:
         delta = choice.get("delta") or {}
         content = delta.get("content")
         if isinstance(content, str):
-            state["parts"].append(content)
+            content_piece += content
+    if not content_piece:
+        return None  # role 宣告 / 結束 / usage chunk 無文字 → 不轉發,但已累積記帳
+    state["parts"].append(content_piece)
+    payload = {"id": state.get("id"), "content": content_piece}
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 def _stream_state_to_resp(state: dict[str, Any]) -> dict[str, Any]:
@@ -985,19 +1004,26 @@ async def _stream_openrouter(
     error_code: str | None = "stream_incomplete"  # 預設涵蓋呼叫端中途斷線
     try:
         if first_line is not None:
-            _accumulate_sse_line(first_line, state)
-            yield first_line + "\n"
+            out = _simplify_sse_line(first_line, state)
+            if out is not None:
+                yield out
         async for line in agen:
-            _accumulate_sse_line(line, state)
-            yield line + "\n"
-        status = "success"
-        error_code = None
+            out = _simplify_sse_line(line, state)
+            if out is not None:
+                yield out
+        # OpenRouter 中途回報 error chunk 時 _simplify 會標記 state["error"]
+        if state.get("error"):
+            status = "error"
+            error_code = "openrouter_unavailable"
+        else:
+            status = "success"
+            error_code = None
     except OpenRouterError as exc:
         # 後端側無預警斷線:不靜默截斷,補送 error chunk 後收尾(對齊 § 7)
         last_err = exc
         error_code = "openrouter_unavailable"
         logger.exception("OR 串流中途失敗")
-        yield 'data: {"error":{"message":"openrouter_unavailable"}}\n\n'
+        yield 'data: {"error":"openrouter_unavailable"}\n\n'
         yield "data: [DONE]\n\n"
     finally:
         await agen.aclose()

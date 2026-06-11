@@ -144,12 +144,15 @@ usage_logs 記帳(`response_summary`)：
 
 ## 7. 串流（Streaming）
 
-本版本（v1）**不**實作串流；後續版本若擴充，規範如下（預留）：
+v1.7 起實作串流(僅 OpenRouter;internal 留待後續)。規範如下:
 
-- 支援 `stream=true`，後端以 **SSE**（`text/event-stream`）回傳，Content-Type 與 chunk 格式**必須**與 OpenRouter 相同（`data: {...}\n\n` + `data: [DONE]\n\n`）。
-- 串流中途若 OpenRouter 中斷，後端**必須**送出 `event: error` chunk 後關閉連線，**禁止**靜默截斷。
-- 串流端點**不**套用統一 `ApiResponse` 包裝；但**啟動前**的錯誤（驗證、白名單、OpenRouter 拒絕）**必須**以 HTTP 4xx + `ApiResponse` 回絕，**不**開啟串流。
-- Client 斷線時後端**必須**取消上游 httpx stream（`response.aclose()`），避免額外 Token 計費。
+- **獨立端點**:串流走 **`POST /api/v1/model/chat/stream`**(與非串流 `/model/chat` 分離,各自單一回應契約);**不**在 `/model/chat` 以 `stream` 旗標切換。Request body 沿用既有簡化 schema(`{ model, text, images, tools }`),端點本身即代表串流,**不**新增 `stream` 欄位;後端組 payload 時加入 `stream=true` 與 `stream_options={include_usage:true}`(後者確保末 chunk 帶 usage 供記帳)。
+- **回應格式**:後端以 **SSE**(`text/event-stream`)回傳,**逐行原樣轉發** OpenRouter 的 chunk,格式與 OpenRouter 相同(`data: {...}\n\n` … `data: [DONE]\n\n`,含 `: OPENROUTER PROCESSING` keep-alive comment)。串流端點**不**套用統一 `ApiResponse` 包裝。
+- **啟動前錯誤**:驗證、白名單、provider=internal、OpenRouter 拒絕(404/403/429)、所有 Key 撞速率等「吐出第一個 chunk 之前」的錯誤,**必須**以 HTTP 4xx/5xx + `ApiResponse` 回絕,**不**開啟串流。實作上以「先 prime async generator 一次」達成:成功取得第一個 chunk 才建立 `StreamingResponse`。
+- **不可重試**:成功收到第一個 chunk(commit point)後**禁止**重試;Key failover 只發生在 commit point 之前(401 換下一把,比照 [§ 8](#8-重試策略))。
+- **不可靜默截斷**:OpenRouter 串流中途自身的 error(以 `data:` chunk 表示)**原樣轉發**;若為「後端側」與上游的連線無預警中斷,後端**必須**補送一個 `data: {"error":...}` chunk 後再 `data: [DONE]` 收尾。
+- **斷線清理**:Client 斷線時後端**必須**取消上游 httpx stream(`aclose()`),避免額外 Token 計費。
+- **用量紀錄**:relay 過程逐 chunk 累積完整輸出文字與 `usage`,串流結束 / 中斷 / 斷線後於 `finally` 寫入一筆 `usage_logs`(背景 task;對齊 [§ 10](#10-用量紀錄usage-log));串完記 `success`,中斷 / 上游錯記 `error` 並保留已累積之部分內容。
 
 ## 8. 重試策略
 

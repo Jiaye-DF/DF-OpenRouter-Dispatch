@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # --- OpenRouter ---
     OPENROUTER_API_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_API_TIMEOUT: int = 60
+    # 串流(SSE)用獨立 read timeout:串流連線需長時間維持,chunk 間可能久無資料,
+    # 故與一般呼叫分開,避免被 OPENROUTER_API_TIMEOUT(60s)提早中斷。
+    OPENROUTER_STREAM_TIMEOUT: int = 300
 
     # --- Internal LLM (v1.2) ---
     # base_url / api_key / rpm_limit / min_interval 已移至 DB(`internal_keys` 表,per-Key 設定);

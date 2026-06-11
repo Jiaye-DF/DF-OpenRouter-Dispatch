@@ -8,9 +8,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/common/EmptyState";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
 import { formatUSD } from "@/lib/utils/format";
+import { useAppSelector } from "@/store/hooks";
 import type { UsageLogDetail } from "@/types/api";
 
 // 用量紀錄單筆詳情頁:顯示使用者實際傳入內容(Input,含圖片)與模型完整回覆(Output)。
@@ -113,13 +115,14 @@ export default function UsageLogDetailPage() {
   const router = useRouter();
   const params = useParams();
   const uid = Array.isArray(params.uid) ? params.uid[0] : params.uid;
+  const role = useAppSelector((s) => s.auth.actor?.role);
 
   const [log, setLog] = React.useState<UsageLogDetail | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!uid) return;
+    if (!uid || role !== "admin") return;
     setLoading(true);
     apiClient
       .get<UsageLogDetail>(API_ENDPOINTS.usageLogById(uid))
@@ -137,6 +140,19 @@ export default function UsageLogDetailPage() {
   // v1.6.2 起 output_text 為完整回覆;舊紀錄僅有截斷的 first_text。
   const outputText = resp?.output_text ?? resp?.first_text ?? "";
   const isLegacyOutput = !resp?.output_text && !!resp?.first_text;
+
+  if (role !== "admin") {
+    return (
+      <>
+        <PageTitle title="用量紀錄詳情" />
+        <Card>
+          <CardContent className="pt-6">
+            <EmptyState title="權限不足" description="本頁僅限 admin 存取" />
+          </CardContent>
+        </Card>
+      </>
+    );
+  }
 
   return (
     <>

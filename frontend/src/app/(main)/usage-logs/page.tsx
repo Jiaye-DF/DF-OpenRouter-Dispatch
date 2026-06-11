@@ -16,6 +16,7 @@ import { useDialog } from "@/lib/dialog";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
 import { formatUSD } from "@/lib/utils/format";
+import { useAppSelector } from "@/store/hooks";
 import type { Department, Model, Paginated, UsageLog } from "@/types/api";
 
 // 用量紀錄頁:部門 / 狀態 chip、模型 Combobox、時間區間快捷篩選
@@ -56,6 +57,7 @@ const statusLabel = (s: string) =>
 export default function UsageLogsPage() {
   const router = useRouter();
   const { showDialog } = useDialog();
+  const role = useAppSelector((s) => s.auth.actor?.role);
   const [items, setItems] = React.useState<UsageLog[]>([]);
   const [depts, setDepts] = React.useState<Department[]>([]);
   const [models, setModels] = React.useState<Model[]>([]);
@@ -99,10 +101,11 @@ export default function UsageLogsPage() {
   }, [page, filters, showDialog]);
 
   React.useEffect(() => {
-    load();
-  }, [load]);
+    if (role === "admin") load();
+  }, [load, role]);
 
   React.useEffect(() => {
+    if (role !== "admin") return;
     // 部門 / 模型 清單僅載入一次,供篩選元件使用
     apiClient
       .get<Paginated<Department>>(API_ENDPOINTS.departments, {
@@ -114,7 +117,7 @@ export default function UsageLogsPage() {
       .get<Paginated<Model>>(API_ENDPOINTS.models)
       .then((d) => setModels(d.items))
       .catch(() => {});
-  }, []);
+  }, [role]);
 
   const deptName = (uid: string) =>
     depts.find((d) => d.department_uid === uid)?.name ?? uid;
@@ -150,6 +153,19 @@ export default function UsageLogsPage() {
     });
 
   const totalPages = Math.max(1, Math.ceil(total / size));
+
+  if (role !== "admin") {
+    return (
+      <>
+        <PageTitle title="用量紀錄" />
+        <Card>
+          <CardContent className="pt-6">
+            <EmptyState title="權限不足" description="本頁僅限 admin 存取" />
+          </CardContent>
+        </Card>
+      </>
+    );
+  }
 
   return (
     <>

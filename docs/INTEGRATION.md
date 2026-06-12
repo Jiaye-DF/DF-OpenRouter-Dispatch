@@ -70,6 +70,7 @@ JSON body 欄位如下:
 | `model` | string | 是 | OpenRouter 模型 id(例:`openai/gpt-4o-mini`),須在管理員設定的白名單內 |
 | `text` | string | 否 | 使用者輸入的文字 |
 | `images` | string[] | 否 | 圖片 URL 或 `data:image/...;base64,...` 字串陣列 |
+| `files` | object[] | 否 | 上傳檔案(如 PDF)陣列,每筆為 `{ "filename": string, "file_data": string }`;`file_data` 為 `data:application/pdf;base64,...` 或可公開存取的遠端 URL,見 §5.3。**用量紀錄僅保留 `filename`,不留存檔案內容** |
 | `videos` | string[] | 否 | 暫不支援,送出即回 `400 feature_not_supported` |
 | `tools` | object[] | 否 | 工具清單,格式同 OpenAI `tools` 規格,原樣透傳給下游。**目前僅支援 OpenRouter server 端內建工具**(如 web search,見 §5.2);會回 `tool_calls` 的 function calling 尚未開放 |
 
@@ -116,6 +117,27 @@ GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/allowed/models
 - `tools` 內容原樣透傳給 OpenRouter;格式 / 可用工具型別以 OpenRouter 官方文件為準,本平台不另行驗證,傳錯會由 OpenRouter 回對應錯誤。
 - 啟用 web search 會由 OpenRouter 額外計費,費用一併反映在用量統計中。
 - 目前**僅支援 server 端工具**(回應為純文字);會回 `tool_calls` 的 function calling 尚未開放,如有需求請向管理員提出。
+
+### 5.3 上傳檔案(PDF 等)
+
+帶 `files` 即可隨訊息附上檔案(如 PDF),交由模型閱讀後回答。每筆檔案需提供 `filename` 與 `file_data` 兩個欄位:
+
+```json
+{
+  "model": "openai/gpt-4o-mini",
+  "text": "請摘要這份文件的重點",
+  "files": [
+    {
+      "filename": "report.pdf",
+      "file_data": "data:application/pdf;base64,JVBERi0xLjcKJ..."
+    }
+  ]
+}
+```
+
+- `file_data` 可填 **base64 data URL**(`data:application/pdf;base64,...`)或**可公開存取的遠端 URL**(如 `https://example.com/doc.pdf`)。
+- 檔案解析由 OpenRouter 處理:模型原生支援檔案輸入時直接傳入,否則由 OpenRouter 解析後再送模型;解析 / 額外 token 可能由 OpenRouter 計費,一併反映在用量統計。
+- **隱私**:用量紀錄**僅保留 `filename`,不留存 `file_data`(檔案內容)**;與圖片不同(圖片內容會留存供稽核預覽),請放心附上文件,但仍請避免在 `filename` 夾帶敏感資訊。
 
 <!--
 本段「本地模型」目前停用,等實際導入企業內部模型再開啟。
@@ -282,6 +304,86 @@ if __name__ == "__main__":
     print(result["choices"][0]["message"]["content"])
 ```
 
+### 檔案上傳(PDF,讓模型讀文件)
+
+帶 `files` 即可隨訊息附上檔案(如 PDF),交由模型閱讀後回答。每筆檔案需提供 `filename` 與 `file_data`(base64 data URL 或可公開存取的遠端 URL)。詳見 §5.3。
+
+**遠端 URL(最簡單,可直接 copy 測試):**
+
+```bash
+curl -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat' \
+  -H 'Content-Type: application/json' \
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \
+  -H 'X-User-Token: <admin 發放的 User Token>' \
+  -H 'X-Project-Code: 53299897503322112' \
+  -d '{
+    "model": "openai/gpt-4o-mini",
+    "text": "請用三點摘要這份文件的重點",
+    "files": [
+      {
+        "filename": "bitcoin.pdf",
+        "file_data": "https://bitcoin.org/bitcoin.pdf"
+      }
+    ]
+  }'
+```
+
+**Python(讀本機 PDF → base64 data URL):**
+
+```python
+import base64
+from pathlib import Path
+
+import httpx
+
+API_URL = "https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "<admin 發放的 User Token>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
+
+def to_data_url(path: str) -> str:
+    """把本機 PDF 轉成 base64 data URL。"""
+    b64 = base64.b64encode(Path(path).read_bytes()).decode()
+    return f"data:application/pdf;base64,{b64}"
+
+def chat_with_file(model: str, text: str, file_path: str) -> dict:
+    resp = httpx.post(
+        API_URL,
+        headers={
+            "X-SDK-Key": SDK_KEY,
+            "X-User-Token": USER_TOKEN,
+            "X-Project-Code": PROJECT_CODE,
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "text": text,
+            "files": [
+                {
+                    "filename": Path(file_path).name,
+                    "file_data": to_data_url(file_path),
+                }
+            ],
+        },
+        timeout=120,  # 檔案較大,逾時放寬
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if not body["success"]:
+        raise RuntimeError(f"{body['code']} {body['detail']}")
+    return body["data"]
+
+if __name__ == "__main__":
+    result = chat_with_file(
+        "openai/gpt-4o-mini",
+        "請用三點摘要這份文件的重點",
+        "report.pdf",
+    )
+    print(result["choices"][0]["message"]["content"])
+```
+
+> 隱私:用量紀錄**僅保留 `filename`,不留存檔案內容**(見 §5.3 / §10);請避免在 `filename` 夾帶敏感資訊。
+
 ---
 
 ## 8. 串流(SSE)回應
@@ -421,4 +523,5 @@ if __name__ == "__main__":
 - **不要**把 SDK Key / User Token 寫死於前端(Browser / App)或 commit 到任何 git repo;只能存於後端服務、CI Secret、或加密的設定管理工具。
 - 若懷疑憑證外洩,**立即**聯絡管理員撤銷:User Token 撤銷後對應使用者所有舊 token 立即失效;SDK Key 撤銷後對應部門所有呼叫立即失效。
 - 所有呼叫都會記錄一筆 `usage_logs`(模型、token、耗時、是否成功);管理員可在後台**用量紀錄**頁面查詢。
-- 本平台**不會**儲存 OpenRouter 回傳的內部 metadata;但會保留請求內容(含 base64 圖片)以利稽核,請**不要**在 prompt 中夾帶敏感個資。
+- 本平台**不會**儲存 OpenRouter 回傳的內部 metadata;但會保留請求內容(`text`、`images` 含 base64 圖片)以利稽核,請**不要**在 prompt 中夾帶敏感個資。
+- **檔案上傳例外**:`files` 僅保留 `filename`,**不**留存檔案內容(`file_data`);檔案內容僅於該次請求轉送 OpenRouter,不寫入用量紀錄。

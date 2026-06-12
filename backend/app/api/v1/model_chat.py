@@ -35,7 +35,7 @@ async def _chat_handler(
     把 HTTP 層的依賴拆解後轉交 service 層 `run_chat`,本身不含商業邏輯。
 
     Args:
-        body: 已驗證的請求 body(model / text / images / videos / tools)。
+        body: 已驗證的請求 body(model / text / images / files / videos / tools)。
         caller: 由 SDK Key 解析出的呼叫者身分(department / project / user uid),
             用於白名單、速率限制歸戶與 usage_logs 記帳。
         db: 本次 request 的 DB session。
@@ -55,6 +55,7 @@ async def _chat_handler(
         images=body.images,
         videos=body.videos,
         tools=body.tools,
+        files=[f.model_dump() for f in body.files] if body.files else None,
     )
     return success_response(data=data, detail="success")
 
@@ -107,6 +108,7 @@ async def chat_stream(
         images=body.images,
         videos=body.videos,
         tools=body.tools,
+        files=[f.model_dump() for f in body.files] if body.files else None,
     )
 
     # 先 prime 一次:開串流前的 AppError 於此拋出,由 exception handler 轉 ApiResponse

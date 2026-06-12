@@ -196,6 +196,71 @@ if __name__ == "__main__":
     )
     print(answer)`;
 
+// 檔案上傳範例(PDF)—— 遠端 URL 版,可直接 copy 測試
+const CURL_FILE_EXAMPLE = `curl -X POST '${CHAT_URL}' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \\
+  -H 'X-User-Token: <admin 發放的 User Token>' \\
+  -H 'X-Project-Code: 53299897503322112' \\
+  -d '{
+    "model": "google/gemini-2.5-flash",
+    "text": "請用三點摘要這份文件的重點",
+    "files": [
+      {
+        "filename": "bitcoin.pdf",
+        "file_data": "https://bitcoin.org/bitcoin.pdf"
+      }
+    ]
+  }'`;
+
+// 檔案上傳範例(PDF)—— Python:讀本機 PDF 轉 base64 data URL
+const PYTHON_FILE_EXAMPLE = `import base64
+from pathlib import Path
+
+import httpx
+
+API_URL = "${CHAT_URL}"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "<admin 發放的 User Token>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
+
+def to_data_url(path: str) -> str:
+    """把本機 PDF 轉成 base64 data URL。"""
+    b64 = base64.b64encode(Path(path).read_bytes()).decode()
+    return f"data:application/pdf;base64,{b64}"
+
+def chat_with_file(model: str, text: str, file_path: str) -> dict:
+    resp = httpx.post(
+        API_URL,
+        headers={
+            "X-SDK-Key": SDK_KEY,
+            "X-User-Token": USER_TOKEN,
+            "X-Project-Code": PROJECT_CODE,
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "text": text,
+            "files": [
+                {"filename": Path(file_path).name, "file_data": to_data_url(file_path)}
+            ],
+        },
+        timeout=120,  # 檔案較大,逾時放寬
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if not body["success"]:
+        raise RuntimeError(f"{body['code']} {body['detail']}")
+    return body["data"]
+
+if __name__ == "__main__":
+    answer = chat_with_file(
+        "google/gemini-2.5-flash",
+        "請用三點摘要這份文件的重點",
+        "report.pdf",
+    )
+    print(answer)`;
+
 // 串流(SSE)範例 —— /model/chat/stream
 const CURL_STREAM_EXAMPLE = `curl -N -X POST '${STREAM_URL}' \\
   -H 'Content-Type: application/json' \\
@@ -272,6 +337,17 @@ const TOOLS_EXAMPLE = `{
   "tools": [{ "type": "openrouter:web_search" }]
 }`;
 
+const FILE_EXAMPLE = `{
+  "model": "google/gemini-2.5-flash",
+  "text": "請用三點摘要這份文件的重點",
+  "files": [
+    {
+      "filename": "report.pdf",
+      "file_data": "data:application/pdf;base64,JVBERi0xLjcK..."
+    }
+  ]
+}`;
+
 const RESPONSE_EXAMPLE = `{
   "success": true,
   "code": 200,
@@ -307,10 +383,11 @@ const ERRORS: ErrorRow[] = [
   { status: 500, code: "操作失敗", desc: "後端異常,請聯絡管理員並提供時間點" },
 ];
 
-// 範例區的 nav bar 分頁:基本對話 / Web 搜尋
+// 範例區的 nav bar 分頁:基本對話 / Web 搜尋 / 檔案上傳
 const EXAMPLE_TABS = [
   { value: "basic", label: "基本對話" },
   { value: "websearch", label: "Web 搜尋（即時匯率）" },
+  { value: "file", label: "檔案上傳（PDF）" },
 ] as const;
 
 type ExampleTab = (typeof EXAMPLE_TABS)[number]["value"];
@@ -447,6 +524,12 @@ export default function UserGuidePage() {
                   <TD>圖片 URL 或 <code>data:image/...;base64,...</code> 字串陣列</TD>
                 </TR>
                 <TR>
+                  <TD className="font-mono">files</TD>
+                  <TD>object[]</TD>
+                  <TD>否</TD>
+                  <TD>上傳檔案(如 PDF),每筆為 <code>{`{ filename, file_data }`}</code>;<code>file_data</code> 為 <code>data:application/pdf;base64,...</code> 或可公開存取的遠端 URL。<strong>用量紀錄僅保留 <code>filename</code>,不留存檔案內容</strong></TD>
+                </TR>
+                <TR>
                   <TD className="font-mono">videos</TD>
                   <TD>string[]</TD>
                   <TD>否</TD>
@@ -504,6 +587,13 @@ export default function UserGuidePage() {
             <li><code>tools</code> 內容原樣轉發給 OpenRouter,平台不另行驗證;格式 / 可用工具型別以 OpenRouter 官方文件為準,傳錯會由 OpenRouter 回對應錯誤。</li>
             <li>啟用 web search 會由 OpenRouter 額外計費,費用一併反映在用量統計中。</li>
           </ul>
+
+          <p className="font-medium mt-2">含檔案的 Request 範例(PDF):</p>
+          <CodeBlock language="JSON" code={FILE_EXAMPLE} />
+          <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+            <li>每筆檔案需給 <code>filename</code> 與 <code>file_data</code>;<code>file_data</code> 可填 base64 data URL 或可公開存取的遠端 URL。檔案解析由 OpenRouter 處理(模型原生支援則直接傳入,否則由 OpenRouter 解析後再送模型),可能產生額外計費。</li>
+            <li><strong>隱私:用量紀錄僅保留 <code>filename</code>,不留存檔案內容(<code>file_data</code>)</strong>;請避免在 <code>filename</code> 夾帶敏感資訊。</li>
+          </ul>
           {/* 本地模型區塊暫時隱藏(待實際導入企業內部模型再開啟)
           <div className="mt-4 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 text-sm">
             <p className="font-medium text-purple-700 mb-1">本地模型(企業內部 server)</p>
@@ -547,14 +637,15 @@ export default function UserGuidePage() {
             ))}
           </div>
 
-          {exampleTab === "basic" ? (
+          {exampleTab === "basic" && (
             <>
               <p className="font-medium">curl</p>
               <CodeBlock language="bash" code={CURL_EXAMPLE} />
               <p className="font-medium">Python (httpx)</p>
               <CodeBlock language="python" code={PYTHON_EXAMPLE} />
             </>
-          ) : (
+          )}
+          {exampleTab === "websearch" && (
             <>
               <p className="text-sm text-muted-foreground">
                 帶 <code>tools: [{`{ "type": "openrouter:web_search" }`}]</code> 啟用
@@ -566,6 +657,19 @@ export default function UserGuidePage() {
               <CodeBlock language="bash" code={CURL_WEBSEARCH_EXAMPLE} />
               <p className="font-medium">Python (httpx)</p>
               <CodeBlock language="python" code={PYTHON_WEBSEARCH_EXAMPLE} />
+            </>
+          )}
+          {exampleTab === "file" && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                帶 <code>files</code> 即可附上 PDF 等檔案讓模型閱讀。<code>file_data</code> 可填
+                可公開存取的遠端 URL(下方 curl 範例)或本機檔案轉成的 base64 data URL(下方 Python 範例)。
+                <strong>用量紀錄僅保留檔名,不留存檔案內容。</strong>
+              </p>
+              <p className="font-medium">curl(遠端 URL,最容易測試)</p>
+              <CodeBlock language="bash" code={CURL_FILE_EXAMPLE} />
+              <p className="font-medium">Python (httpx,讀本機 PDF → base64)</p>
+              <CodeBlock language="python" code={PYTHON_FILE_EXAMPLE} />
             </>
           )}
         </Section>
@@ -581,7 +685,7 @@ export default function UserGuidePage() {
           />
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
             <li>
-              Header 與 Request Body <strong>與 <code>/model/chat</code> 完全相同</strong>(<code>model</code> / <code>text</code> / <code>images</code> / <code>tools</code>);
+              Header 與 Request Body <strong>與 <code>/model/chat</code> 完全相同</strong>(<code>model</code> / <code>text</code> / <code>images</code> / <code>files</code> / <code>tools</code>);
               <strong>不需</strong>額外帶 <code>stream</code> 欄位,端點本身即代表串流。
             </li>
             <li>
@@ -674,7 +778,10 @@ export default function UserGuidePage() {
             </li>
             <li>所有呼叫都會記錄一筆 <code>usage_logs</code>(模型、token、耗時、是否成功);管理員可在後台<strong>用量紀錄</strong>頁面查詢。</li>
             <li>
-              本平台<strong>不會</strong>儲存 OpenRouter 回傳的內部 metadata;但會保留請求內容(含 base64 圖片)以利稽核,請<strong>不要</strong>在 prompt 中夾帶敏感個資。
+              本平台<strong>不會</strong>儲存 OpenRouter 回傳的內部 metadata;但會保留請求內容(<code>text</code>、含 base64 圖片)以利稽核,請<strong>不要</strong>在 prompt 中夾帶敏感個資。
+            </li>
+            <li>
+              <strong>檔案上傳例外</strong>:<code>files</code> 僅保留 <code>filename</code>,<strong>不</strong>留存檔案內容(<code>file_data</code>);檔案內容僅於該次請求轉送 OpenRouter,不寫入用量紀錄。
             </li>
           </ul>
         </Section>

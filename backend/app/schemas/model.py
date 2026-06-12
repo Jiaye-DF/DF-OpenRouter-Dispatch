@@ -6,12 +6,24 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ChatFile(BaseModel):
+    """單一上傳檔案,對應 OpenRouter 的 `file` content part(如 PDF)。
+
+    - `filename`:檔名;OpenRouter 必填,亦為 usage_logs 唯一保留的檔案資訊。
+    - `file_data`:base64 data URL(如 `data:application/pdf;base64,...`)或可公開
+      存取的遠端 URL;**僅用於本次送往下游,不寫入用量紀錄**(法務考量)。
+    """
+
+    filename: str = Field(min_length=1, max_length=255)
+    file_data: str = Field(min_length=1)
+
+
 class ChatRequest(BaseModel):
     """Chat 代理的請求 body。
 
     輸入刻意收斂為「純文字 / 多模態 + 可選工具」,不暴露 OpenAI 全部欄位:
 
-    - `text` / `images`:組成單一 user 訊息的多模態內容。
+    - `text` / `images` / `files`:組成單一 user 訊息的多模態內容。
     - `videos`:本版本不支援,送出即回 400(僅佔位,待未來版本)。
     - `tools`:見下方欄位說明。
     """
@@ -19,6 +31,7 @@ class ChatRequest(BaseModel):
     model: str = Field(min_length=1, max_length=128)
     text: str | None = None
     images: list[str] | None = None
+    files: list[ChatFile] | None = None  # 上傳檔案(如 PDF);僅檔名會寫入用量紀錄
     videos: list[str] | None = None  # 本版本不支援；送出即回 400
     # 直接透傳給下游(OpenRouter / internal),格式同 OpenAI tools 規格。
     # 例:OpenRouter 內建工具 [{"type": "openrouter:web_search"}]。

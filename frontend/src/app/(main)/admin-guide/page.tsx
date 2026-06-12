@@ -263,7 +263,7 @@ export default function AdminGuidePage() {
                 </TR>
                 <TR>
                   <TD><PageLink href="/usage-logs">用量紀錄</PageLink></TD>
-                  <TD>每一筆呼叫的稽核明細；可依「是否使用工具」篩選，點任一筆進詳情頁看完整 Input（含圖片）/ Output</TD>
+                  <TD>每一筆呼叫的稽核明細；可依「是否使用工具」篩選，點任一筆進詳情頁看完整 Input（含圖片；上傳檔案僅記檔名）/ Output</TD>
                 </TR>
                 <TR>
                   <TD><PageLink href="/dashboard">儀錶板</PageLink></TD>

@@ -57,14 +57,16 @@ def _rewrite_request(
     text: str | None,
     images: list[str] | None,
     tools: list[dict[str, Any]] | None = None,
+    files: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """把精簡輸入重組為 OpenAI-compatible 的 `/chat/completions` payload。
 
-    刻意「從頭建構」而非 pass-through:SDK 使用者只給 text / images / tools,
+    刻意「從頭建構」而非 pass-through:SDK 使用者只給 text / images / files / tools,
     其餘 OpenAI 欄位(temperature / response_format 等)一律不開放。
 
-    - text / images 合併為單一 user 訊息的多模態 content;兩者皆空時補一個
+    - text / images / files 合併為單一 user 訊息的多模態 content;皆空時補一個
       空白 text block,確保 messages 不為空。
+    - files 為 OpenRouter `file` content part(如 PDF);file_data 為 data URL 或遠端 URL。
     - tools 有值才放進 payload(格式同 OpenAI tools 規格,原樣透傳給下游)。
     """
     content: list[dict[str, Any]] = []
@@ -72,6 +74,10 @@ def _rewrite_request(
         content.append({"type": "text", "text": text})
     for img in images or []:
         content.append({"type": "image_url", "image_url": {"url": img}})
+    for f in files or []:
+        content.append(
+            {"type": "file", "file": {"filename": f["filename"], "file_data": f["file_data"]}}
+        )
     if not content:
         content.append({"type": "text", "text": ""})
     payload: dict[str, Any] = {
@@ -88,15 +94,21 @@ def _build_request_log(
     text: str | None,
     images: list[str] | None,
     tools: list[dict[str, Any]] | None = None,
+    files: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """組出寫入 usage_logs.request_content 的請求快照。
 
     與 `_rewrite_request` 分開:這裡保留使用者「原始輸入語意」(text / images /
     tools)供 dashboard 檢視,而非下游實際送出的 messages 結構。tools 有值才記。
+
+    files 刻意**只記錄檔名**(`filename`)、不記 `file_data`:避免將使用者上傳的
+    檔案內容留存於系統(法務考量)。
     """
     log: dict[str, Any] = {"model": model, "text": text, "images": list(images or [])}
     if tools:
         log["tools"] = tools
+    if files:
+        log["files"] = [f["filename"] for f in files]
     return log
 
 
@@ -331,6 +343,7 @@ async def run_chat(
     images: list[str] | None,
     videos: list[str] | None,
     tools: list[dict[str, Any]] | None = None,
+    files: list[dict[str, str]] | None = None,
 ) -> str:
     """依 model.provider 分流到對應路徑;白名單檢查由本 fn 統一執行。
 
@@ -351,6 +364,7 @@ async def run_chat(
         images: 圖片 URL / data URI 清單,可為 None。
         videos: 影片清單;本版本不支援,非空即回 400。
         tools: 可選工具清單,原樣透傳給下游;目前僅支援 server 端工具。
+        files: 上傳檔案清單(filename / file_data),如 PDF;用量紀錄僅留檔名。
 
     Returns:
         模型回應的純文字內容。
@@ -363,8 +377,8 @@ async def run_chat(
         raise AppError("feature_not_supported", code=400)
     model_row = await _check_model_whitelist(db, model)
 
-    payload = _rewrite_request(model, text, images, tools)
-    request_log = _build_request_log(model, text, images, tools)
+    payload = _rewrite_request(model, text, images, tools, files)
+    request_log = _build_request_log(model, text, images, tools, files)
 
     if model_row.provider == "internal":
         return await _run_chat_internal(
@@ -805,6 +819,7 @@ async def run_chat_stream(
     images: list[str] | None,
     videos: list[str] | None,
     tools: list[dict[str, Any]] | None = None,
+    files: list[dict[str, str]] | None = None,
 ) -> AsyncIterator[str]:
     """串流版 chat 代理(v1.7;僅 OpenRouter)。
 
@@ -825,6 +840,7 @@ async def run_chat_stream(
         images: 圖片 URL / data URI 清單,可為 None。
         videos: 影片清單;本版本不支援,非空即 400。
         tools: 可選工具清單,原樣透傳。
+        files: 上傳檔案清單(filename / file_data),如 PDF;用量紀錄僅留檔名。
 
     Yields:
         OpenRouter SSE 字串(已含換行框架),可直接寫入 text/event-stream 回應。
@@ -841,11 +857,11 @@ async def run_chat_stream(
         # 本版本串流僅支援 OpenRouter;internal 串流留待後續版本。
         raise AppError("feature_not_supported", code=400)
 
-    payload = _rewrite_request(model, text, images, tools)
+    payload = _rewrite_request(model, text, images, tools, files)
     payload["stream"] = True
     # 確保最後一個 chunk 帶 usage,供記帳;對 SDK 為 OpenAI 標準欄位,透明無害。
     payload["stream_options"] = {"include_usage": True}
-    request_log = _build_request_log(model, text, images, tools)
+    request_log = _build_request_log(model, text, images, tools, files)
 
     async for chunk in _stream_openrouter(
         db,

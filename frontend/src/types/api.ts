@@ -135,6 +135,8 @@ export interface UsageRequestContent {
   model?: string;
   text?: string | null;
   images?: string[];
+  // 上傳檔案僅保留檔名(不留存檔案內容,法務考量)
+  files?: string[];
   tools?: Record<string, unknown>[];
 }
 

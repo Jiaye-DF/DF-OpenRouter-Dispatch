@@ -2,7 +2,8 @@
 
 設計（對應使用者選定的「SSO 登入 + 本地角色對應」模式）：
 - SSO 僅在「登入時」驗證身分;通過後沿用本平台既有的 Access + Refresh JWT session。
-- 以 SSO 回傳的 Email 對應本地 `users`;與本地帳密登入一致,僅 `role="admin"` 可進後台。
+- 以 SSO 回傳的 Email 對應本地 `users`;與本地帳密登入一致,admin 與一般使用者皆可登入,
+  頁面/API 權限再依 role 由前端 RouteGuard 與後端 AdminDep 控管。
 - SSO 端 session 撤銷透過 back-channel logout 端點傳達(見 `api/v1/auth.py`);
   本地以 `users.sso_user_id`（azure oid）對應後撤銷該使用者全部 refresh token。
 """
@@ -47,7 +48,7 @@ async def sso_login(
     user_agent: str | None,
     ip: str | None,
 ) -> SsoLoginResult:
-    """完成 SSO callback：換 token + 使用者資料 → 對應本地 admin → 簽發本地 session。
+    """完成 SSO callback：換 token + 使用者資料 → 對應本地使用者 → 簽發本地 session。
 
     任一步失敗擲 `SsoError`;callback 端點據 `reason` 導回登入頁顯示訊息。
     """
@@ -63,9 +64,6 @@ async def sso_login(
         raise SsoError("sso_no_account")
     if not user.is_active:
         raise SsoError("sso_inactive")
-    # 與本地帳密登入一致：一般使用者(role="user")僅作 SDK 代理身分,不得進管理後台。
-    if user.role != "admin":
-        raise SsoError("sso_not_admin")
 
     # 記錄 SSO userId(azure oid),供 back-channel logout 反查本地帳號。
     if info.user_id and user.sso_user_id != info.user_id:

@@ -90,10 +90,6 @@ async def login(
         await db.commit()
         raise AppError("invalid_credentials", code=401)
 
-    # 僅 admin 可登入平台；一般使用者只作為 SDK 代理呼叫的身分識別。
-    if user.role != "admin":
-        raise AppError("invalid_credentials", code=401)
-
     user.failed_login_count = 0
     user.locked_until = None
 

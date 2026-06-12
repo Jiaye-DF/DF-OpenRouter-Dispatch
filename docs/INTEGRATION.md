@@ -304,6 +304,86 @@ if __name__ == "__main__":
     print(result["choices"][0]["message"]["content"])
 ```
 
+### 檔案上傳(PDF,讓模型讀文件)
+
+帶 `files` 即可隨訊息附上檔案(如 PDF),交由模型閱讀後回答。每筆檔案需提供 `filename` 與 `file_data`(base64 data URL 或可公開存取的遠端 URL)。詳見 §5.3。
+
+**遠端 URL(最簡單,可直接 copy 測試):**
+
+```bash
+curl -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat' \
+  -H 'Content-Type: application/json' \
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \
+  -H 'X-User-Token: <admin 發放的 User Token>' \
+  -H 'X-Project-Code: 53299897503322112' \
+  -d '{
+    "model": "openai/gpt-4o-mini",
+    "text": "請用三點摘要這份文件的重點",
+    "files": [
+      {
+        "filename": "bitcoin.pdf",
+        "file_data": "https://bitcoin.org/bitcoin.pdf"
+      }
+    ]
+  }'
+```
+
+**Python(讀本機 PDF → base64 data URL):**
+
+```python
+import base64
+from pathlib import Path
+
+import httpx
+
+API_URL = "https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "<admin 發放的 User Token>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
+
+def to_data_url(path: str) -> str:
+    """把本機 PDF 轉成 base64 data URL。"""
+    b64 = base64.b64encode(Path(path).read_bytes()).decode()
+    return f"data:application/pdf;base64,{b64}"
+
+def chat_with_file(model: str, text: str, file_path: str) -> dict:
+    resp = httpx.post(
+        API_URL,
+        headers={
+            "X-SDK-Key": SDK_KEY,
+            "X-User-Token": USER_TOKEN,
+            "X-Project-Code": PROJECT_CODE,
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "text": text,
+            "files": [
+                {
+                    "filename": Path(file_path).name,
+                    "file_data": to_data_url(file_path),
+                }
+            ],
+        },
+        timeout=120,  # 檔案較大,逾時放寬
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if not body["success"]:
+        raise RuntimeError(f"{body['code']} {body['detail']}")
+    return body["data"]
+
+if __name__ == "__main__":
+    result = chat_with_file(
+        "openai/gpt-4o-mini",
+        "請用三點摘要這份文件的重點",
+        "report.pdf",
+    )
+    print(result["choices"][0]["message"]["content"])
+```
+
+> 隱私:用量紀錄**僅保留 `filename`,不留存檔案內容**(見 §5.3 / §10);請避免在 `filename` 夾帶敏感資訊。
+
 ---
 
 ## 8. 串流(SSE)回應

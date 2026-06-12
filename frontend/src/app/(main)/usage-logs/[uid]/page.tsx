@@ -270,6 +270,24 @@ export default function UsageLogDetailPage() {
                         </div>
                       </div>
                     )}
+
+                    {req.files && req.files.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          上傳檔案({req.files.length}) — 僅保留檔名,不留存檔案內容
+                        </span>
+                        <ul className="flex flex-col gap-1">
+                          {req.files.map((name, i) => (
+                            <li
+                              key={i}
+                              className="rounded-lg border border-border bg-muted/40 px-3 py-2 font-mono text-sm break-all"
+                            >
+                              {name}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <span className="text-sm text-muted-foreground">

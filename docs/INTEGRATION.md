@@ -284,7 +284,120 @@ if __name__ == "__main__":
 
 ---
 
-## 8. 錯誤碼對照
+## 8. 串流(SSE)回應
+
+若想要「打字機」效果——模型生成的內容一段一段即時回傳,而非等整段生成完才一次回——可改用**串流端點**。
+
+```http
+POST https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat/stream
+```
+
+- 認證 Header(`X-SDK-Key` / `X-User-Token` / `X-Project-Code`)與 Request Body 欄位**與 §4 / §5 的 `/model/chat` 完全相同**;端點本身即代表串流,**不需**在 body 加 `stream` 欄位。
+- **本版本串流僅支援 `provider=openrouter` 的模型**;其餘(如未來的本地模型)呼叫串流端點會回 `400 feature_not_supported`。
+- `videos` 仍不支援,送出即回 `400 feature_not_supported`。
+
+### 8.1 回應格式
+
+回應為 **Server-Sent Events(`Content-Type: text/event-stream`)**,**不**套 §6 的統一 `ApiResponse` 包裝。逐段以下列格式送出,最後以 `[DONE]` 收尾:
+
+```text
+data: {"id":"gen-xxxx","content":"以"}
+
+data: {"id":"gen-xxxx","content":"下是"}
+
+data: {"id":"gen-xxxx","content":"回答"}
+
+data: [DONE]
+```
+
+- 每個 `data:` 事件只含 **`id`(generation id)** 與 **`content`(本段新增的文字片段)**;把所有 `content` 依序串接即為完整回答。
+- OpenRouter 內部欄位(供應商 / 成本 / 路由 / `role` / `finish_reason` / `usage` 等)**一律不外露**;keep-alive 註解與無文字的事件不會送給你。
+- 收到 `data: [DONE]` 代表串流正常結束。
+
+### 8.2 串流中途錯誤
+
+開串流**前**的錯誤(憑證 / 白名單 / provider 不支援 / Key 全失敗)與 §9 錯誤碼對照一致——以 HTTP 4xx/5xx + `ApiResponse` 回絕,**不會**進入串流。
+
+一旦開始串流(已回 `200`),即**不重試**;若中途失敗,會送一個 error 事件後關閉,**不會**靜默截斷:
+
+| 事件 | 意義 |
+| --- | --- |
+| `data: {"error":"upstream_error"}` | OpenRouter 上游於串流中途回報錯誤;此事件後串流結束 |
+| `data: {"error":"openrouter_unavailable"}` 接 `data: [DONE]` | 後端與上游的連線中途中斷 |
+
+> 解析時請檢查每個事件:含 `error` 鍵即為失敗,已累積的部分內容仍有效但不完整。呼叫端若主動中斷連線,後端會立即取消上游請求以避免額外計費。
+
+### 8.3 範例
+
+**curl**(`-N` 關閉緩衝,即時印出每個事件):
+
+```bash
+curl -N -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat/stream' \
+  -H 'Content-Type: application/json' \
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \
+  -H 'X-User-Token: <admin 發放的 User Token>' \
+  -H 'X-Project-Code: 53299897503322112' \
+  -d '{
+    "model": "openai/gpt-4o-mini",
+    "text": "用三句話介紹台灣"
+  }'
+```
+
+> Windows 請改用 `curl.exe`(PowerShell 的 `curl` 是 `Invoke-WebRequest` 別名,不支援上述參數)。
+
+**Python (httpx)** — 逐事件解析並即時印出:
+
+```python
+import json
+import httpx
+
+API_URL = "https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat/stream"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "<admin 發放的 User Token>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
+
+def chat_stream(model: str, text: str) -> str:
+    parts: list[str] = []
+    with httpx.stream(
+        "POST",
+        API_URL,
+        headers={
+            "X-SDK-Key": SDK_KEY,
+            "X-User-Token": USER_TOKEN,
+            "X-Project-Code": PROJECT_CODE,
+            "Content-Type": "application/json",
+        },
+        json={"model": model, "text": text},
+        timeout=httpx.Timeout(300),  # 串流總時長可能較長
+    ) as resp:
+        # 開串流前的錯誤仍是 JSON ApiResponse(非 SSE),直接擋下
+        if resp.status_code != 200:
+            body = json.loads(resp.read())
+            raise RuntimeError(f"{body['code']} {body['detail']}")
+
+        for line in resp.iter_lines():
+            if not line.startswith("data:"):
+                continue
+            data = line[len("data:"):].strip()
+            if data == "[DONE]":
+                break
+            event = json.loads(data)
+            if event.get("error"):
+                raise RuntimeError(f"stream error: {event['error']}")
+            piece = event.get("content", "")
+            parts.append(piece)
+            print(piece, end="", flush=True)  # 即時呈現
+    return "".join(parts)
+
+if __name__ == "__main__":
+    full = chat_stream("openai/gpt-4o-mini", "用三句話介紹台灣")
+    print("\n--- 完整內容 ---")
+    print(full)
+```
+
+---
+
+## 9. 錯誤碼對照
 
 | HTTP | detail | 說明 / 建議處理 |
 | --- | --- | --- |
@@ -303,7 +416,7 @@ if __name__ == "__main__":
 
 ---
 
-## 9. 安全注意事項
+## 10. 安全注意事項
 
 - **不要**把 SDK Key / User Token 寫死於前端(Browser / App)或 commit 到任何 git repo;只能存於後端服務、CI Secret、或加密的設定管理工具。
 - 若懷疑憑證外洩,**立即**聯絡管理員撤銷:User Token 撤銷後對應使用者所有舊 token 立即失效;SDK Key 撤銷後對應部門所有呼叫立即失效。

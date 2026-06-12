@@ -85,8 +85,9 @@ async def chat_stream(
 ):
     """串流端點:`POST /api/v1/model/chat/stream`。
 
-    回應為 **SSE(`text/event-stream`)**,逐 chunk 原樣轉發 OpenRouter 格式
-    (`data: {...}\\n\\n` … `data: [DONE]`),**不**套統一 ApiResponse 包裝
+    回應為 **SSE(`text/event-stream`)**,逐 chunk 解析後**簡化**為僅含
+    `{id, content}` 再轉發(`data: {"id":"...","content":"..."}\\n\\n` … `data: [DONE]`;
+    OpenRouter 內部欄位不外露),**不**套統一 ApiResponse 包裝
     (對齊 docs/Design-Base/50-openrouter.md § 7)。
 
     開串流前的錯誤(驗證 / 白名單 / provider=internal / Key 全失敗)仍以 HTTP

@@ -21,19 +21,19 @@
 
 ### 後端
 
-- [ ] `POST /api/v1/model/chat/stream` 可用:OpenRouter 模型回應以 `text/event-stream` 逐 chunk 串流,**簡化格式** `data: {"id":"...","content":"..."}\n\n` … `data: [DONE]`(OpenRouter 內部欄位不外露)。
-- [ ] 開串流**前**的錯誤(驗證 / 白名單 / provider=internal / Key 全失敗)以 HTTP 4xx/5xx + `ApiResponse` 回絕,**不**開串流。
-- [ ] 開串流**後**不重試;呼叫端斷線時取消上游 httpx stream(`aclose`)。
-- [ ] 每次串流(含成功 / 中斷 / 錯誤)寫入一筆 `usage_logs`,含完整 `output_text` 與 `usage`(若有)。
-- [ ] `provider=internal` 的模型呼叫串流端點回 `400 feature_not_supported`。
-- [ ] Swagger 可於 `/api/docs` 查閱新端點(含「回應為 SSE、非 ApiResponse」之描述)。
-- [ ] 單元 / 整合測試覆蓋:成功串流、pre-stream 錯誤回 ApiResponse、failover、斷線記帳。
-- [ ] `.env.example` 與 `.env` 同步新增 `OPENROUTER_STREAM_TIMEOUT`。
-- [ ] SDK 對外文件 / `docs/INTEGRATION.md` 新增串流呼叫與 SSE 解析說明。
+- [x] `POST /api/v1/model/chat/stream` 可用:OpenRouter 模型回應以 `text/event-stream` 逐 chunk 串流,**簡化格式** `data: {"id":"...","content":"..."}\n\n` … `data: [DONE]`(OpenRouter 內部欄位不外露)。
+- [x] 開串流**前**的錯誤(驗證 / 白名單 / provider=internal / Key 全失敗)以 HTTP 4xx/5xx + `ApiResponse` 回絕,**不**開串流。
+- [x] 開串流**後**不重試;呼叫端斷線時取消上游 httpx stream(`aclose`)。
+- [x] 每次串流(含成功 / 中斷 / 錯誤)寫入一筆 `usage_logs`,含完整 `output_text` 與 `usage`(若有)。
+- [x] `provider=internal` 的模型呼叫串流端點回 `400 feature_not_supported`。
+- [x] Swagger 可於 `/api/docs` 查閱新端點(含「回應為 SSE、非 ApiResponse」之描述)。
+- [x] 單元 / 整合測試覆蓋:成功串流、pre-stream 錯誤回 ApiResponse、failover、斷線記帳。
+- [x] `.env.example` 與 `.env` 同步新增 `OPENROUTER_STREAM_TIMEOUT`。
+- [x] SDK 對外文件 / `docs/INTEGRATION.md` 新增串流呼叫與 SSE 解析說明。
 
 ### 前端
 
-- [ ] 無(chat 由 SDK 直呼,管理後台不呼叫;本版本無前端改動)。
+- [x] 無(chat 由 SDK 直呼,管理後台不呼叫;本版本無前端改動)。
 
 ## 功能設計
 

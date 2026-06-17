@@ -1,3 +1,4 @@
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -42,3 +43,8 @@ class ApiKeyRequestRepository:
 
     def add(self, row: ApiKeyRequest) -> None:
         self.db.add(row)
+
+    async def update_fields(self, row: ApiKeyRequest, **fields: Any) -> None:
+        for k, v in fields.items():
+            setattr(row, k, v)
+        await self.db.flush()

@@ -475,6 +475,38 @@ export default function UserGuidePage() {
           </p>
         </Section>
 
+        <Section id="apply-status" title="申請後的狀態與領取憑證">
+          <p>送出申請後,系統會依內容自動判斷,出現以下其中一種結果:</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Badge variant="secondary">系統自動開通</Badge>
+              </div>
+              <p className="text-sm">
+                Agent 已完成欄位驗證並<strong>自動建立憑證</strong>。可在申請<strong>詳情 / 列表</strong>點「<strong>領取憑證</strong>」,一次性取得
+                <strong> SDK Key</strong>、<strong>User Token</strong> 與<strong>專案代碼</strong>。
+              </p>
+              <p className="text-destructive text-sm mt-2">
+                ⚠ 憑證<strong>僅顯示一次</strong>,請立即複製妥善保管;關閉後無法再次檢視,遺失需請管理員重新發放。
+              </p>
+            </div>
+            <div className="rounded-xl border border-border p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Badge>待人工處理</Badge>
+              </div>
+              <p className="text-sm">
+                由管理員<strong>審核</strong>後再發放。在管理員處理前,你可自行
+                「<strong>取消</strong>」(需填取消原因)或「<strong>撤銷</strong>」這筆申請。
+              </p>
+            </div>
+          </div>
+          <ul className="list-disc pl-5 flex flex-col gap-1 text-sm text-muted-foreground">
+            <li><strong>已取消</strong>:申請已停止處理(由你主動取消,附原因),不會再被發放。</li>
+            <li><strong>已撤銷</strong>:申請已被收回作廢,不再進入審核 / 發放流程。</li>
+            <li><strong>重複申請</strong>:若送出與既有申請重複的內容,系統會<strong>自動取消</strong>該筆,避免重複建立。</li>
+          </ul>
+        </Section>
+
         <Section id="endpoint" title="端點與認證 Header">
           <p>
             本平台提供<strong>測試</strong>與<strong>正式</strong>兩個環境,請依用途選用對應的 Base URL;以下範例皆以正式環境為準。

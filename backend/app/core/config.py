@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     # 串流(SSE)用獨立 read timeout:串流連線需長時間維持,chunk 間可能久無資料,
     # 故與一般呼叫分開,避免被 OPENROUTER_API_TIMEOUT(60s)提早中斷。
     OPENROUTER_STREAM_TIMEOUT: int = 300
+    # 申請單 AI 欄位驗證模型(經 OpenRouter 呼叫)
+    API_KEY_AGENT_MODEL: str = "anthropic/claude-sonnet-4.6"
 
     # --- Internal LLM (v1.2) ---
     # base_url / api_key / rpm_limit / min_interval 已移至 DB(`internal_keys` 表,per-Key 設定);

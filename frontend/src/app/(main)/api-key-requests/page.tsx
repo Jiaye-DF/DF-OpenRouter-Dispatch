@@ -10,12 +10,25 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useDialog } from "@/lib/dialog";
 import { useToast } from "@/components/ui/toaster";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
-import type { ApiKeyRequest, ApiKeyRequestCreate, Paginated } from "@/types/api";
+import type {
+  ApiKeyRequest,
+  ApiKeyRequestCreate,
+  ApiKeyRequestDetail,
+  Paginated,
+  ProvisionedSecrets,
+} from "@/types/api";
 import { useAppSelector } from "@/store/hooks";
 
 interface FormState {
@@ -35,6 +48,24 @@ const EMPTY_FORM: FormState = {
   owner_name: "",
   owner_email: "",
 };
+
+// 狀態 badge 對應(v1.9.1 狀態模型)
+function statusBadge(status: string): React.ReactElement {
+  switch (status) {
+    case "manual_pending":
+      return <Badge variant="warning">待人工處理</Badge>;
+    case "agent_done":
+      return <Badge variant="success">Agent 已處理</Badge>;
+    case "done":
+      return <Badge variant="success">已處理</Badge>;
+    case "revoked":
+      return <Badge variant="secondary">已撤銷</Badge>;
+    case "cancelled":
+      return <Badge variant="secondary">已取消</Badge>;
+    default:
+      return <Badge variant="secondary">{status}</Badge>;
+  }
+}
 
 // 專案連結:須為 GitHub / Replit(前端即時提示,真正把關在後端)
 function isGithubOrReplit(url: string): boolean {
@@ -72,10 +103,12 @@ function ReqLabel({
   );
 }
 
-// API Key 申請表單(v1.9):上方送出表單(6 欄全必填)+ 下方歷程列表。
+// API Key 申請表單(v1.9 / v1.9.1):上方送出表單(6 欄全必填)+ 下方歷程列表與生命週期操作。
 // admin 看全部、member 只看自己(範圍由後端決定,前端不切換查詢)。
 export default function ApiKeyRequestsPage() {
-  const isAdmin = useAppSelector((s) => s.auth.actor?.role === "admin");
+  const actor = useAppSelector((s) => s.auth.actor);
+  const isAdmin = actor?.role === "admin";
+  const currentUserUid = actor?.user_uid ?? null;
   const { showDialog } = useDialog();
   const { toast } = useToast();
 
@@ -86,6 +119,24 @@ export default function ApiKeyRequestsPage() {
 
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = React.useState(false);
+
+  // 列操作 pending 狀態(以 request_uid 標記,避免重複點擊)
+  const [actingUid, setActingUid] = React.useState<string | null>(null);
+
+  // 一次性憑證視窗
+  const [secrets, setSecrets] = React.useState<ProvisionedSecrets | null>(null);
+
+  // 取消原因輸入視窗(受控,最小可用版)
+  const [cancelTarget, setCancelTarget] = React.useState<ApiKeyRequest | null>(
+    null
+  );
+  const [cancelReason, setCancelReason] = React.useState("");
+  const [cancelSaving, setCancelSaving] = React.useState(false);
+
+  // 人工處理視窗(admin):顯示 agent_decision 後確認開通
+  const [processTarget, setProcessTarget] =
+    React.useState<ApiKeyRequestDetail | null>(null);
+  const [processSaving, setProcessSaving] = React.useState(false);
 
   const size = 20;
   const totalPages = Math.max(1, Math.ceil(total / size));
@@ -112,6 +163,11 @@ export default function ApiKeyRequestsPage() {
     load();
   }, [load]);
 
+  // 顯示一次性憑證視窗(sdk_key 為 null 時提示向管理員索取)
+  const showSecrets = React.useCallback((s: ProvisionedSecrets) => {
+    setSecrets(s);
+  }, []);
+
   const onSubmit = async () => {
     const f: FormState = {
       department_name: form.department_name.trim(),
@@ -137,10 +193,17 @@ export default function ApiKeyRequestsPage() {
     setSaving(true);
     try {
       const payload: ApiKeyRequestCreate = f;
-      await apiClient.post<ApiKeyRequest>(API_ENDPOINTS.apiKeyRequests, payload);
+      const detail = await apiClient.post<ApiKeyRequestDetail>(
+        API_ENDPOINTS.apiKeyRequests,
+        payload
+      );
       toast("申請已送出", "success");
       setForm(EMPTY_FORM);
       setPage(1);
+      // 自動開通成功 → 彈一次性憑證視窗
+      if (detail.status === "agent_done" && detail.provisioned_secrets) {
+        showSecrets(detail.provisioned_secrets);
+      }
       await load();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -153,6 +216,213 @@ export default function ApiKeyRequestsPage() {
 
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [k]: e.target.value }));
+
+  // 撤銷(二次確認)
+  const onRevoke = (it: ApiKeyRequest) => {
+    showDialog({
+      type: "warning",
+      title: "確認撤銷申請",
+      message: "撤銷後此申請將標記為已撤銷且無法復原,確定撤銷?",
+      confirmText: "確定撤銷",
+      destructive: true,
+      onConfirm: async () => {
+        setActingUid(it.request_uid);
+        try {
+          await apiClient.post(
+            API_ENDPOINTS.revokeApiKeyRequest(it.request_uid)
+          );
+          toast("已撤銷申請", "success");
+          await load();
+        } catch (err) {
+          if (err instanceof ApiError) {
+            showDialog({
+              type: "error",
+              title: "撤銷失敗",
+              message: err.localizedDetail,
+            });
+          }
+        } finally {
+          setActingUid(null);
+        }
+      },
+    });
+  };
+
+  // 取消(填原因)→ 開啟受控輸入視窗
+  const openCancel = (it: ApiKeyRequest) => {
+    setCancelReason("");
+    setCancelTarget(it);
+  };
+
+  const submitCancel = async () => {
+    if (!cancelTarget) return;
+    const reason = cancelReason.trim();
+    if (!reason) {
+      showDialog({ type: "warning", title: "請填寫取消原因" });
+      return;
+    }
+    setCancelSaving(true);
+    try {
+      await apiClient.post(
+        API_ENDPOINTS.cancelApiKeyRequest(cancelTarget.request_uid),
+        { reason }
+      );
+      toast("已取消申請", "success");
+      setCancelTarget(null);
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showDialog({
+          type: "error",
+          title: "取消失敗",
+          message: err.localizedDetail,
+        });
+      }
+    } finally {
+      setCancelSaving(false);
+    }
+  };
+
+  // 領取一次性憑證(本人)
+  const onClaim = async (it: ApiKeyRequest) => {
+    setActingUid(it.request_uid);
+    try {
+      const s = await apiClient.post<ProvisionedSecrets | null>(
+        API_ENDPOINTS.claimApiKeyRequestSecrets(it.request_uid)
+      );
+      if (
+        s &&
+        (s.sdk_key != null || s.user_token != null || s.project_code != null)
+      ) {
+        showSecrets(s);
+      } else {
+        showDialog({
+          type: "info",
+          title: "無可領取的憑證",
+          message: "此申請的一次性憑證已被領取或無內容。",
+        });
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showDialog({
+          type: "error",
+          title: "領取失敗",
+          message: err.localizedDetail,
+        });
+      }
+    } finally {
+      setActingUid(null);
+    }
+  };
+
+  // admin:人工處理 → 先取詳情顯示 agent_decision,確認後開通
+  const openProcess = async (it: ApiKeyRequest) => {
+    setActingUid(it.request_uid);
+    try {
+      const detail = await apiClient.get<ApiKeyRequestDetail>(
+        API_ENDPOINTS.apiKeyRequestById(it.request_uid)
+      );
+      setProcessTarget(detail);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showDialog({
+          type: "error",
+          title: "載入詳情失敗",
+          message: err.localizedDetail,
+        });
+      }
+    } finally {
+      setActingUid(null);
+    }
+  };
+
+  const submitProcess = async () => {
+    if (!processTarget) return;
+    setProcessSaving(true);
+    try {
+      const detail = await apiClient.post<ApiKeyRequestDetail>(
+        API_ENDPOINTS.processApiKeyRequest(processTarget.request_uid)
+      );
+      toast("已完成人工處理", "success");
+      setProcessTarget(null);
+      if (detail.provisioned_secrets) {
+        showSecrets(detail.provisioned_secrets);
+      }
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showDialog({
+          type: "error",
+          title: "處理失敗",
+          message: err.localizedDetail,
+        });
+      }
+    } finally {
+      setProcessSaving(false);
+    }
+  };
+
+  // 依列與身分推導可用操作
+  const renderActions = (it: ApiKeyRequest): React.ReactNode => {
+    const isOwner = currentUserUid != null && it.applicant_user_uid === currentUserUid;
+    const busy = actingUid === it.request_uid;
+    const actions: React.ReactNode[] = [];
+
+    if (isOwner) {
+      if (it.status === "manual_pending") {
+        actions.push(
+          <Button
+            key="cancel"
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => openCancel(it)}
+          >
+            取消
+          </Button>,
+          <LoadingButton
+            key="revoke"
+            variant="destructive"
+            size="sm"
+            loading={busy}
+            onClick={() => onRevoke(it)}
+          >
+            撤銷
+          </LoadingButton>
+        );
+      } else if (it.status === "agent_done" || it.status === "done") {
+        actions.push(
+          <LoadingButton
+            key="claim"
+            variant="outline"
+            size="sm"
+            loading={busy}
+            onClick={() => onClaim(it)}
+          >
+            領取憑證
+          </LoadingButton>
+        );
+      }
+    }
+
+    if (isAdmin && it.status === "manual_pending") {
+      actions.push(
+        <LoadingButton
+          key="process"
+          size="sm"
+          loading={busy}
+          onClick={() => openProcess(it)}
+        >
+          人工處理
+        </LoadingButton>
+      );
+    }
+
+    if (actions.length === 0) {
+      return <span className="text-xs text-muted-foreground">—</span>;
+    }
+    return <div className="flex flex-wrap gap-2">{actions}</div>;
+  };
 
   return (
     <>
@@ -261,6 +531,7 @@ export default function ApiKeyRequestsPage() {
                     <TH>負責人</TH>
                     <TH>狀態</TH>
                     <TH>申請時間</TH>
+                    <TH>操作</TH>
                   </TR>
                 </THead>
                 <TBody>
@@ -287,12 +558,11 @@ export default function ApiKeyRequestsPage() {
                           </span>
                         </div>
                       </TD>
-                      <TD>
-                        <Badge variant="warning">待審核</Badge>
-                      </TD>
+                      <TD>{statusBadge(it.status)}</TD>
                       <TD className="whitespace-nowrap text-sm text-muted-foreground">
                         {new Date(it.created_at).toLocaleString()}
                       </TD>
+                      <TD>{renderActions(it)}</TD>
                     </TR>
                   ))}
                 </TBody>
@@ -325,6 +595,157 @@ export default function ApiKeyRequestsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* 取消原因輸入視窗(受控最小版) */}
+      <Dialog
+        open={cancelTarget !== null}
+        onOpenChange={(o) => {
+          if (!o && !cancelSaving) setCancelTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>取消申請</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5 pt-2">
+            <ReqLabel htmlFor="cancel_reason">取消原因</ReqLabel>
+            <Input
+              id="cancel_reason"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="請說明取消原因"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCancelTarget(null)}
+              disabled={cancelSaving}
+            >
+              關閉
+            </Button>
+            <LoadingButton loading={cancelSaving} onClick={submitCancel}>
+              確定取消
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* admin 人工處理視窗:顯示 agent_decision */}
+      <Dialog
+        open={processTarget !== null}
+        onOpenChange={(o) => {
+          if (!o && !processSaving) setProcessTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>人工處理申請</DialogTitle>
+          </DialogHeader>
+          {processTarget && (
+            <div className="flex flex-col gap-3 pt-2 text-sm">
+              <div className="flex flex-col gap-1">
+                <span className="text-muted-foreground">專案</span>
+                <span>
+                  {processTarget.department_name}（
+                  {processTarget.department_code}） / {processTarget.project_name}
+                </span>
+              </div>
+              {processTarget.agent_decision ? (
+                <div className="rounded-lg border border-border bg-muted/40 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">AI 信心分數</span>
+                    <span className="font-mono font-semibold">
+                      {processTarget.agent_decision.confidence}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-foreground/80 leading-relaxed">
+                    {processTarget.agent_decision.reason || "（無理由）"}
+                  </p>
+                  {processTarget.agent_decision.error && (
+                    <p className="mt-2 text-destructive">
+                      AI 錯誤:{processTarget.agent_decision.error}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">此申請無 AI 決策紀錄。</p>
+              )}
+              {processTarget.error_message && (
+                <p className="text-destructive">
+                  錯誤訊息:{processTarget.error_message}
+                </p>
+              )}
+              <p className="text-muted-foreground">
+                確認後將以確定性流程開通並標記為「已處理」。
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setProcessTarget(null)}
+              disabled={processSaving}
+            >
+              關閉
+            </Button>
+            <LoadingButton loading={processSaving} onClick={submitProcess}>
+              確認開通
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 一次性憑證視窗 */}
+      <Dialog
+        open={secrets !== null}
+        onOpenChange={(o) => {
+          if (!o) setSecrets(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>一次性憑證</DialogTitle>
+          </DialogHeader>
+          {secrets && (
+            <div className="flex flex-col gap-3 pt-2 text-sm">
+              <p className="text-muted-foreground">
+                以下憑證僅顯示一次,請立即妥善保存。
+              </p>
+              <div className="flex flex-col gap-1">
+                <span className="text-muted-foreground">SDK Key</span>
+                {secrets.sdk_key ? (
+                  <code className="break-all rounded-md bg-muted px-2 py-1 font-mono">
+                    {secrets.sdk_key}
+                  </code>
+                ) : (
+                  <span className="text-amber-600">請向管理員索取</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-muted-foreground">User Token</span>
+                <code className="break-all rounded-md bg-muted px-2 py-1 font-mono">
+                  {secrets.user_token ?? "—"}
+                </code>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Project Code</span>
+                <code className="break-all rounded-md bg-muted px-2 py-1 font-mono">
+                  {secrets.project_code ?? "—"}
+                </code>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" onClick={() => setSecrets(null)}>
+              我已保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

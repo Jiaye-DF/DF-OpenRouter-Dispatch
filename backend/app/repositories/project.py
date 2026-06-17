@@ -38,6 +38,18 @@ class ProjectRepository:
         )
         return (await self.db.execute(stmt)).scalar_one_or_none()
 
+    async def get_active_by_department_and_name(
+        self, department_uid: UUID, name: str
+    ) -> Project | None:
+        """以部門 + 專案名稱(不分大小寫)查仍啟用的專案;供規則路由比對。"""
+        stmt = select(Project).where(
+            Project.department_uid == department_uid,
+            func.lower(Project.name) == name.lower(),
+            Project.is_active.is_(True),
+            Project.is_deleted.is_(False),
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
     async def list(
         self,
         *,

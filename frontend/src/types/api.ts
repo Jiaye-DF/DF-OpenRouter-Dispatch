@@ -37,6 +37,36 @@ export interface ApiKeyRequest {
   owner_email: string;
   status: string;
   created_at: string;
+  // v1.9.1 取消 / 錯誤 / 處理時間
+  cancel_reason?: string | null;
+  cancel_source?: string | null;
+  error_message?: string | null;
+  processed_at?: string | null;
+}
+
+// v1.9.1 AI 欄位驗證代理決策
+export interface AgentDecision {
+  confidence: number;
+  reason: string;
+  error?: string | null;
+}
+
+// v1.9.1 自動開通產生的祕密(僅領取時回傳)
+export interface ProvisionedSecrets {
+  sdk_key?: string | null;
+  user_token?: string | null;
+  project_code?: string | null;
+}
+
+// v1.9.1 申請單詳情(含代理決策與開通結果關聯)
+export interface ApiKeyRequestDetail extends ApiKeyRequest {
+  agent_decision?: AgentDecision | null;
+  provisioned_secrets?: ProvisionedSecrets | null;
+  created_project_uid?: string | null;
+  created_user_uid?: string | null;
+  created_sdk_key_uid?: string | null;
+  matched_department_uid?: string | null;
+  handled_by_user_uid?: string | null;
 }
 
 // API Key 申請表單送出內容(6 欄全必填)

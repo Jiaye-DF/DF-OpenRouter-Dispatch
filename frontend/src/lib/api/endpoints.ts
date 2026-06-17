@@ -19,6 +19,13 @@ export const API_ENDPOINTS = {
 
   // API Key 申請表單(v1.9,admin / member 皆可)
   apiKeyRequests: "/api/v1/api-key-requests",
+  // v1.9.1 申請單詳情與狀態流轉
+  apiKeyRequestById: (uid: string) => `/api/v1/api-key-requests/${uid}`,
+  cancelApiKeyRequest: (uid: string) => `/api/v1/api-key-requests/${uid}/cancel`,
+  revokeApiKeyRequest: (uid: string) => `/api/v1/api-key-requests/${uid}/revoke`,
+  processApiKeyRequest: (uid: string) => `/api/v1/api-key-requests/${uid}/process`,
+  claimApiKeyRequestSecrets: (uid: string) =>
+    `/api/v1/api-key-requests/${uid}/claim-secrets`,
 
   // 組織
   departments: "/api/v1/departments",

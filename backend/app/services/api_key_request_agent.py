@@ -1,0 +1,90 @@
+import json
+from dataclasses import dataclass
+
+from app.clients.openrouter.client import OpenRouterClient
+from app.core.config import get_settings
+from app.core.logging import get_logger
+from app.models.api_key_request import ApiKeyRequest
+from app.models.department import Department
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class AgentDecision:
+    confidence: int  # 0-100
+    reason: str
+    error: str | None = None
+
+
+_SYSTEM_PROMPT = (
+    "你是 API Key 申請單的欄位審查員。任務是判斷申請欄位是否正確、合理,給出單一信心分數。\n"
+    "審查重點:\n"
+    "1. project_url 是否像有效、且與 project_name 相符的 GitHub 或 Replit 連結。\n"
+    "2. owner_email 的網域是否合理(非明顯亂填、非一次性信箱)。\n"
+    "3. department_name 與 department_code 是否相稱(命中部門摘要提供既有對照)。\n"
+    "4. 整體是否疑似亂填、佔位或測試資料。\n"
+    "限制:不要實際連線任何 URL,只依字面做合理性判斷。\n"
+    '只輸出 JSON,格式為 {"confidence": <0-100 整數>, "reason": "<簡短中文理由>"},'
+    "不要輸出其他文字或 Markdown 圍欄。"
+)
+
+
+def _build_user_content(req: ApiKeyRequest, matched_department: Department) -> str:
+    return (
+        "請審查以下 API Key 申請欄位:\n"
+        f"- department_name: {req.department_name}\n"
+        f"- department_code: {req.department_code}\n"
+        f"- project_name: {req.project_name}\n"
+        f"- project_url: {req.project_url}\n"
+        f"- owner_name: {req.owner_name}\n"
+        f"- owner_email: {req.owner_email}\n"
+        "\n命中(沿用)的既有部門摘要:\n"
+        f"- name: {matched_department.name}\n"
+        f"- code: {matched_department.code}\n"
+    )
+
+
+def _parse_content(content: str) -> tuple[int, str]:
+    text = content.strip()
+    if text.startswith("```"):
+        # 去除 ```json ... ``` 圍欄
+        text = text.removeprefix("```json").removeprefix("```").strip()
+        text = text.removesuffix("```").strip()
+    data = json.loads(text)
+    confidence = int(data["confidence"])
+    confidence = max(0, min(100, confidence))
+    reason = str(data.get("reason", ""))
+    return confidence, reason
+
+
+async def validate_fields(
+    client: OpenRouterClient,
+    req: ApiKeyRequest,
+    matched_department: Department,
+) -> AgentDecision:
+    settings = get_settings()
+    if not settings.DEFAULT_OPENROUTER_KEY:
+        return AgentDecision(
+            confidence=0, reason="", error="DEFAULT_OPENROUTER_KEY 未設定"
+        )
+
+    payload = {
+        "model": settings.API_KEY_AGENT_MODEL,
+        "messages": [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": _build_user_content(req, matched_department)},
+        ],
+        "response_format": {"type": "json_object"},
+    }
+
+    try:
+        resp = await client.chat_completion(
+            payload, api_key=settings.DEFAULT_OPENROUTER_KEY
+        )
+        content = resp["choices"][0]["message"]["content"]
+        confidence, reason = _parse_content(content)
+        return AgentDecision(confidence=confidence, reason=reason)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("API Key 申請 AI 欄位驗證失敗")
+        return AgentDecision(confidence=0, reason="", error=str(exc)[:300])

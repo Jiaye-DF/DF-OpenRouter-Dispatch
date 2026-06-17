@@ -25,6 +25,30 @@ export interface Paginated<T> {
   size: number;
 }
 
+// API Key 申請單(v1.9)
+export interface ApiKeyRequest {
+  request_uid: string;
+  applicant_user_uid: string;
+  department_name: string;
+  department_code: string;
+  project_name: string;
+  project_url: string;
+  owner_name: string;
+  owner_email: string;
+  status: string;
+  created_at: string;
+}
+
+// API Key 申請表單送出內容(6 欄全必填)
+export interface ApiKeyRequestCreate {
+  department_name: string;
+  department_code: string;
+  project_name: string;
+  project_url: string;
+  owner_name: string;
+  owner_email: string;
+}
+
 // 部門
 export interface Department {
   department_uid: string;

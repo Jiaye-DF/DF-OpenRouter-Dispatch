@@ -11,6 +11,7 @@ import {
   CheckSquare,
   Cloud,
   FolderKanban,
+  KeyRound,
   Layers,
   LayoutDashboard,
   ScrollText,
@@ -41,6 +42,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     items: [
       { href: "/dashboard", label: "儀錶板", icon: LayoutDashboard },
+      { href: "/api-key-requests", label: "API Key 申請表單", icon: KeyRound },
       { href: "/usage-logs", label: "用量紀錄", icon: ScrollText, adminOnly: true },
     ],
   },

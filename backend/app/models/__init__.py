@@ -1,4 +1,5 @@
 from app.models.allowed_model import AllowedModel
+from app.models.api_key_request import ApiKeyRequest
 from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.department import Department
@@ -15,6 +16,7 @@ from app.models.user_token_revocation import UserTokenRevocation
 
 __all__ = [
     "AllowedModel",
+    "ApiKeyRequest",
     "AuditLog",
     "Base",
     "Department",

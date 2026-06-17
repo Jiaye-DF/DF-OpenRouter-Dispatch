@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     allowed_models,
+    api_key_requests,
     auth,
     departments,
     health,
@@ -34,5 +35,6 @@ api_v1_router.include_router(models.allowed_router)  # 公開精簡清單: /allo
 api_v1_router.include_router(allowed_models.router)
 api_v1_router.include_router(model_tiers.router)
 api_v1_router.include_router(usage_logs.router)
+api_v1_router.include_router(api_key_requests.router)
 api_v1_router.include_router(stats.router)
 api_v1_router.include_router(health.router)

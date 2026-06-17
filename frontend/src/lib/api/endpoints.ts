@@ -17,6 +17,9 @@ export const API_ENDPOINTS = {
   userTokens: (uid: string) => `/api/v1/users/${uid}/tokens`,
   revokeUserTokens: (uid: string) => `/api/v1/users/${uid}/tokens/revoke`,
 
+  // API Key 申請表單(v1.9,admin / member 皆可)
+  apiKeyRequests: "/api/v1/api-key-requests",
+
   // 組織
   departments: "/api/v1/departments",
   departmentById: (uid: string) => `/api/v1/departments/${uid}`,

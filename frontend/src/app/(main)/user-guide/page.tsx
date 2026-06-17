@@ -458,6 +458,23 @@ export default function UserGuidePage() {
           </p>
         </Section>
 
+        <Section id="apply" title="申請使用 API Key">
+          <p>
+            若你尚未取得憑證,可於左側選單<strong>「API Key 申請表單」</strong>頁面送出申請。填妥下列<strong>全部必填</strong>欄位後送出,管理員將據此審核並發放憑證:
+          </p>
+          <ul className="list-disc pl-5 flex flex-col gap-1">
+            <li><strong>部門名稱</strong>、<strong>部門代號</strong>(如 <code className="font-mono">T000</code>)</li>
+            <li><strong>專案名稱</strong></li>
+            <li>
+              <strong>專案連結</strong>:須為 <strong>GitHub</strong> 或 <strong>Replit</strong> 連結(例 <code className="font-mono">https://github.com/...</code>)
+            </li>
+            <li><strong>專案負責人名稱</strong>、<strong>專案負責人信箱</strong></li>
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            送出後可在同一頁下方查看自己的申請歷程(狀態為「待審核」)。實際審核 / 發放由管理員處理。
+          </p>
+        </Section>
+
         <Section id="endpoint" title="端點與認證 Header">
           <p>
             本平台提供<strong>測試</strong>與<strong>正式</strong>兩個環境,請依用途選用對應的 Base URL;以下範例皆以正式環境為準。

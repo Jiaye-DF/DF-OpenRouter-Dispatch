@@ -39,6 +39,19 @@ class SdkApiKeyRepository:
         total = int((await self.db.execute(count_stmt)).scalar_one())
         return items, total
 
+    async def get_active_by_department(self, department_uid: UUID) -> SdkApiKey | None:
+        """取該部門最新一把仍啟用的 SDK 金鑰;供規則路由自動取用。"""
+        stmt = (
+            select(SdkApiKey)
+            .where(
+                SdkApiKey.department_uid == department_uid,
+                SdkApiKey.is_active.is_(True),
+                SdkApiKey.is_deleted.is_(False),
+            )
+            .order_by(SdkApiKey.pid.desc())
+        )
+        return (await self.db.execute(stmt)).scalars().first()
+
     async def list_active_by_prefix(self, prefix: str) -> list[SdkApiKey]:
         stmt = select(SdkApiKey).where(
             SdkApiKey.key_prefix == prefix,

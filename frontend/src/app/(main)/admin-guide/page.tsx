@@ -223,6 +223,38 @@ export default function AdminGuidePage() {
           </div>
         </Section>
 
+        <Section id="apikey-requests" title="API Key 申請：待人工處理的審核與新部門開通">
+          <p>
+            使用者透過「API Key 申請」表單送出後，系統先跑規則路由與 AI 欄位驗證。能自動比對且 AI 信心分數 ≥ 95 的會直接開通；其餘進入「待人工處理」清單等 admin 處理。
+          </p>
+          <p>進入待人工處理清單的來源：</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li><strong>新部門：</strong>申請的部門尚未在系統建立。</li>
+            <li><strong>AI 信心 &lt; 95：</strong>欄位可比對但信心不足，需人工確認。</li>
+            <li><strong>AI 失敗：</strong>AI 驗證過程出錯或無法判讀。</li>
+            <li><strong>既有專案下新使用者：</strong>專案已存在，但申請者是新面孔。</li>
+            <li><strong>部門代號名稱不符：</strong>填寫的部門代號與名稱對應不上現有資料。</li>
+            <li><strong>Email 歧義：</strong>Email 對應到多筆或無法唯一鎖定使用者。</li>
+          </ul>
+          <div className="flex flex-col gap-3">
+            <StepCard n={1} title="檢視 AI 信心分數與理由">
+              在清單中點開申請，先看 AI 給的信心分數與判斷理由，確認觸發人工處理的原因（對照上方來源），必要時比對 <PageLink href="/departments">部門管理</PageLink> / <PageLink href="/users">使用者管理</PageLink> 的現有資料。
+            </StepCard>
+            <StepCard n={2} title="新部門案：先到 OpenRouter 後台建立 Key">
+              若是新部門案，須<strong>先到 OpenRouter 後台建立該部門的 Key</strong>，並至 <PageLink href="/openrouter-keys">OpenRouter Keys</PageLink> 綁定後，才能進行開通。
+            </StepCard>
+            <StepCard n={3} title="一鍵開通成 done">
+              確認無誤後按「開通」，系統會建好對應的部門 / 專案 / 使用者 / Token 並將申請狀態流轉為 <code className="font-mono">done</code>。
+            </StepCard>
+          </div>
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+            <p className="font-medium text-amber-700 mb-1">已處理不可撤銷</p>
+            <p className="text-muted-foreground">
+              已開通的申請（<code className="font-mono">agent_done</code> / <code className="font-mono">done</code>）<strong>不可撤銷</strong>。若需調整，請至對應的部門 / 使用者頁面手動修改。
+            </p>
+          </div>
+        </Section>
+
         <Section id="pages" title="管理頁速查">
           <div className="overflow-x-auto">
             <Table>

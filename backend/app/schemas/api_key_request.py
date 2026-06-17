@@ -43,3 +43,49 @@ class ApiKeyRequestResponse(BaseModel):
     owner_email: str
     status: str
     created_at: datetime
+    cancel_reason: str | None = None
+    cancel_source: str | None = None
+    error_message: str | None = None
+    processed_at: datetime | None = None
+
+
+class AgentDecisionSchema(BaseModel):
+    confidence: int
+    reason: str
+    error: str | None = None
+
+
+class ProvisionedSecrets(BaseModel):
+    sdk_key: str | None = None
+    user_token: str | None = None
+    project_code: str | None = None
+
+
+class CancelRequest(BaseModel):
+    reason: str = Field(min_length=1)
+
+
+class ApiKeyRequestDetailResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    request_uid: UUID
+    applicant_user_uid: UUID
+    department_name: str
+    department_code: str
+    project_name: str
+    project_url: str
+    owner_name: str
+    owner_email: str
+    status: str
+    created_at: datetime
+    cancel_reason: str | None = None
+    cancel_source: str | None = None
+    error_message: str | None = None
+    processed_at: datetime | None = None
+    agent_decision: dict | None = None
+    provisioned_secrets: dict | None = None
+    created_project_uid: UUID | None = None
+    created_user_uid: UUID | None = None
+    created_sdk_key_uid: UUID | None = None
+    matched_department_uid: UUID | None = None
+    handled_by_user_uid: UUID | None = None

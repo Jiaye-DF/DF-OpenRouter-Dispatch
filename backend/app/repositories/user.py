@@ -33,6 +33,14 @@ class UserRepository:
         )
         return (await self.db.execute(stmt)).scalars().first()
 
+    async def list_by_email(self, email: str) -> list[User]:
+        """以 Email(不分大小寫)查所有未刪除使用者;供規則路由比對多筆。"""
+        stmt = select(User).where(
+            func.lower(User.email) == email.lower(),
+            User.is_deleted.is_(False),
+        )
+        return list((await self.db.execute(stmt)).scalars().all())
+
     async def get_by_sso_user_id(self, sso_user_id: str) -> User | None:
         """以 SSO userId(azure oid)查使用者;供 back-channel logout 反查。"""
         stmt = select(User).where(

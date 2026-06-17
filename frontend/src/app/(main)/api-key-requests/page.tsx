@@ -56,6 +56,22 @@ function isGithubOrReplit(url: string): boolean {
   }
 }
 
+// 必填欄位標籤:標題後加紅色 * 標記
+function ReqLabel({
+  htmlFor,
+  children,
+}: {
+  htmlFor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Label htmlFor={htmlFor}>
+      {children}
+      <span className="ml-0.5 text-destructive">*</span>
+    </Label>
+  );
+}
+
 // API Key 申請表單(v1.9):上方送出表單(6 欄全必填)+ 下方歷程列表。
 // admin 看全部、member 只看自己(範圍由後端決定,前端不切換查詢)。
 export default function ApiKeyRequestsPage() {
@@ -151,9 +167,13 @@ export default function ApiKeyRequestsPage() {
 
       <Card className="mb-6">
         <CardContent className="pt-6">
+          <p className="mb-4 text-sm text-muted-foreground">
+            以下欄位<span className="text-destructive">皆為必填</span>(標
+            <span className="text-destructive">*</span>)。
+          </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="department_name">部門名稱</Label>
+              <ReqLabel htmlFor="department_name">部門名稱</ReqLabel>
               <Input
                 id="department_name"
                 value={form.department_name}
@@ -162,7 +182,7 @@ export default function ApiKeyRequestsPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="department_code">部門代號</Label>
+              <ReqLabel htmlFor="department_code">部門代號</ReqLabel>
               <Input
                 id="department_code"
                 value={form.department_code}
@@ -171,7 +191,7 @@ export default function ApiKeyRequestsPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="project_name">專案名稱</Label>
+              <ReqLabel htmlFor="project_name">專案名稱</ReqLabel>
               <Input
                 id="project_name"
                 value={form.project_name}
@@ -180,7 +200,7 @@ export default function ApiKeyRequestsPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="project_url">專案連結（GitHub / Replit）</Label>
+              <ReqLabel htmlFor="project_url">專案連結（GitHub / Replit）</ReqLabel>
               <Input
                 id="project_url"
                 value={form.project_url}
@@ -189,7 +209,7 @@ export default function ApiKeyRequestsPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="owner_name">專案負責人名稱</Label>
+              <ReqLabel htmlFor="owner_name">專案負責人名稱</ReqLabel>
               <Input
                 id="owner_name"
                 value={form.owner_name}
@@ -198,7 +218,7 @@ export default function ApiKeyRequestsPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="owner_email">專案負責人信箱</Label>
+              <ReqLabel htmlFor="owner_email">專案負責人信箱</ReqLabel>
               <Input
                 id="owner_email"
                 type="email"

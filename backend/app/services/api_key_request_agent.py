@@ -65,8 +65,10 @@ async def validate_fields(
 ) -> AgentDecision:
     settings = get_settings()
     if not settings.DEFAULT_OPENROUTER_KEY:
+        # 對外僅給通用訊息,不暴露環境變數 / 內部設定;細節走日誌。
+        logger.warning("API Key 申請 AI 欄位驗證略過:未設定驗證用金鑰")
         return AgentDecision(
-            confidence=0, reason="", error="DEFAULT_OPENROUTER_KEY 未設定"
+            confidence=0, reason="", error="AI 欄位驗證暫時無法使用,已改由人工審核"
         )
 
     payload = {
@@ -85,6 +87,10 @@ async def validate_fields(
         content = resp["choices"][0]["message"]["content"]
         confidence, reason = _parse_content(content)
         return AgentDecision(confidence=confidence, reason=reason)
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
+        # 完整例外(含上游供應商 / 狀態碼 / 原始 JSON)只進系統日誌,
+        # 對外一律收斂為通用訊息,避免暴露內部 API 設計。
         logger.exception("API Key 申請 AI 欄位驗證失敗")
-        return AgentDecision(confidence=0, reason="", error=str(exc)[:300])
+        return AgentDecision(
+            confidence=0, reason="", error="AI 欄位驗證暫時無法使用,已改由人工審核"
+        )

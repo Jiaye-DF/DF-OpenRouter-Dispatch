@@ -40,6 +40,8 @@ async def route(db: AsyncSession, req: ApiKeyRequest) -> RouteResult:
     proj = await ProjectRepository(db).get_active_by_department_and_name(
         dept.department_uid, req.project_name
     )
+    # list_by_email 已於查詢層排除系統管理員(account='admin'),
+    # 故 admin 不會被當成負責人沿用,owner 走新建使用者流程。
     users = await UserRepository(db).list_by_email(req.owner_email)
 
     if proj is None:

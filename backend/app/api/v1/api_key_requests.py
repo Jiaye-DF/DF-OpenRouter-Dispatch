@@ -27,6 +27,9 @@ from app.services.email_graph import send_provision_email
 
 router = APIRouter(prefix="/api-key-requests", tags=["api-key-requests"])
 
+# AI 欄位驗證信心分數達此門檻才自動開通,否則降級人工(v1.9.x 由 95 調整為 90)。
+AI_AUTO_PROVISION_THRESHOLD = 90
+
 
 def _now() -> datetime:
     return datetime.now(tz=UTC)
@@ -149,7 +152,7 @@ async def create_api_key_request(
         if decision_ai.error:
             row.error_message = decision_ai.error
 
-        if decision_ai.confidence >= 95:
+        if decision_ai.confidence >= AI_AUTO_PROVISION_THRESHOLD:
             pr = None
             try:
                 async with db.begin_nested():

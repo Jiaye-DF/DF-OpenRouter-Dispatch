@@ -101,6 +101,12 @@ export interface Department {
   updated_at: string;
 }
 
+// 申請表單『專案負責人』下拉選項(名稱 + 信箱,選取後自動帶入信箱)
+export interface OwnerOption {
+  username: string;
+  email: string;
+}
+
 // 專案
 export interface Project {
   project_uid: string;

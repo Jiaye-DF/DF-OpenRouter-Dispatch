@@ -19,6 +19,7 @@ from app.schemas.common import Page
 from app.schemas.user import (
     UserCreateRequest,
     UserDropdownItem,
+    UserOwnerOption,
     UserPasswordResetRequest,
     UserResponse,
     UserUpdateRequest,
@@ -72,6 +73,21 @@ async def list_users_dropdown(
     repo = UserRepository(db)
     rows = await repo.list_for_dropdown(department_uid=department_uid)
     items = [UserDropdownItem.model_validate(r) for r in rows]
+    return success_response(
+        data=[x.model_dump(mode="json") for x in items], detail="success"
+    )
+
+
+@router.get(
+    "/owner-options",
+    summary="申請表單『專案負責人』下拉(全使用者可用,含 Email)",
+)
+async def list_owner_options(actor: UserDep, db: DbDep):
+    """供 API Key 申請表單選擇專案負責人;回傳名稱 + 信箱(供前端選取後自動帶入),
+    排除系統管理員。名稱來源為 SSO 帶入的 M365 顯示名,避免與 M365 資訊對不起來。"""
+    repo = UserRepository(db)
+    rows = await repo.list_owner_options()
+    items = [UserOwnerOption.model_validate(r) for r in rows]
     return success_response(
         data=[x.model_dump(mode="json") for x in items], detail="success"
     )

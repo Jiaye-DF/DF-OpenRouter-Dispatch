@@ -29,6 +29,7 @@ import type {
   ApiKeyRequestCreate,
   ApiKeyRequestDetail,
   Department,
+  OwnerOption,
   Paginated,
   ProvisionedSecrets,
   ResendNotifyResult,
@@ -182,6 +183,7 @@ export default function ApiKeyRequestsPage() {
   const [filters, setFilters] = React.useState({ ...EMPTY_FILTERS });
   const [kw, setKw] = React.useState("");
   const [depts, setDepts] = React.useState<Department[]>([]);
+  const [owners, setOwners] = React.useState<OwnerOption[]>([]);
   const hasFilter =
     !!filters.status ||
     !!filters.q ||
@@ -251,6 +253,14 @@ export default function ApiKeyRequestsPage() {
       .catch(() => {});
   }, []);
 
+  // 專案負責人下拉清單:名稱來源為 SSO 帶入的 M365 顯示名,選取後自動帶入信箱;載入一次。
+  React.useEffect(() => {
+    apiClient
+      .get<OwnerOption[]>(API_ENDPOINTS.userOwnerOptions)
+      .then((d) => setOwners(d))
+      .catch(() => {});
+  }, []);
+
   // 關鍵字輸入 debounce:停止輸入 400ms 後才查詢,避免逐字打 API
   React.useEffect(() => {
     const t = setTimeout(() => {
@@ -284,6 +294,21 @@ export default function ApiKeyRequestsPage() {
       ...f,
       department_code: code,
       department_name: d?.name ?? "",
+    }));
+  };
+
+  // 申請表單負責人下拉:value 用信箱(唯一),label 顯示「名稱（信箱）」
+  const ownerOptions = React.useMemo(
+    () => owners.map((o) => ({ value: o.email, label: `${o.username}（${o.email}）` })),
+    [owners]
+  );
+  // 選負責人 → 同時帶出名稱與信箱,確保名稱與 M365 一致
+  const onSelectOwner = (email: string) => {
+    const o = owners.find((x) => x.email === email);
+    setForm((f) => ({
+      ...f,
+      owner_email: email,
+      owner_name: o?.username ?? "",
     }));
   };
 
@@ -666,12 +691,14 @@ export default function ApiKeyRequestsPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <ReqLabel htmlFor="owner_name">專案負責人名稱</ReqLabel>
-              <Input
-                id="owner_name"
-                value={form.owner_name}
-                onChange={set("owner_name")}
-                placeholder="例:王小明"
+              <ReqLabel htmlFor="owner_name">專案負責人</ReqLabel>
+              <Combobox
+                options={ownerOptions}
+                value={form.owner_email}
+                onChange={onSelectOwner}
+                placeholder="請選擇專案負責人"
+                searchPlaceholder="搜尋姓名 / 信箱..."
+                emptyText="查無人員"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -680,8 +707,9 @@ export default function ApiKeyRequestsPage() {
                 id="owner_email"
                 type="email"
                 value={form.owner_email}
-                onChange={set("owner_email")}
-                placeholder="例:ming@df-recycle.com.tw"
+                readOnly
+                disabled
+                placeholder="選擇負責人後自動帶入"
               />
             </div>
           </div>

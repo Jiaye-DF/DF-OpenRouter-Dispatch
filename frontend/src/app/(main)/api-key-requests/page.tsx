@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FilterChip } from "@/components/ui/FilterChip";
+import { Combobox } from "@/components/ui/Combobox";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import {
   Dialog,
@@ -26,6 +28,7 @@ import type {
   ApiKeyRequest,
   ApiKeyRequestCreate,
   ApiKeyRequestDetail,
+  Department,
   Paginated,
   ProvisionedSecrets,
   ResendNotifyResult,
@@ -48,6 +51,24 @@ const EMPTY_FORM: FormState = {
   project_url: "",
   owner_name: "",
   owner_email: "",
+};
+
+// 申請狀態過濾選項(value 對齊後端 status;"" = 全部)
+const STATUS_FILTERS = [
+  { value: "", label: "全部" },
+  { value: "manual_pending", label: "待人工處理" },
+  { value: "agent_done", label: "Agent 已處理" },
+  { value: "done", label: "已處理" },
+  { value: "revoked", label: "已撤銷" },
+  { value: "cancelled", label: "已取消" },
+] as const;
+
+const EMPTY_FILTERS = {
+  status: "",
+  q: "",
+  department_code: "",
+  from: "",
+  to: "",
 };
 
 // 狀態 badge 對應(v1.9.1 狀態模型)
@@ -157,6 +178,17 @@ export default function ApiKeyRequestsPage() {
   const [page, setPage] = React.useState(1);
   const [total, setTotal] = React.useState(0);
 
+  // 過濾條件(預設皆空 = 顯示全部);關鍵字另用 kw 做 debounce 後寫入 filters.q
+  const [filters, setFilters] = React.useState({ ...EMPTY_FILTERS });
+  const [kw, setKw] = React.useState("");
+  const [depts, setDepts] = React.useState<Department[]>([]);
+  const hasFilter =
+    !!filters.status ||
+    !!filters.q ||
+    !!filters.department_code ||
+    !!filters.from ||
+    !!filters.to;
+
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = React.useState(false);
 
@@ -184,9 +216,15 @@ export default function ApiKeyRequestsPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
+      const query: Record<string, string | number> = { page, size };
+      if (filters.status) query.status = filters.status;
+      if (filters.q) query.q = filters.q;
+      if (filters.department_code) query.department_code = filters.department_code;
+      if (filters.from) query.from = `${filters.from}T00:00:00`;
+      if (filters.to) query.to = `${filters.to}T23:59:59`;
       const resp = await apiClient.get<Paginated<ApiKeyRequest>>(
         API_ENDPOINTS.apiKeyRequests,
-        { query: { page, size } }
+        { query }
       );
       setItems(resp.items);
       setTotal(resp.total);
@@ -197,11 +235,57 @@ export default function ApiKeyRequestsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, showDialog]);
+  }, [page, filters, showDialog]);
 
   React.useEffect(() => {
     load();
   }, [load]);
+
+  // 部門清單:申請表單下拉(所有使用者)與 admin 過濾 chips 共用;載入一次。
+  React.useEffect(() => {
+    apiClient
+      .get<Paginated<Department>>(API_ENDPOINTS.departments, {
+        query: { page: 1, size: 200 },
+      })
+      .then((d) => setDepts(d.items))
+      .catch(() => {});
+  }, []);
+
+  // 關鍵字輸入 debounce:停止輸入 400ms 後才查詢,避免逐字打 API
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      const v = kw.trim();
+      setFilters((f) => (f.q === v ? f : { ...f, q: v }));
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [kw]);
+
+  // 過濾變更一律回到第 1 頁
+  const updateFilter = (patch: Partial<typeof filters>) => {
+    setFilters((f) => ({ ...f, ...patch }));
+    setPage(1);
+  };
+  const resetFilters = () => {
+    setKw("");
+    setFilters({ ...EMPTY_FILTERS });
+    setPage(1);
+  };
+
+  // 申請表單部門下拉:value 用部門代號,label 顯示「名稱（代號）」
+  const deptOptions = React.useMemo(
+    () => depts.map((d) => ({ value: d.code, label: `${d.name}（${d.code}）` })),
+    [depts]
+  );
+  // 選部門 → 同時帶出名稱與代號
+  const onSelectDept = (code: string) => {
+    const d = depts.find((x) => x.code === code);
+    setForm((f) => ({
+      ...f,
+      department_code: code,
+      department_name: d?.name ?? "",
+    }));
+  };
 
   // 顯示一次性憑證視窗(sdk_key 為 null 時提示向管理員索取)
   const showSecrets = React.useCallback((s: ProvisionedSecrets) => {
@@ -543,12 +627,14 @@ export default function ApiKeyRequestsPage() {
           </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <ReqLabel htmlFor="department_name">部門名稱</ReqLabel>
-              <Input
-                id="department_name"
-                value={form.department_name}
-                onChange={set("department_name")}
-                placeholder="例:資訊部"
+              <ReqLabel htmlFor="department_name">部門</ReqLabel>
+              <Combobox
+                options={deptOptions}
+                value={form.department_code}
+                onChange={onSelectDept}
+                placeholder="請選擇部門"
+                searchPlaceholder="搜尋部門名稱 / 代號..."
+                emptyText="查無部門"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -556,8 +642,9 @@ export default function ApiKeyRequestsPage() {
               <Input
                 id="department_code"
                 value={form.department_code}
-                onChange={set("department_code")}
-                placeholder="例:T000"
+                readOnly
+                disabled
+                placeholder="選擇部門後自動帶入"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -607,7 +694,91 @@ export default function ApiKeyRequestsPage() {
       </Card>
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 flex flex-col gap-4">
+          {/* 過濾區 */}
+          <div className="flex flex-col gap-3 border-b border-border pb-4">
+            {/* 狀態 */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-16 shrink-0 text-sm text-muted-foreground">
+                狀態：
+              </span>
+              {STATUS_FILTERS.map((o) => (
+                <FilterChip
+                  key={o.value || "all"}
+                  active={filters.status === o.value}
+                  onClick={() => updateFilter({ status: o.value })}
+                >
+                  {o.label}
+                </FilterChip>
+              ))}
+            </div>
+            {/* 部門(admin 專屬) */}
+            {isAdmin && depts.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-16 shrink-0 text-sm text-muted-foreground">
+                  部門：
+                </span>
+                <FilterChip
+                  active={!filters.department_code}
+                  onClick={() => updateFilter({ department_code: "" })}
+                >
+                  全部
+                </FilterChip>
+                {depts.map((d) => (
+                  <FilterChip
+                    key={d.department_uid}
+                    active={filters.department_code === d.code}
+                    onClick={() => updateFilter({ department_code: d.code })}
+                  >
+                    {d.name}
+                  </FilterChip>
+                ))}
+              </div>
+            )}
+            {/* 關鍵字 + 時間 */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              <div className="flex items-center gap-2">
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  關鍵字：
+                </span>
+                <Input
+                  className="h-9 w-64"
+                  placeholder="專案 / 負責人 / Email / 部門"
+                  value={kw}
+                  onChange={(e) => setKw(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  申請時間：
+                </span>
+                <Input
+                  type="date"
+                  className="h-9 w-auto"
+                  value={filters.from}
+                  max={filters.to || undefined}
+                  onChange={(e) => updateFilter({ from: e.target.value })}
+                />
+                <span className="text-sm text-muted-foreground">~</span>
+                <Input
+                  type="date"
+                  className="h-9 w-auto"
+                  value={filters.to}
+                  min={filters.from || undefined}
+                  onChange={(e) => updateFilter({ to: e.target.value })}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={resetFilters}
+              >
+                重設
+              </Button>
+            </div>
+          </div>
+
           {loading ? (
             <div className="flex flex-col gap-2">
               <Skeleton className="h-10 w-full" />
@@ -616,8 +787,14 @@ export default function ApiKeyRequestsPage() {
             </div>
           ) : items.length === 0 ? (
             <EmptyState
-              title="尚無申請紀錄"
-              description={isAdmin ? "目前沒有任何申請單。" : "你尚未送出任何申請。"}
+              title={hasFilter ? "查無符合條件的申請單" : "尚無申請紀錄"}
+              description={
+                hasFilter
+                  ? "請調整或重設過濾條件。"
+                  : isAdmin
+                    ? "目前沒有任何申請單。"
+                    : "你尚未送出任何申請。"
+              }
             />
           ) : (
             <>

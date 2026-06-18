@@ -90,11 +90,25 @@ async def list_api_key_requests(
     db: DbDep,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=200),
+    status: str | None = Query(default=None, description="申請狀態精確篩選"),
+    q: str | None = Query(default=None, description="關鍵字:專案/負責人/Email/部門"),
+    department_code: str | None = Query(default=None, description="部門代號精確篩選"),
+    from_time: datetime | None = Query(default=None, alias="from", description="建立時間起"),
+    to_time: datetime | None = Query(default=None, alias="to", description="建立時間迄"),
 ):
     repo = ApiKeyRequestRepository(db)
     # 範圍由後端強制決定:admin 看全部,member 只看自己(忽略任何前端參數)。
     only = None if actor.is_admin else actor.user_uid
-    items, total = await repo.list(page=page, size=size, applicant_user_uid=only)
+    items, total = await repo.list(
+        page=page,
+        size=size,
+        applicant_user_uid=only,
+        status=status,
+        q=q,
+        department_code=department_code,
+        from_time=from_time,
+        to_time=to_time,
+    )
     data = Page[ApiKeyRequestResponse](
         items=[ApiKeyRequestResponse.model_validate(x) for x in items],
         total=total,

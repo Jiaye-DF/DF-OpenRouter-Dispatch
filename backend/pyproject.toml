@@ -41,6 +41,18 @@ target-version = "py314"
 select = ["E", "F", "W", "I", "N", "B", "UP", "SIM"]
 ignore = ["E501"]
 
+# FastAPI 慣例:Query / Depends / Path 等需於參數預設值呼叫,非 B008 違規。
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Query",
+    "fastapi.Depends",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Form",
+    "fastapi.File",
+]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

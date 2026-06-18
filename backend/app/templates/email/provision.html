@@ -1,0 +1,74 @@
+{#
+  申請單開通完成通知信(v1.9.2)。
+  context:
+    - owner_name        : 專案負責人稱呼
+    - project_name      : 所屬專案名稱
+    - project_code      : Project Code(明文)
+    - sdk_key           : SDK Key(明文);無留存時為空字串 → 顯示「請向管理員索取」
+    - user_token        : User Token(明文)
+  另繼承 base context:brand_name / platform_url / current_year。
+#}
+{% extends "base.html" %}
+
+{% block heading %}您的 API Key 已開通{% endblock %}
+
+{% block preheader %}{{ project_name }} 的 API 憑證已開通完成,內含 SDK Key 與使用說明。{% endblock %}
+
+{% block content %}
+  <p style="margin:0 0 16px;">{{ owner_name }} 您好,</p>
+
+  <p style="margin:0 0 20px;">
+    您於專案 <strong>{{ project_name }}</strong> 申請的 API Key 已<strong style="color:#16a34a;">開通完成</strong>,
+    以下為您的存取憑證,請妥善保管。
+  </p>
+
+  <!-- 憑證區塊 -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 24px;">
+    <tr>
+      <td style="padding:18px 20px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="font-family:'Consolas','Courier New',monospace; font-size:13px;">
+          <tr>
+            <td style="padding:6px 0; color:#64748b; width:130px; vertical-align:top;">Project Code</td>
+            <td style="padding:6px 0; color:#0f172a; word-break:break-all;">{{ project_code }}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0; color:#64748b; vertical-align:top;">SDK Key</td>
+            <td style="padding:6px 0; color:#0f172a; word-break:break-all;">
+              {% if sdk_key %}{{ sdk_key }}{% else %}<span style="color:#b45309;">(沿用既有 Key,請向管理員索取)</span>{% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0; color:#64748b; vertical-align:top;">User Token</td>
+            <td style="padding:6px 0; color:#0f172a; word-break:break-all;">{{ user_token }}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- 使用說明 -->
+  <p style="margin:0 0 10px; font-weight:600; color:#0f172a;">如何在 SDK 呼叫中帶入</p>
+  <p style="margin:0 0 12px; color:#475569;">於 HTTP 請求標頭加入以下三個 Header:</p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="background-color:#0f172a; border-radius:8px; margin:0 0 24px;">
+    <tr>
+      <td style="padding:16px 20px; font-family:'Consolas','Courier New',monospace; font-size:13px; color:#e2e8f0; line-height:1.8;">
+        X-Sdk-Key: &lt;SDK Key&gt;<br>
+        X-User-Token: &lt;User Token&gt;<br>
+        X-Project-Code: &lt;Project Code&gt;
+      </td>
+    </tr>
+  </table>
+
+  <!-- 機密提醒 -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="background-color:#fef3c7; border-radius:8px;">
+    <tr>
+      <td style="padding:14px 18px; color:#92400e; font-size:13px; line-height:1.6;">
+        ⚠️ 此為機密憑證,等同您的存取金鑰。請勿轉發、勿張貼於公開場所,並妥善保管本信件。
+      </td>
+    </tr>
+  </table>
+{% endblock %}

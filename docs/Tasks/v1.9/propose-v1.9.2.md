@@ -34,6 +34,17 @@
   - UI 一次性領取(`/claim-secrets`)仍保留為備援,不因 Email 而移除。
 - **後續可選強化**(本版不做,留待後續):改為「通知 + 登入領取連結」、或寄送後設定憑證短時效 TTL。
 
+### 3.1 寄件人權限取捨(已記錄使用者決定)
+
+- `Mail.Send`(Application 權限)預設能以**租戶內任一信箱**名義寄信;標準收斂作法是於 Exchange 端設 **Application Access Policy**,限制此 App 只能用指定信箱寄。
+- **本版依使用者決定不設 Application Access Policy**(設定成本高),改於**應用層自我約束**:程式固定只用 `M365_MAIL_SENDER` 寄信,不接受呼叫端指定寄件人。
+- **殘留風險(明確記錄)**:應用層限制只擋「程式寄錯人」,**擋不住 `M365_CLIENT_SECRET` 外洩後被冒用**——攻擊者持 secret 可直接打 Graph 冒充租戶內任何信箱寄信,繞過應用層限制。
+- **對應補償控制(本版納入 / 維運要求)**:
+  - `M365_CLIENT_SECRET` **僅 Coolify 注入**,不進 git、不進 log。
+  - 寄件人建議用**專用共用信箱**(無互動登入),縮小爆炸半徑。
+  - secret **定期輪替**(建議於 Azure 設到期)。
+  - 該 App **僅授 `Mail.Send`**,不多授其他 Graph 權限(最小權限)。
+
 ## 4. 範圍
 
 ### In Scope
@@ -45,6 +56,7 @@
 - **優雅降級**:Graph 設定未齊(缺任一 env)→ 不寄信、不報錯、不阻斷開通(比照 `DEFAULT_OPENROUTER_KEY`)。
 - **寄送結果留痕**(§ 8):`api_key_requests` 加 `notified_at` / `notify_error`,migration `0014`。
 - **設定**(§ 9):新增 Graph 四個 env + `.env.example` 同步。
+- **Email 範本(檔案化管理)**(§ 10):導入 Jinja2,於 `app/templates/email/` 建立共用 `base.html` + 本版 `provision.html`;新增 render 層統一注入品牌 context。**今後所有系統信件一律 extends `base.html`**。
 - **文件**:`/user-guide`、`/admin-guide` 補「開通後會以 Email 通知負責人」說明。
 
 ### Out of Scope
@@ -53,7 +65,7 @@
 - 「通知 + 登入領取連結」式安全寄送(本版直接夾帶明文,連結式留待後續)。
 - 其他狀態的通知(人工待處理 / 取消 / 撤銷 不寄信)。
 - 寄信重試佇列 / 排程補寄(本版同步 best-effort,失敗僅留 `notify_error`,可由 admin 重送 —— 重送端點列為 §11 待確認)。
-- 信件多語 / 範本管理系統(本版單一繁中 HTML 範本,內嵌於程式)。
+- 信件多語(本版單一繁中範本;`base.html` 已預留可擴充,多語留待後續)。
 
 ## 5. 前置依賴(外部,需 IT / 使用者提供)
 
@@ -85,6 +97,7 @@
   ```
 - 介面:`async def send_provision_email(*, to_email, owner_name, project_name, secrets: dict) -> EmailResult`,
   回 `EmailResult(ok: bool, error: str | None)`。
+- **信件 HTML 由 render 層產生**(§ 10):service 不自行拼字串,改呼叫 `render_email("provision.html", **ctx)` 取得 HTML 後丟給 Graph `sendMail`。
 - **降級**:`settings.graph_mail_enabled`(四個 env 皆有值)為 False → 直接回 `EmailResult(ok=False, error="graph_not_configured")`,呼叫端不視為錯誤。
 - 失敗(取 token 非 2xx / sendMail 非 2xx / 連線錯誤)→ `logger.warning`(**不含憑證明文**)+ 回 `ok=False`。
 - httpx 用法與逾時對齊既有 `clients/sso.py`(獨立 `AsyncClient` + `httpx.Timeout`)。
@@ -113,22 +126,49 @@
 
 ## 9. 設定(`core/config.py` + `.env.example`)
 
+> **命名以實際 `.env` 為準**:採 `M365_*` 前綴(非原草案的 `GRAPH_*`),對齊使用者已寫入的本機 `.env`。
+
 | env | 預設 | 說明 |
 | --- | --- | --- |
-| `GRAPH_TENANT_ID` | `""` | Azure tenant id |
-| `GRAPH_CLIENT_ID` | `""` | App(client) id |
-| `GRAPH_CLIENT_SECRET` | `""` | App client secret([機密],由 Coolify 注入,禁 commit) |
-| `GRAPH_MAIL_SENDER` | `""` | 寄件人信箱位址 |
+| `M365_TENANT_ID` | `""` | Azure tenant id |
+| `M365_CLIENT_ID` | `""` | App(client) id |
+| `M365_CLIENT_SECRET` | `""` | App client secret([機密],由 Coolify 注入,禁 commit) |
+| `M365_MAIL_SENDER` | `""` | 寄件人信箱位址 — **目前 `.env` 尚未填,需補** |
 
-- `Settings.graph_mail_enabled` property:四者皆非空才為 True。
-- `.env.example` 於既有 SSO 區段附近新增上述四鍵(secret 標 `[COOLIFY]` 注入)。
+- `Settings.m365_mail_enabled` property:四者皆非空才為 True。
+- **待填(非缺鍵)**:Graph `sendMail` 端點為 `/users/{sender}/sendMail`,**寄件人信箱(`M365_MAIL_SENDER`)為必要**。四個鍵已就位於 `.env` / `.env.example` / prod compose,但 `M365_MAIL_SENDER` **目前留空**;確定共用信箱後於 `.env`(本機)與 Coolify(prod)填入即可啟用寄信(留空則優雅略過)。
+- `.env.example` 於既有區段已新增四鍵(secret 標 `[COOLIFY]` 注入)。
+- `docker-compose-prod.yml` backend 已加入四個 `M365_*` 變數(值由 Coolify 注入);`docker-compose.dev.yml` 因 `env_file: .env` 自動帶入,無需改動。
 
-## 10. 信件範本(繁中 HTML,內嵌程式)
+## 10. 信件範本(Jinja2 檔案化管理)
 
-- 主旨:`您的 API Key 已開通`。
-- 內容要點:稱呼 `owner_name`、所屬 `project_name`、**Project Code / SDK Key / User Token**(明文,以等寬區塊呈現)、
-  三個 Header(`X-Sdk-Key` / `X-User-Token` / `X-Project-Code`)如何帶入 SDK 呼叫的最小說明、平台連結、
-  「此為機密憑證,請妥善保管」提醒。
+**方針**:信件 HTML 不再內嵌於 service,改以 **Jinja2 範本檔**集中於 `app/templates/email/`,並以共用基底版型統一所有系統信件外觀。**今後新增任何信件,一律新建 `xxx.html` 並 `{% extends "base.html" %}`**。
+
+### 檔案結構
+
+| 檔案 | 角色 |
+| --- | --- |
+| `app/templates/email/base.html` | 共用基底版型(table 排版 + inline style,email client 相容);提供 `heading` / `preheader` / `content` / `footer_extra` block 與品牌頁尾。 |
+| `app/templates/email/provision.html` | 本版開通通知信,`extends base.html`,填入憑證與使用說明。 |
+
+> 兩檔已先行建立(本次提案附帶交付),tasks 化時只需接上 render 層與 service。
+
+### Render 層(新增,統一注入品牌 context)
+
+- 新增 `app/services/email_render.py`(或 `core/email_template.py`):以 `jinja2.Environment` + `FileSystemLoader("app/templates/email")` 載入,`autoescape=True`(防憑證內含特殊字元破版/注入)。
+- `render_email(template_name, **ctx) -> str`:自動補上基底 context — `brand_name`(暫用 `APP_NAME` 或固定「DF OpenRouter 平台」)、`platform_url`(取 `FRONTEND_URL`,可為空)、`current_year`。
+- Environment 建議以 `lru_cache` 單例化,避免每次寄信重建。
+
+### provision.html 內容要點
+
+- 主旨:`您的 API Key 已開通`(由 service 設定,非範本)。
+- context:`owner_name`、`project_name`、`project_code`、`sdk_key`、`user_token`。
+- 呈現:**Project Code / SDK Key / User Token**(明文,等寬區塊)、三個 Header(`X-Sdk-Key` / `X-User-Token` / `X-Project-Code`)帶入 SDK 的最小說明、平台連結、「此為機密憑證,請妥善保管」提醒。
+- `sdk_key` 為空(沿用既有 Key 無明文)→ 該欄顯示「請向管理員索取」,其餘照常。
+
+### 新增依賴
+
+- `Jinja2`(加入 backend `pyproject.toml` / requirements)。
 
 ## 11. 權限與稽核 / 待確認
 
@@ -145,7 +185,8 @@
 
 ## 12. 交付物清單(轉 tasks 後)
 
-- 後端新增:`services/email_graph.py`、`alembic/versions/0014_api_key_requests_notify.py`。
+- 後端新增:`services/email_graph.py`、`services/email_render.py`(Jinja2 render 層)、`templates/email/base.html` + `templates/email/provision.html`(**本次提案已先建立**)、`alembic/versions/0014_api_key_requests_notify.py`。
+- 新增依賴:`Jinja2`(`pyproject.toml`)。
 - 後端修改:`core/config.py`、`.env.example`、`models/api_key_request.py`、`schemas/api_key_request.py`(詳情回 `notified_at`/`notify_error`)、`repositories/api_key_request.py`(若需)、`api/v1/api_key_requests.py`(兩個觸發點 + 可選重送端點)。
 - 前端修改:`/user-guide`、`/admin-guide`(說明開通後 Email 通知);列表/詳情可選顯示「已通知」狀態。
 - 環境變數:新增 `GRAPH_TENANT_ID` / `GRAPH_CLIENT_ID` / `GRAPH_CLIENT_SECRET` / `GRAPH_MAIL_SENDER`。

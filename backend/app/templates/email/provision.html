@@ -55,9 +55,9 @@
          style="background-color:#0f172a; border-radius:8px; margin:0 0 24px;">
     <tr>
       <td style="padding:16px 20px; font-family:'Consolas','Courier New',monospace; font-size:13px; color:#e2e8f0; line-height:1.8;">
-        X-Sdk-Key: &lt;SDK Key&gt;<br>
-        X-User-Token: &lt;User Token&gt;<br>
-        X-Project-Code: &lt;Project Code&gt;
+        X-SDK-Key: {% if sdk_key %}{{ sdk_key }}{% else %}(請向管理員索取){% endif %}<br>
+        X-User-Token: {{ user_token }}<br>
+        X-Project-Code: {{ project_code }}
       </td>
     </tr>
   </table>

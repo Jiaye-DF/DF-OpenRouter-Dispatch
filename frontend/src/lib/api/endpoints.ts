@@ -26,6 +26,9 @@ export const API_ENDPOINTS = {
   processApiKeyRequest: (uid: string) => `/api/v1/api-key-requests/${uid}/process`,
   claimApiKeyRequestSecrets: (uid: string) =>
     `/api/v1/api-key-requests/${uid}/claim-secrets`,
+  // v1.9.2 admin 重送開通完成 Email 通知
+  resendApiKeyRequestNotify: (uid: string) =>
+    `/api/v1/api-key-requests/${uid}/resend-notify`,
 
   // 組織
   departments: "/api/v1/departments",

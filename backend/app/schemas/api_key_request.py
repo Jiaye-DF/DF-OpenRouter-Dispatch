@@ -47,6 +47,8 @@ class ApiKeyRequestResponse(BaseModel):
     cancel_source: str | None = None
     error_message: str | None = None
     processed_at: datetime | None = None
+    notified_at: datetime | None = None
+    notify_error: str | None = None
 
 
 class AgentDecisionSchema(BaseModel):
@@ -82,6 +84,8 @@ class ApiKeyRequestDetailResponse(BaseModel):
     cancel_source: str | None = None
     error_message: str | None = None
     processed_at: datetime | None = None
+    notified_at: datetime | None = None
+    notify_error: str | None = None
     agent_decision: dict | None = None
     provisioned_secrets: dict | None = None
     created_project_uid: UUID | None = None

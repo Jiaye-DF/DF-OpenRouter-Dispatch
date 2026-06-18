@@ -1,0 +1,70 @@
+{#
+  共用 Email 基底版型(所有系統寄出的信一律 extends 此檔)。
+  Email client 相容性考量:採 table 排版 + inline style,不依賴 <style> / 外部 CSS。
+  最大寬度 600px,深色文字 / 中性底色。
+
+  子範本可覆寫的 block:
+    - preheader : 收件匣預覽文字(隱藏於信件正文)
+    - heading   : 頂部標題列文字(預設 brand_name)
+    - content   : 主要內容區(必填)
+    - footer_extra : 頁尾額外說明(選填)
+
+  基底 context(由 render 層統一注入):
+    - brand_name  : 品牌 / 平台名稱
+    - platform_url: 平台連結(可為空字串 → 不顯示連結)
+    - current_year: 頁尾版權年份
+#}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="x-apple-disable-message-reformatting">
+  <title>{% block heading %}{{ brand_name }}{% endblock %}</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f1f5f9; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
+  <!-- 預覽文字(隱藏) -->
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all;">
+    {% block preheader %}{% endblock %}
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f1f5f9;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"
+               style="width:600px; max-width:600px; background-color:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(15,23,42,0.08);">
+
+          <!-- 標題列 -->
+          <tr>
+            <td style="background-color:#0f172a; padding:20px 32px; font-family:'Segoe UI',Arial,'Microsoft JhengHei',sans-serif; color:#ffffff; font-size:18px; font-weight:600; letter-spacing:0.3px;">
+              {{ self.heading() }}
+            </td>
+          </tr>
+
+          <!-- 內容區 -->
+          <tr>
+            <td style="padding:32px; font-family:'Segoe UI',Arial,'Microsoft JhengHei',sans-serif; color:#1e293b; font-size:15px; line-height:1.7;">
+              {% block content %}{% endblock %}
+            </td>
+          </tr>
+
+          <!-- 頁尾 -->
+          <tr>
+            <td style="padding:20px 32px 28px; border-top:1px solid #e2e8f0; font-family:'Segoe UI',Arial,'Microsoft JhengHei',sans-serif; color:#94a3b8; font-size:12px; line-height:1.6;">
+              {% block footer_extra %}{% endblock %}
+              <p style="margin:8px 0 0;">
+                此為系統自動寄送的信件,請勿直接回覆。
+                {% if platform_url %}
+                  前往平台:<a href="{{ platform_url }}" style="color:#2563eb; text-decoration:none;">{{ platform_url }}</a>
+                {% endif %}
+              </p>
+              <p style="margin:6px 0 0;">&copy; {{ current_year }} {{ brand_name }}</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

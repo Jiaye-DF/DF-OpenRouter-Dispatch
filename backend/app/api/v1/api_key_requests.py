@@ -12,6 +12,7 @@ from app.core.exceptions import AppError
 from app.core.response import success_response
 from app.models.api_key_request import ApiKeyRequest
 from app.repositories.api_key_request import ApiKeyRequestRepository
+from app.schemas.actor import Actor
 from app.schemas.api_key_request import (
     ApiKeyRequestCreateRequest,
     ApiKeyRequestDetailResponse,
@@ -22,6 +23,7 @@ from app.schemas.common import Page
 from app.services import api_key_request_agent as agent
 from app.services import api_key_request_provision as provision
 from app.services import api_key_request_router as router_svc
+from app.services.email_graph import send_provision_email
 
 router = APIRouter(prefix="/api-key-requests", tags=["api-key-requests"])
 
@@ -39,6 +41,44 @@ async def _get_or_404(repo: ApiKeyRequestRepository, uid: UUID) -> ApiKeyRequest
     if row is None:
         raise AppError("not_found", code=404)
     return row
+
+
+async def _notify_owner(
+    db: DbDep,
+    row: ApiKeyRequest,
+    actor: Actor,
+    ip: str | None,
+    *,
+    action: str = "notify_api_key_request",
+) -> None:
+    """開通成功後 best-effort 寄信通知負責人,另起一次 commit 回寫 notified_at / notify_error。
+
+    寄信失敗(含 M365 未設定)不影響已開通結果;憑證明文不入 log。
+    """
+    result = await send_provision_email(
+        to_email=row.owner_email,
+        owner_name=row.owner_name,
+        project_name=row.project_name,
+        secrets=row.provisioned_secrets or {},
+    )
+    if result.ok:
+        row.notified_at = _now()
+        row.notify_error = None
+    else:
+        row.notify_error = result.error
+    await write_audit(
+        db,
+        actor_user_uid=actor.user_uid,
+        actor_role=actor.role,
+        action=action,
+        target_type="api_key_request",
+        target_uid=row.request_uid,
+        result="success" if result.ok else "failure",
+        ip=ip,
+        # 僅記收件網域,不記完整 email / 憑證
+        detail=row.owner_email.split("@")[-1],
+    )
+    await db.commit()
 
 
 @router.get("", summary="API Key 申請列表（admin 全部 / member 僅本人）")
@@ -150,6 +190,9 @@ async def create_api_key_request(
         ip=ip,
     )
     await db.commit()
+    # 開通成功才寄信通知負責人(best-effort,獨立 commit,失敗不影響開通)
+    if row.status == "agent_done":
+        await _notify_owner(db, row, actor, ip)
     return success_response(data=_detail(row), detail="success")
 
 
@@ -265,6 +308,30 @@ async def process_api_key_request(
         ip=ip,
     )
     await db.commit()
+    # 人工開通成功後寄信通知負責人(best-effort,獨立 commit)
+    await _notify_owner(db, row, actor, ip)
+    return success_response(data=_detail(row), detail="success")
+
+
+@router.post("/{uid}/resend-notify", summary="重送開通通知 Email（admin）")
+async def resend_notify_api_key_request(
+    uid: UUID,
+    actor: UserDep,
+    db: DbDep,
+    ip: ClientIpDep,
+):
+    if not actor.is_admin:
+        raise AppError("forbidden", code=403)
+    repo = ApiKeyRequestRepository(db)
+    row = await _get_or_404(repo, uid)
+    # 僅開通終態可重送
+    if row.status not in ("agent_done", "done"):
+        raise AppError("invalid_status", code=409)
+    # 憑證已被本人領取清空 → 無可寄內容
+    if not row.provisioned_secrets:
+        raise AppError("secrets_already_claimed", code=409)
+
+    await _notify_owner(db, row, actor, ip, action="resend_notify_api_key_request")
     return success_response(data=_detail(row), detail="success")
 
 

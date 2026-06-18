@@ -489,6 +489,9 @@ export default function UserGuidePage() {
               <p className="text-destructive text-sm mt-2">
                 ⚠ 憑證<strong>僅顯示一次</strong>,請立即複製妥善保管;關閉後無法再次檢視,遺失需請管理員重新發放。
               </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                📧 開通成功後,系統會自動以 <strong>Email</strong> 將憑證寄給<strong>專案負責人</strong>(申請時填的<strong>負責人信箱 <code className="font-mono">owner_email</code></strong>)。若負責人未收到,可請管理員於申請詳情<strong>重送通知</strong>,或由本人在此頁點「領取憑證」取得。
+              </p>
             </div>
             <div className="rounded-xl border border-border p-4">
               <div className="flex items-center gap-2 mb-2">

@@ -88,7 +88,7 @@
   ```json
   {
     "message": {
-      "subject": "您的 API Key 已開通",
+      "subject": "Agent 代發: OpenRouter API Key 平台申請已開通",
       "body": { "contentType": "HTML", "content": "<...憑證與使用說明...>" },
       "toRecipients": [{ "emailAddress": { "address": "<owner_email>" } }]
     },
@@ -161,7 +161,7 @@
 
 ### provision.html 內容要點
 
-- 主旨:`您的 API Key 已開通`(由 service 設定,非範本)。
+- 主旨:`Agent 代發: OpenRouter API Key 平台申請已開通`(由 service 設定,非範本)。
 - context:`owner_name`、`project_name`、`project_code`、`sdk_key`、`user_token`。
 - 呈現:**Project Code / SDK Key / User Token**(明文,等寬區塊)、三個 Header(`X-Sdk-Key` / `X-User-Token` / `X-Project-Code`)帶入 SDK 的最小說明、平台連結、「此為機密憑證,請妥善保管」提醒。
 - `sdk_key` 為空(沿用既有 Key 無明文)→ 該欄顯示「請向管理員索取」,其餘照常。

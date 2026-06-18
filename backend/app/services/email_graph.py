@@ -93,7 +93,7 @@ async def send_provision_email(
 
     body = {
         "message": {
-            "subject": "您的 API Key 已開通",
+            "subject": "Agent 代發: OpenRouter API Key 平台申請已開通",
             "body": {"contentType": "HTML", "content": html},
             "toRecipients": [{"emailAddress": {"address": to_email}}],
         },

@@ -92,7 +92,9 @@
 
 ## 規則路由(確定性,落點 `api_key_request_router.py`)
 
-存在性判斷:部門 `get_by_code`;專案 `get_active_by_department_and_name`;使用者 `get_by_email`(命中唯一一筆才算「舊」)。
+存在性判斷:部門 `get_by_code`;專案 `get_active_by_department_and_name`;使用者 `list_by_email`(命中唯一一筆才算「舊」)。
+
+> **系統管理員排除**(v1.9.x):`list_by_email` 於**查詢層**即排除 `account='admin'`,故 admin 永遠不會出現在比對結果——不會被當成既有負責人沿用,owner 自然走「新建使用者」流程(新建者帶部門,可正常發 User Token)。
 
 ```
 if 部門不存在:                 → manual_pending（reason: 新部門需後台建 Key）
@@ -104,6 +106,7 @@ else:                          → cancelled（cancel_source='system', reason='�
 ```
 
 > 注意順序:「部門名稱不符」「email 多筆」屬硬規則,先於 AI / 其他分支擋下。
+> (使用者比對所稱「命中 / 不存在」均指**排除 admin 後**的結果。)
 
 ## AI 欄位驗證(落點 `api_key_request_agent.py`)
 

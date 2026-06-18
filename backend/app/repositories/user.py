@@ -34,10 +34,15 @@ class UserRepository:
         return (await self.db.execute(stmt)).scalars().first()
 
     async def list_by_email(self, email: str) -> list[User]:
-        """以 Email(不分大小寫)查所有未刪除使用者;供規則路由比對多筆。"""
+        """以 Email(不分大小寫)查未刪除使用者;供規則路由比對多筆。
+
+        排除系統管理員(account='admin'):admin 不得作為 API 申請負責人,
+        故比對時直接濾除,避免被當成既有負責人沿用。
+        """
         stmt = select(User).where(
             func.lower(User.email) == email.lower(),
             User.is_deleted.is_(False),
+            User.account != "admin",
         )
         return list((await self.db.execute(stmt)).scalars().all())
 

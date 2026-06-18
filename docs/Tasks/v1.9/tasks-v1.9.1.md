@@ -3,7 +3,7 @@
 ## 版本資訊
 
 - 前置依賴:**v1.9.0**(`api_key_requests` 表、送出/檢視端點、前端 `/api-key-requests` 頁)已完成;既有部門/專案/使用者建立 service、SDK Key / User Token 服務、OpenRouter client(`chat_completion`)、`DEFAULT_OPENROUTER_KEY` 設定。
-- 本版本範圍:申請單**完整生命週期 + 自動開通**。採**規則路由 + AI 欄位驗證**:存在性路由(確定性)決定 自動候選 / 人工 / 系統取消;自動候選由 **AI(`anthropic/claude-sonnet-4.6`,用 `DEFAULT_OPENROUTER_KEY`)** 驗證欄位,回**單一信心分數**,**`confidence >= 95` 才自動開通**(建立 專案→使用者→SDK Key→User Token),否則降級人工。
+- 本版本範圍:申請單**完整生命週期 + 自動開通**。採**規則路由 + AI 欄位驗證**:存在性路由(確定性)決定 自動候選 / 人工 / 系統取消;自動候選由 **AI(`anthropic/claude-sonnet-4.6`,用 `DEFAULT_OPENROUTER_KEY`)** 驗證欄位,回**單一信心分數**,**`confidence >= 90` 才自動開通**(建立 專案→使用者→SDK Key→User Token),否則降級人工。門檻於 v1.9.x 由 95 調整為 **90**(評分 rubric 同步調整,避免因「無法驗證實際存在」而系統性扣分)。
 - 對齊的 Design-Base 章節:
   - [80-permission.md § 後台存取規則](../../Design-Base/80-permission.md)
   - [50-openrouter.md § 4 呼叫流程](../../Design-Base/50-openrouter.md)
@@ -82,8 +82,8 @@
 
 | `status` | 顯示 | 性質 | 進入條件 |
 | --- | --- | --- | --- |
-| `manual_pending` | 待人工處理 | 待辦 | 新部門 / AI 信心<95 / AI 失敗 / 舊專案下新使用者 / 硬規則命中 |
-| `agent_done` | Agent 已處理 | 終態成功 | AI 信心≥95 + 自動開通成功 |
+| `manual_pending` | 待人工處理 | 待辦 | 新部門 / AI 信心<90 / AI 失敗 / 舊專案下新使用者 / 硬規則命中 |
+| `agent_done` | Agent 已處理 | 終態成功 | AI 信心≥90 + 自動開通成功 |
 | `done` | 已處理 | 終態成功 | admin 人工處理完成 |
 | `revoked` | 已撤銷 | 終態取消 | `manual_pending` 時本人/admin 撤銷 |
 | `cancelled` | 已取消 | 終態取消 | 本人取消(附原因)或系統判定重複 |
@@ -97,7 +97,7 @@
 ```
 if 部門不存在:                 → manual_pending（reason: 新部門需後台建 Key）
 elif 部門名稱與既有不符:       → manual_pending（硬規則:防代號誤填）
-elif 專案不存在(同部門同名):  → AI 驗證 → confidence>=95 ? 自動開通→agent_done : manual_pending
+elif 專案不存在(同部門同名):  → AI 驗證 → confidence>=90 ? 自動開通→agent_done : manual_pending
 elif 使用者 email 命中多筆:    → manual_pending（硬規則:歧義）
 elif 使用者不存在(新使用者):  → manual_pending
 else:                          → cancelled（cancel_source='system', reason='過去已存在相同 Key 資料'）
@@ -111,7 +111,7 @@ else:                          → cancelled（cancel_source='system', reason='�
 - 呼叫:`get_openrouter_client().chat_completion(payload, api_key=settings.DEFAULT_OPENROUTER_KEY)`,`payload.model = settings.API_KEY_AGENT_MODEL`,要求 JSON 結構化輸出。
 - 輸入:申請 6 欄 + 命中部門摘要(name/code)。
 - 輸出:`{ "confidence": 0-100, "reason": "簡短中文" }`;存入 `agent_decision`。
-- 門檻:`confidence >= 95` → 開通;否則 `manual_pending`。
+- 門檻:`confidence >= 90` → 開通;否則 `manual_pending`(v1.9.x 由 95 調整為 90)。
 - 失敗(逾時 / 非 2xx / JSON 不可解析 / 金鑰未設):`confidence=0`、`error_message` 記錄 → `manual_pending`。
 - **不**寫 usage_logs、**不**過白名單、**不**需 SDK 身分。
 
@@ -188,7 +188,7 @@ else:                          → cancelled（cancel_source='system', reason='�
 
 - 路由:5 種組合各自落到正確終態(新部門→人工、舊+新專案→AI、舊+舊+新使用者→人工、舊+舊+舊→系統取消)。
 - 硬規則:部門名稱不符 / email 多筆 → 人工(不呼叫 AI)。
-- AI 門檻:mock `confidence=95/94` 分別 → 自動 / 人工;AI 失敗 / 金鑰空 → 人工。
+- AI 門檻:mock `confidence=90/89` 分別 → 自動 / 人工;AI 失敗 / 金鑰空 → 人工。
 - 開通:agent_done 後三資源正確建立/沿用,`provisioned_secrets` 內容正確;中途失敗 rollback。
 - 狀態流轉:cancel 限 `manual_pending`、revoke 已處理回 409;claim-secrets 後欄位清空。
 - 權限:非本人 cancel/claim/詳情 → 403;member 列表只見自己。

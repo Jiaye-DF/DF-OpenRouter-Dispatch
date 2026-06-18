@@ -25,6 +25,12 @@ _SYSTEM_PROMPT = (
     "3. department_name 與 department_code 是否相稱(命中部門摘要提供既有對照)。\n"
     "4. 整體是否疑似亂填、佔位或測試資料。\n"
     "限制:不要實際連線任何 URL,只依字面做合理性判斷。\n"
+    "評分原則(重要):\n"
+    "- 你『無法也不需要』驗證 URL / repo 是否真的存在、網域是否真的屬於該公司;"
+    "這些由其他機制把關。**請勿因為『無法驗證實際存在或真實性』而扣分**。\n"
+    "- 只在出現實際紅旗時才給低分:欄位互相矛盾、明顯佔位 / 測試字串(如 test、aaa、123、example)、"
+    "一次性信箱、department_name 與 department_code 不符、project_url 非合法 GitHub / Replit 格式。\n"
+    "- 各欄位字面合理且彼此一致、無上述紅旗時,應給 90-100 的高分。\n"
     '只輸出 JSON,格式為 {"confidence": <0-100 整數>, "reason": "<簡短中文理由>"},'
     "不要輸出其他文字或 Markdown 圍欄。"
 )

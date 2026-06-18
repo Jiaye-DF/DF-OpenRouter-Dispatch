@@ -28,6 +28,7 @@ import type {
   ApiKeyRequestDetail,
   Paginated,
   ProvisionedSecrets,
+  ResendNotifyResult,
 } from "@/types/api";
 import { useAppSelector } from "@/store/hooks";
 
@@ -65,6 +66,45 @@ function statusBadge(status: string): React.ReactElement {
     default:
       return <Badge variant="secondary">{status}</Badge>;
   }
+}
+
+// v1.9.2 通知失敗原因碼 → 中文(僅作狀態顯示;未列出者原樣顯示代碼)
+const NOTIFY_ERROR_LABELS: Record<string, string> = {
+  m365_not_configured: "M365 寄信未設定",
+  m365_sendmail_502: "寄信服務暫時不可用",
+};
+
+function notifyErrorLabel(code: string): string {
+  return NOTIFY_ERROR_LABELS[code] ?? code;
+}
+
+// v1.9.2 開通完成 Email 通知狀態(已通知 / 通知失敗 / 尚未通知)
+function NotifyStatus({ it }: { it: ApiKeyRequest }): React.ReactElement {
+  // 僅開通終態才有通知意義
+  if (it.status !== "agent_done" && it.status !== "done") {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  if (it.notified_at) {
+    return (
+      <div className="flex flex-col">
+        <Badge variant="success">已通知</Badge>
+        <span className="mt-0.5 text-xs text-muted-foreground">
+          {new Date(it.notified_at).toLocaleString()}
+        </span>
+      </div>
+    );
+  }
+  if (it.notify_error) {
+    return (
+      <div className="flex flex-col">
+        <Badge variant="warning">通知失敗</Badge>
+        <span className="mt-0.5 text-xs text-muted-foreground">
+          {notifyErrorLabel(it.notify_error)}
+        </span>
+      </div>
+    );
+  }
+  return <span className="text-xs text-muted-foreground">尚未通知</span>;
 }
 
 // 專案連結:須為 GitHub / Replit(前端即時提示,真正把關在後端)
@@ -362,6 +402,47 @@ export default function ApiKeyRequestsPage() {
     }
   };
 
+  // admin:重送開通完成 Email 通知(二次確認)
+  const onResendNotify = (it: ApiKeyRequest) => {
+    showDialog({
+      type: "warning",
+      title: "確認重送通知",
+      message: `將重新寄送開通憑證 Email 給 ${it.owner_email},確定重送?`,
+      confirmText: "確定重送",
+      onConfirm: async () => {
+        setActingUid(it.request_uid);
+        try {
+          const res = await apiClient.post<ResendNotifyResult>(
+            API_ENDPOINTS.resendApiKeyRequestNotify(it.request_uid)
+          );
+          if (res.notified_at) {
+            toast("已重送通知", "success");
+          } else {
+            // 後端 best-effort:HTTP 2xx 但寄送失敗,以 notify_error 提示
+            showDialog({
+              type: "warning",
+              title: "通知寄送失敗",
+              message: res.notify_error
+                ? `寄送失敗:${notifyErrorLabel(res.notify_error)}`
+                : "寄送失敗,請稍後再試。",
+            });
+          }
+          await load();
+        } catch (err) {
+          if (err instanceof ApiError) {
+            showDialog({
+              type: "error",
+              title: "重送失敗",
+              message: err.localizedDetail,
+            });
+          }
+        } finally {
+          setActingUid(null);
+        }
+      },
+    });
+  };
+
   // 依列與身分推導可用操作
   const renderActions = (it: ApiKeyRequest): React.ReactNode => {
     const isOwner = currentUserUid != null && it.applicant_user_uid === currentUserUid;
@@ -414,6 +495,25 @@ export default function ApiKeyRequestsPage() {
           onClick={() => openProcess(it)}
         >
           人工處理
+        </LoadingButton>
+      );
+    }
+
+    // v1.9.2 admin:已開通但通知失敗 / 尚未通知 → 可重送通知
+    if (
+      isAdmin &&
+      (it.status === "agent_done" || it.status === "done") &&
+      !it.notified_at
+    ) {
+      actions.push(
+        <LoadingButton
+          key="resend-notify"
+          variant="outline"
+          size="sm"
+          loading={busy}
+          onClick={() => onResendNotify(it)}
+        >
+          重送通知
         </LoadingButton>
       );
     }
@@ -530,6 +630,7 @@ export default function ApiKeyRequestsPage() {
                     <TH>專案連結</TH>
                     <TH>負責人</TH>
                     <TH>狀態</TH>
+                    <TH>通知</TH>
                     <TH>申請時間</TH>
                     <TH>操作</TH>
                   </TR>
@@ -559,6 +660,9 @@ export default function ApiKeyRequestsPage() {
                         </div>
                       </TD>
                       <TD>{statusBadge(it.status)}</TD>
+                      <TD className="whitespace-nowrap">
+                        <NotifyStatus it={it} />
+                      </TD>
                       <TD className="whitespace-nowrap text-sm text-muted-foreground">
                         {new Date(it.created_at).toLocaleString()}
                       </TD>

@@ -42,6 +42,9 @@ export interface ApiKeyRequest {
   cancel_source?: string | null;
   error_message?: string | null;
   processed_at?: string | null;
+  // v1.9.2 開通完成 Email 通知:寄送成功時間 / 失敗原因
+  notified_at?: string | null;
+  notify_error?: string | null;
 }
 
 // v1.9.1 AI 欄位驗證代理決策
@@ -67,6 +70,13 @@ export interface ApiKeyRequestDetail extends ApiKeyRequest {
   created_sdk_key_uid?: string | null;
   matched_department_uid?: string | null;
   handled_by_user_uid?: string | null;
+}
+
+// v1.9.2 重送開通通知結果(admin)
+export interface ResendNotifyResult {
+  request_uid: string;
+  notified_at?: string | null;
+  notify_error?: string | null;
 }
 
 // API Key 申請表單送出內容(6 欄全必填)

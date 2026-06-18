@@ -63,3 +63,8 @@ class ApiKeyRequest(Base, TimestampMixin):
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # 開通完成 Email 通知(v1.9.2):寄送成功時間 / 失敗原因(不含憑證)
+    notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    notify_error: Mapped[str | None] = mapped_column(Text, nullable=True)

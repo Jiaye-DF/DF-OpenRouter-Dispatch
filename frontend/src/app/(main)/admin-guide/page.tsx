@@ -255,6 +255,23 @@ export default function AdminGuidePage() {
           </div>
         </Section>
 
+        <Section id="provision-notify" title="開通完成 Email 通知（v1.9.2）">
+          <p>
+            申請<strong>開通成功</strong>後（<code className="font-mono">agent_done</code> 自動開通 / <code className="font-mono">done</code> 人工開通），系統會自動以 <strong>Email</strong> 把憑證寄給申請填寫的<strong>專案負責人信箱</strong>（<code className="font-mono">owner_email</code>）。寄信為 <strong>best-effort</strong>：失敗不影響開通結果，使用者仍可在申請頁「領取憑證」取得。
+          </p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li><strong>已通知：</strong>申請列表「通知」欄顯示「已通知」與寄送時間。</li>
+            <li><strong>通知失敗：</strong>顯示「通知失敗」與原因（如 M365 未設定、寄信服務暫時不可用）。</li>
+            <li><strong>重送通知：</strong>通知失敗或使用者未收到時，admin 可在申請列表該筆按「<strong>重送通知</strong>」（二次確認後重寄）。憑證已被領取清空者無法重送。</li>
+          </ul>
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+            <p className="font-medium text-amber-700 mb-1">M365 寄信前置（IT 一次性設定）</p>
+            <p className="text-muted-foreground">
+              寄信走 <strong>Microsoft Graph</strong>：需有一個 Azure App 註冊並授予 <code className="font-mono">Mail.Send</code>（Application 權限）+ 完成 admin consent，並指定一個可寄信的<strong>寄件人信箱</strong>（建議專用共用信箱）。對應環境變數 <code className="font-mono">M365_TENANT_ID</code> / <code className="font-mono">M365_CLIENT_ID</code> / <code className="font-mono">M365_CLIENT_SECRET</code> / <code className="font-mono">M365_MAIL_SENDER</code> 由 Coolify 注入；任一未設定則自動略過寄信（不報錯、不阻斷開通），列表會顯示「通知失敗」。
+            </p>
+          </div>
+        </Section>
+
         <Section id="pages" title="管理頁速查">
           <div className="overflow-x-auto">
             <Table>

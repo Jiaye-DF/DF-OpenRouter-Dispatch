@@ -74,6 +74,15 @@ class Settings(BaseSettings):
     SEQ_INGESTION_URL: str = ""
     SEQ_API_KEY: str = ""
 
+    # --- M365 Mail 服務 (v1.9.2) ---
+    # 開通完成後以 Microsoft Graph(app-only)寄 Email 通知專案負責人。
+    # 四者皆有值才啟用(見 m365_mail_enabled);缺任一則優雅略過,不寄信不報錯。
+    # M365_CLIENT_SECRET 為機密,由 Coolify 注入,禁止 commit。
+    M365_TENANT_ID: str = ""
+    M365_CLIENT_ID: str = ""
+    M365_CLIENT_SECRET: str = ""
+    M365_MAIL_SENDER: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
@@ -86,6 +95,16 @@ class Settings(BaseSettings):
     def sso_enabled(self) -> bool:
         """三項 SSO 設定皆有值才啟用 SSO 登入流程。"""
         return bool(self.SSO_URL and self.SSO_APP_ID and self.SSO_APP_SECRET)
+
+    @property
+    def m365_mail_enabled(self) -> bool:
+        """四項 M365 設定皆有值才啟用 Graph 寄信(否則優雅略過)。"""
+        return bool(
+            self.M365_TENANT_ID
+            and self.M365_CLIENT_ID
+            and self.M365_CLIENT_SECRET
+            and self.M365_MAIL_SENDER
+        )
 
 
 @lru_cache(maxsize=1)

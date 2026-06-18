@@ -46,6 +46,10 @@ const MESSAGES: Record<string, string> = {
   project_code_required: "請於請求 header 帶入 X-Project-Code。",
   project_invalid: "X-Project-Code 不存在、已停用或與 SDK Key 部門不符。",
 
+  // v1.9.2 開通完成 Email 通知
+  secrets_already_claimed: "憑證已被領取並清空,無法再重送通知。",
+  m365_not_configured: "M365 寄信尚未設定,無法寄送通知。",
+
   // 預設
   操作失敗: "操作失敗,請稍後再試。",
 };

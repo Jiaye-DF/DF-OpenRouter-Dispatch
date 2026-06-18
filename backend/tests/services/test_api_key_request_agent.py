@@ -98,10 +98,13 @@ async def test_malformed_json_degrades_to_zero(monkeypatch):
 @pytest.mark.asyncio
 async def test_client_error_degrades_to_zero(monkeypatch):
     _patch_settings(monkeypatch)
-    client = _FakeClient(raises=RuntimeError("boom"))
+    client = _FakeClient(raises=RuntimeError("OpenRouter error 401: User not found"))
     res = await agent.validate_fields(client, _req(), _dept())
     assert res.confidence == 0
-    assert "boom" in res.error
+    assert res.error is not None
+    # 對外訊息不得洩漏上游供應商 / 原始例外(細節只進日誌)
+    assert "OpenRouter" not in res.error
+    assert "401" not in res.error
 
 
 @pytest.mark.asyncio
@@ -111,5 +114,7 @@ async def test_empty_key_degrades_without_calling(monkeypatch):
     client = _FakeClient(content='{"confidence": 99, "reason": "x"}')
     res = await agent.validate_fields(client, _req(), _dept())
     assert res.confidence == 0
-    assert "DEFAULT_OPENROUTER_KEY" in res.error
+    # 對外訊息不得暴露環境變數名稱
+    assert res.error is not None
+    assert "DEFAULT_OPENROUTER_KEY" not in res.error
     assert client.calls == []

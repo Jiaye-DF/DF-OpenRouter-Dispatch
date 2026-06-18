@@ -62,3 +62,11 @@ class UserDropdownItem(BaseModel):
     username: str
     employee_id: str | None
     department_uid: UUID | None
+
+
+class UserOwnerOption(BaseModel):
+    """供申請表單『專案負責人』下拉:名稱 + 信箱(選取後前端自動帶入信箱)。"""
+    model_config = ConfigDict(from_attributes=True)
+
+    username: str
+    email: str

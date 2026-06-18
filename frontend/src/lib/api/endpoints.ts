@@ -12,6 +12,8 @@ export const API_ENDPOINTS = {
   // 使用者（admin）
   users: "/api/v1/users",
   usersDropdown: "/api/v1/users/dropdown",
+  // 申請表單『專案負責人』下拉(全使用者可用,含 Email)
+  userOwnerOptions: "/api/v1/users/owner-options",
   userById: (uid: string) => `/api/v1/users/${uid}`,
   resetUserPassword: (uid: string) => `/api/v1/users/${uid}/password/reset`,
   userTokens: (uid: string) => `/api/v1/users/${uid}/tokens`,

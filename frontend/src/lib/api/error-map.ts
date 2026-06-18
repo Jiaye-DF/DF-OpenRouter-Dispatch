@@ -19,7 +19,7 @@ const MESSAGES: Record<string, string> = {
 
   // 一般
   not_found: "找不到指定資源。",
-  code_conflict: "代碼已被使用，請改用其他代碼。",
+  code_conflict: "成本中心代碼已被使用，請改用其他代碼。",
   invalid_input: "輸入內容有誤，請檢查後再送出。",
 
   // 部門 / 專案 / Key

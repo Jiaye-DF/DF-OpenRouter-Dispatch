@@ -1,7 +1,8 @@
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.api_key_request import ApiKeyRequest
@@ -24,19 +25,42 @@ class ApiKeyRequestRepository:
         page: int,
         size: int,
         applicant_user_uid: UUID | None = None,
+        status: str | None = None,
+        q: str | None = None,
+        department_code: str | None = None,
+        from_time: datetime | None = None,
+        to_time: datetime | None = None,
     ) -> tuple[list[ApiKeyRequest], int]:
-        stmt = select(ApiKeyRequest).where(ApiKeyRequest.is_deleted.is_(False))
-        count_stmt = (
-            select(func.count())
-            .select_from(ApiKeyRequest)
-            .where(ApiKeyRequest.is_deleted.is_(False))
-        )
+        conds = [ApiKeyRequest.is_deleted.is_(False)]
         if applicant_user_uid is not None:
-            stmt = stmt.where(ApiKeyRequest.applicant_user_uid == applicant_user_uid)
-            count_stmt = count_stmt.where(
-                ApiKeyRequest.applicant_user_uid == applicant_user_uid
+            conds.append(ApiKeyRequest.applicant_user_uid == applicant_user_uid)
+        if status:
+            conds.append(ApiKeyRequest.status == status)
+        if department_code:
+            conds.append(ApiKeyRequest.department_code == department_code)
+        if from_time is not None:
+            conds.append(ApiKeyRequest.created_at >= from_time)
+        if to_time is not None:
+            conds.append(ApiKeyRequest.created_at <= to_time)
+        if q and q.strip():
+            kw = f"%{q.strip().lower()}%"
+            conds.append(
+                or_(
+                    func.lower(ApiKeyRequest.project_name).like(kw),
+                    func.lower(ApiKeyRequest.owner_name).like(kw),
+                    func.lower(ApiKeyRequest.owner_email).like(kw),
+                    func.lower(ApiKeyRequest.department_name).like(kw),
+                    func.lower(ApiKeyRequest.department_code).like(kw),
+                )
             )
-        stmt = stmt.order_by(ApiKeyRequest.pid.desc()).offset((page - 1) * size).limit(size)
+        stmt = (
+            select(ApiKeyRequest)
+            .where(*conds)
+            .order_by(ApiKeyRequest.pid.desc())
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+        count_stmt = select(func.count()).select_from(ApiKeyRequest).where(*conds)
         items = list((await self.db.execute(stmt)).scalars().all())
         total = int((await self.db.execute(count_stmt)).scalar_one())
         return items, total

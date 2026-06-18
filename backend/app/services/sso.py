@@ -10,16 +10,20 @@
 
 import hashlib
 import hmac
+import secrets
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid_utils import uuid7
 
 from app.clients import sso as sso_client
 from app.clients.sso import SsoError
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.security import hash_password
 from app.models.user import User
 from app.repositories.refresh_token import RefreshTokenRepository
 from app.repositories.user import UserRepository
@@ -60,9 +64,26 @@ async def sso_login(
 
     repo = UserRepository(db)
     user = await repo.get_by_email(email)
-    if user is None or user.is_deleted:
+    if user is not None and user.is_deleted:
+        # 既有帳號已軟刪除 → 不自動復活,視為不可登入。
         raise SsoError("sso_no_account")
-    if not user.is_active:
+    if user is None:
+        # 首次以 SSO 登入且系統無此帳號 → 自動建立「一般成員(role=user)」。
+        # 員工名稱取 SSO 回傳的本人姓名(info.name),非帳號 / 部門代號 / 英文別名;
+        # 姓名為空才退而以 Email 前綴暫代。部門留空,由 admin 後續指派。
+        user = User(
+            user_uid=UUID(str(uuid7())),
+            account=f"sso_{secrets.token_hex(12)}",
+            username=(info.name or "").strip() or email.split("@")[0],
+            password_hash=hash_password(secrets.token_urlsafe(32)),
+            role="user",
+            email=email,
+            sso_user_id=info.user_id or None,
+        )
+        repo.add(user)
+        await db.flush()
+        logger.info("SSO 首次登入自動建立成員 account=%s email=%s", user.account, email)
+    elif not user.is_active:
         raise SsoError("sso_inactive")
 
     # 記錄 SSO userId(azure oid),供 back-channel logout 反查本地帳號。
@@ -102,7 +123,7 @@ def verify_back_channel_signature(
 
     expected = hmac.new(
         settings.SSO_APP_SECRET.encode("utf-8"),
-        f"{user_id}:{timestamp}".encode("utf-8"),
+        f"{user_id}:{timestamp}".encode(),
         hashlib.sha256,
     ).hexdigest()
     if len(signature) != len(expected) or not hmac.compare_digest(signature, expected):

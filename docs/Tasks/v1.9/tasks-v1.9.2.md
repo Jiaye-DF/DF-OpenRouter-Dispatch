@@ -94,7 +94,7 @@
 
 - 共用基底 `base.html`:table + inline style;block `heading` / `preheader` / `content` / `footer_extra` + 品牌頁尾。**今後所有信件 `extends base.html`**。
 - `provision.html`(`extends base.html`):
-  - 主旨(由 service 設定):`您的 API Key 已開通`。
+  - 主旨(由 service 設定):`Agent 代發: OpenRouter API Key 平台申請已開通`。
   - context:`owner_name`、`project_name`、`project_code`、`sdk_key`、`user_token`。
   - 憑證區塊(等寬):`Project Code` / `SDK Key` / `User Token`。
   - **Header 使用說明區塊**,輸出三個 Header 並帶入實值:
@@ -169,7 +169,7 @@
 // POST https://graph.microsoft.com/v1.0/users/{M365_MAIL_SENDER}/sendMail
 {
   "message": {
-    "subject": "您的 API Key 已開通",
+    "subject": "Agent 代發: OpenRouter API Key 平台申請已開通",
     "body": { "contentType": "HTML", "content": "<!-- render_email('provision.html', ...) 產生的 HTML -->" },
     "toRecipients": [{ "emailAddress": { "address": "ming.wang@df-recycle.com.tw" } }]
   },

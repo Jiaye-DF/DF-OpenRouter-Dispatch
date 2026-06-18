@@ -48,12 +48,12 @@ async def create_department(
     ip: ClientIpDep,
 ):
     repo = DepartmentRepository(db)
-    existing = await repo.get_by_code(body.code)
-    if existing is not None:
+    if await repo.get_by_code(body.code) is not None:
         raise AppError("code_conflict", code=409)
     row = Department(
         department_uid=UUID(str(uuid7())),
         code=body.code,
+        org_code=body.org_code,
         name=body.name,
         description=body.description,
     )
@@ -100,6 +100,11 @@ async def update_department(
     if row is None:
         raise AppError("not_found", code=404)
     fields = body.model_dump(exclude_unset=True)
+    new_code = fields.get("code")
+    if new_code is not None and new_code.lower() != row.code.lower():
+        conflict = await repo.get_by_code(new_code)
+        if conflict is not None and conflict.department_uid != row.department_uid:
+            raise AppError("code_conflict", code=409)
     for k, v in fields.items():
         setattr(row, k, v)
     await db.flush()

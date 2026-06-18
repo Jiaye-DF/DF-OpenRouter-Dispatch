@@ -54,7 +54,7 @@ export function exportDashboardToExcel(
 
   const deptSpec: SheetSpec = {
     name: "部門",
-    header: ["部門代碼", "部門名稱", "請求數", "Tokens", "成本 (USD)"],
+    header: ["成本中心代碼", "部門名稱", "請求數", "Tokens", "成本 (USD)"],
     rows: (data.byDept ?? []).map((d) => [
       d.department_code ?? "",
       d.department_name,

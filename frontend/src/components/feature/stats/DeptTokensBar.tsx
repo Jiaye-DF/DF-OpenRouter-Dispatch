@@ -21,8 +21,11 @@ interface Props {
 
 // 部門 × 總成本長條圖 + 排行表;Y 軸金額,tooltip 帶 tokens / requests 細節。
 export function DeptTokensBar({ data }: Props) {
+  // 以成本中心代碼區分部門(名稱可能重複);無代碼時退回僅顯示名稱。
   const items = (data ?? []).map((d) => ({
-    name: d.department_name,
+    name: d.department_code
+      ? `${d.department_name}(${d.department_code})`
+      : d.department_name,
     cost: toUSDNumber(d.total_cost_usd),
     tokens: d.total_tokens,
     requests: d.total_requests,

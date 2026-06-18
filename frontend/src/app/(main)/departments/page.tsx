@@ -35,7 +35,8 @@ import { useAppSelector } from "@/store/hooks";
 
 interface FormState {
   department_uid?: string;
-  code: string;
+  code: string; // 成本中心代碼
+  org_code: string; // 組織代碼
   name: string;
   description: string;
   first_key_name: string;
@@ -43,6 +44,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   code: "",
+  org_code: "",
   name: "",
   description: "",
   first_key_name: "",
@@ -148,6 +150,7 @@ export default function DepartmentsPage() {
     setForm({
       department_uid: d.department_uid,
       code: d.code,
+      org_code: d.org_code ?? "",
       name: d.name,
       description: d.description ?? "",
       first_key_name: "", // 編輯時不顯示此欄
@@ -160,15 +163,21 @@ export default function DepartmentsPage() {
       showDialog({ type: "warning", title: "欄位未填", message: "請輸入部門名稱" });
       return;
     }
-    if (!form.department_uid && !form.code.trim()) {
-      showDialog({ type: "warning", title: "欄位未填", message: "請輸入部門代碼" });
+    if (!form.code.trim()) {
+      showDialog({ type: "warning", title: "欄位未填", message: "請輸入成本中心代碼" });
+      return;
+    }
+    if (!form.org_code.trim()) {
+      showDialog({ type: "warning", title: "欄位未填", message: "請輸入組織代碼" });
       return;
     }
     setSaving(true);
     try {
       if (form.department_uid) {
-        // 編輯:code 建立後不可改
+        // 編輯:成本中心代碼 / 組織代碼皆可改(組織常調整)
         await apiClient.patch(API_ENDPOINTS.departmentById(form.department_uid), {
+          code: form.code.trim(),
+          org_code: form.org_code.trim(),
           name: form.name.trim(),
           description: form.description.trim() || null,
         });
@@ -180,6 +189,7 @@ export default function DepartmentsPage() {
         // 新建:dept → sdk-key 兩步串接
         const created = await apiClient.post<Department>(API_ENDPOINTS.departments, {
           code: form.code.trim(),
+          org_code: form.org_code.trim(),
           name: form.name.trim(),
           description: form.description.trim() || null,
         });
@@ -348,7 +358,8 @@ export default function DepartmentsPage() {
               <THead>
                 <TR>
                   {isAdmin && <TH>操作</TH>}
-                  <TH>代碼</TH>
+                  <TH>成本中心代碼</TH>
+                  <TH>組織代碼</TH>
                   <TH>名稱</TH>
                   <TH>描述</TH>
                   <TH>狀態</TH>
@@ -385,6 +396,7 @@ export default function DepartmentsPage() {
                           </TD>
                         )}
                         <TD className="font-mono">{d.code}</TD>
+                        <TD className="font-mono">{d.org_code ?? "-"}</TD>
                         <TD>{d.name}</TD>
                         <TD className="text-muted-foreground">
                           {d.description ?? "-"}
@@ -415,7 +427,7 @@ export default function DepartmentsPage() {
                       </TR>
                       {isAdmin && isOpen && (
                         <TR>
-                          <TD colSpan={6} className="bg-muted/30 p-0">
+                          <TD colSpan={7} className="bg-muted/30 p-0">
                             <DepartmentKeysPanel
                               dept={d}
                               keys={keys}
@@ -479,21 +491,21 @@ export default function DepartmentsPage() {
           </DialogHeader>
           <div className="flex flex-col gap-4 pt-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="dept-code">
-                代碼
-                {form.department_uid && (
-                  <span className="ml-2 text-sm text-muted-foreground">
-                    (建立後不可修改)
-                  </span>
-                )}
-              </Label>
+              <Label htmlFor="dept-code">成本中心代碼</Label>
               <Input
                 id="dept-code"
                 value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value })}
                 placeholder="例:T000"
-                disabled={!!form.department_uid}
-                readOnly={!!form.department_uid}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="dept-org-code">組織代碼</Label>
+              <Input
+                id="dept-org-code"
+                value={form.org_code}
+                onChange={(e) => setForm({ ...form, org_code: e.target.value })}
+                placeholder="例:ORG001"
               />
             </div>
             <div className="flex flex-col gap-1.5">

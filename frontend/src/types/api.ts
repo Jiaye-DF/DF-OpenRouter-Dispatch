@@ -92,7 +92,8 @@ export interface ApiKeyRequestCreate {
 // 部門
 export interface Department {
   department_uid: string;
-  code: string;
+  code: string; // 成本中心代碼
+  org_code: string | null; // 組織代碼
   name: string;
   description: string | null;
   is_active: boolean;

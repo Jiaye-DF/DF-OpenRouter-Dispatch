@@ -50,17 +50,24 @@
 
   <!-- 使用說明 -->
   <p style="margin:0 0 10px; font-weight:600; color:#0f172a;">如何在 SDK 呼叫中帶入</p>
-  <p style="margin:0 0 12px; color:#475569;">於 HTTP 請求標頭加入以下三個 Header:</p>
+  <p style="margin:0 0 12px; color:#475569;">於 HTTP 請求標頭帶入三個 Header(<code>X-SDK-Key</code> / <code>X-User-Token</code> / <code>X-Project-Code</code>)。以下為可直接執行的基礎範例(憑證已帶入):</p>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-         style="background-color:#0f172a; border-radius:8px; margin:0 0 24px;">
+         style="background-color:#0f172a; border-radius:8px; margin:0 0 16px;">
     <tr>
-      <td style="padding:16px 20px; font-family:'Consolas','Courier New',monospace; font-size:13px; color:#e2e8f0; line-height:1.8;">
-        X-SDK-Key: {% if sdk_key %}{{ sdk_key }}{% else %}(請向管理員索取){% endif %}<br>
-        X-User-Token: {{ user_token }}<br>
-        X-Project-Code: {{ project_code }}
+      <td style="padding:16px 20px; font-family:'Consolas','Courier New',monospace; font-size:13px; color:#e2e8f0; line-height:1.8; word-break:break-all;">
+        curl -X POST '{{ api_chat_url }}' \<br>
+        &nbsp;&nbsp;-H 'Content-Type: application/json' \<br>
+        &nbsp;&nbsp;-H 'X-SDK-Key: {% if sdk_key %}{{ sdk_key }}{% else %}(請向管理員索取){% endif %}' \<br>
+        &nbsp;&nbsp;-H 'X-User-Token: {{ user_token }}' \<br>
+        &nbsp;&nbsp;-H 'X-Project-Code: {{ project_code }}' \<br>
+        &nbsp;&nbsp;-d '{"model": "openai/gpt-4o-mini", "text": "用一句話介紹台灣"}'
       </td>
     </tr>
   </table>
+  <p style="margin:0 0 24px; color:#475569;">
+    完整參數、回應格式、錯誤碼與更多語言(Python 等)範例,請參考
+    <a href="{{ user_guide_url }}" style="color:#2563eb; text-decoration:none;">使用手冊</a>。
+  </p>
 
   <!-- 機密提醒 -->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"

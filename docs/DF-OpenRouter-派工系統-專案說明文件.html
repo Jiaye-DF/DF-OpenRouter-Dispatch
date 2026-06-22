@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DF-OpenRouter 派工系統 — 專案說明文件</title>
+<style>
+  :root {
+    --blue: #2563eb;
+    --blue-dark: #1d4ed8;
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --border: #e5e7eb;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --code-bg: #f3f4f6;
+    --green-bg: #ecfdf5;
+    --green-border: #6ee7b7;
+    --green: #047857;
+    --amber-bg: #fffbeb;
+    --amber-border: #fcd34d;
+    --amber: #b45309;
+    --red-bg: #fef2f2;
+    --red-border: #fecaca;
+    --red: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Microsoft JhengHei", "PingFang TC", "Segoe UI", system-ui, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.7;
+    font-size: 16px;
+  }
+  code, pre, .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, Menlo, monospace; }
+
+  /* 英雄區 */
+  header.hero {
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    color: #fff;
+    padding: 52px 24px 44px;
+    text-align: center;
+  }
+  header.hero .kicker { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; opacity: .85; font-weight: 600; }
+  header.hero h1 { margin: 10px 0 10px; font-size: 32px; line-height: 1.3; }
+  header.hero p.lead { margin: 0 auto; max-width: 700px; opacity: .92; font-size: 15.5px; }
+  .badge-row { margin-top: 18px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .hbadge {
+    background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35);
+    padding: 4px 12px; border-radius: 999px; font-size: 13px; color: #fff;
+  }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* 目錄 — 兩欄卡片式導覽 */
+  nav.toc {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 24px 24px 26px; margin: 30px 0; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  nav.toc .toc-title { font-size: 13px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; font-weight: 700; margin: 0 0 16px; }
+  .toc-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 700px) { .toc-grid { grid-template-columns: 1fr 1fr; } }
+  a.toc-item {
+    display: flex; align-items: flex-start; gap: 14px; text-decoration: none; color: inherit;
+    border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+    background: var(--surface); transition: border-color .15s, box-shadow .15s, transform .15s;
+  }
+  a.toc-item:hover { border-color: var(--blue); box-shadow: 0 4px 14px rgba(37,99,235,.12); transform: translateY(-1px); }
+  a.toc-item .n {
+    flex: none; width: 32px; height: 32px; border-radius: 9px; background: #eff6ff; color: var(--blue);
+    display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px;
+  }
+  a.toc-item .tx .tt { font-weight: 700; font-size: 15px; }
+  a.toc-item .tx .ds { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+  /* 區塊卡片化 */
+  section {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 6px 30px 28px; margin: 22px 0; box-shadow: 0 1px 3px rgba(0,0,0,.04); scroll-margin-top: 16px;
+  }
+  h2.sec { font-size: 22px; border-bottom: 2px solid var(--border); padding-bottom: 12px; margin: 26px 0 4px; display: flex; align-items: center; gap: 12px; }
+  h2.sec .num { flex: none; width: 34px; height: 34px; border-radius: 10px; background: var(--blue); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; }
+  p.sectlead { color: var(--muted); margin: 14px 0 18px; }
+  h3 { font-size: 17px; margin: 28px 0 12px; color: #111827; }
+  p, ul { margin: 0 0 12px; }
+  p:last-child, ul:last-child { margin-bottom: 0; }
+  ul { padding-left: 22px; }
+  li { margin: 5px 0; }
+  strong { font-weight: 700; color: #0f172a; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13.5px; }
+  /* 文字重點層級 */
+  .hl { color: var(--blue-dark); font-weight: 700; }                 /* 關鍵術語 / 專有名詞 */
+  .mk { background: linear-gradient(transparent 58%, #bfdbfe 58%); font-weight: 700; padding: 0 1px; }  /* 螢光標重點 */
+  .em { font-size: 17px; font-weight: 700; color: #0f172a; }         /* 加大強調 */
+  .key { color: var(--amber); font-weight: 700; }                    /* 須注意 */
+  .rd { color: var(--red); font-weight: 700; }                       /* 重大風險 / 禁止 */
+  .lead-line { font-size: 16.5px; }
+
+  /* 成效指標卡 */
+  .metrics { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; }
+  @media (min-width: 760px) { .metrics { grid-template-columns: repeat(4, 1fr); } }
+  .metric { border: 1px solid var(--border); border-radius: 14px; padding: 18px 16px; text-align: center; background: linear-gradient(180deg, #f8fbff, #ffffff); }
+  .metric .big { font-size: 30px; font-weight: 800; color: var(--blue-dark); line-height: 1.2; }
+  .metric .big small { font-size: 15px; font-weight: 700; }
+  .metric .ml { font-weight: 700; font-size: 14px; margin-top: 6px; }
+  .metric .ms { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .metric .arw { color: var(--muted); font-size: 13px; }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: 13.5px; }
+
+  /* inline badge */
+  .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 11px; font-size: 12.5px; font-weight: 700; background: #eff6ff; color: var(--blue); border: 1px solid #bfdbfe; }
+  .badge.green { background: var(--green-bg); color: var(--green); border-color: var(--green-border); }
+  .badge.amber { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-border); }
+  .badge.gray { background: var(--code-bg); color: var(--muted); border-color: var(--border); }
+
+  /* grid + subcard */
+  .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 720px) { .grid.cols2 { grid-template-columns: repeat(2, 1fr); } .grid.cols3 { grid-template-columns: repeat(3, 1fr); } }
+  .subcard { border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: var(--surface); }
+  .subcard h4 { margin: 0 0 8px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .subcard .ico { width: 28px; height: 28px; flex: none; border-radius: 8px; background: #eff6ff; color: var(--blue); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; }
+  .subcard p { margin: 0; font-size: 14px; color: var(--muted); }
+  .subcard .label { color: var(--muted); font-size: 12.5px; margin: 8px 0 6px; font-weight: 600; }
+
+  /* 表格 */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; margin: 6px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  thead th { background: var(--code-bg); color: var(--muted); font-weight: 700; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: #fafbfc; }
+  tbody tr:last-child td { border-bottom: none; }
+  td code { background: var(--code-bg); }
+
+  /* code block */
+  .codeblock { border: 1px solid var(--border); border-radius: 12px; background: #0f172a; overflow: hidden; margin: 6px 0; }
+  .codeblock .lang { padding: 7px 14px; font-size: 12.5px; color: #94a3b8; border-bottom: 1px solid #1e293b; }
+  .codeblock pre { margin: 0; padding: 14px; overflow-x: auto; }
+  .codeblock pre code { font-size: 13px; line-height: 1.6; white-space: pre; color: #e2e8f0; background: none; border: none; padding: 0; }
+  .codeblock .k { color: #93c5fd; } .codeblock .s { color: #86efac; } .codeblock .c { color: #64748b; }
+
+  /* note 提示框 */
+  .note { border-left: 4px solid; padding: 14px 18px; border-radius: 0 10px 10px 0; margin: 16px 0; font-size: 14.5px; }
+  .note.info { background: #eff6ff; border-color: var(--blue); }
+  .note.tip { background: var(--green-bg); border-color: var(--green); }
+  .note.warn { background: var(--amber-bg); border-color: var(--amber); }
+  .note.danger { background: var(--red-bg); border-color: var(--red); }
+  .note .head { font-weight: 700; margin-bottom: 4px; }
+
+  /* 流程圖（純 CSS，無外部依賴） */
+  .flow { display: flex; flex-direction: column; align-items: stretch; }
+  .flow-node { border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; background: var(--surface); }
+  .flow-node .t { font-weight: 700; font-size: 14.5px; }
+  .flow-node .d { color: var(--muted); font-size: 13px; margin-top: 4px; line-height: 1.6; }
+  .flow-node.accent { border-color: #bfdbfe; background: #eff6ff; }
+  .flow-node.ext { border-style: dashed; background: var(--code-bg); }
+  .flow-node.store { border-color: var(--green-border); background: var(--green-bg); }
+  .arrow { align-self: center; color: var(--muted); font-size: 20px; line-height: 1; padding: 8px 0; text-align: center; }
+  .arrow .lbl { display: block; font-size: 12px; }
+
+  /* 分層架構 */
+  .layer { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .layer + .layer { margin-top: 14px; }
+  .layer .lh { background: var(--code-bg); padding: 10px 16px; font-weight: 700; font-size: 13.5px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .layer .lb { padding: 16px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 13px; background: var(--surface); }
+  .chip b { font-weight: 700; }
+
+  /* 時間軸 */
+  .timeline { position: relative; padding-left: 28px; margin-top: 6px; }
+  .timeline::before { content: ""; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+  .tl-item { position: relative; padding: 0 0 20px; }
+  .tl-item::before { content: ""; position: absolute; left: -24px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--blue); border: 2px solid var(--surface); box-shadow: 0 0 0 2px var(--blue); }
+  .tl-item.milestone::before { background: var(--green); box-shadow: 0 0 0 2px var(--green); }
+  .tl-item .ver { font-weight: 700; font-size: 15px; }
+  .tl-item .ver .badge { margin-left: 8px; vertical-align: middle; }
+  .tl-item .desc { color: var(--muted); font-size: 14px; margin-top: 3px; }
+
+  footer.page { text-align: center; color: var(--muted); font-size: 13px; padding: 8px 24px 0; }
+</style>
+</head>
+<body>
+
+  <header class="hero">
+    <div class="kicker">企業內部平台 · 專案說明文件</div>
+    <h1>DF-OpenRouter 派工系統<br>LLM API 中控派發管理平台</h1>
+    <p class="lead">集中管理企業內部呼叫大型語言模型（LLM）時的金鑰、路由、配額與稽核；以後端代理層統一收斂所有對外 API 呼叫，達成成本控管、安全隔離與自動化開通。本文件涵蓋系統摘要、架構、操作手冊與整體技術價值。</p>
+    <div class="badge-row">
+      <span class="hbadge">FastAPI · Python 3.14</span>
+      <span class="hbadge">Next.js · TypeScript</span>
+      <span class="hbadge">PostgreSQL 17</span>
+      <span class="hbadge">Docker / Coolify</span>
+      <span class="hbadge">演進至 v1.10 · 10 版迭代</span>
+    </div>
+  </header>
+
+  <div class="wrap">
+
+    <!-- 目錄 -->
+    <nav class="toc">
+      <p class="toc-title">內容導覽</p>
+      <div class="toc-grid">
+        <a class="toc-item" href="#summary"><span class="n">1</span><span class="tx"><span class="tt">專案摘要</span><span class="ds">一句話定位與三大能力</span></span></a>
+        <a class="toc-item" href="#purpose"><span class="n">2</span><span class="tx"><span class="tt">目的</span><span class="ds">安全、成本、稽核、統一接點</span></span></a>
+        <a class="toc-item" href="#problem"><span class="n">3</span><span class="tx"><span class="tt">解決的問題與效益</span><span class="ds">痛點對照 + 量化成效</span></span></a>
+        <a class="toc-item" href="#concept"><span class="n">4</span><span class="tx"><span class="tt">核心概念與角色</span><span class="ds">名詞、憑證、權限模型</span></span></a>
+        <a class="toc-item" href="#flow"><span class="n">5</span><span class="tx"><span class="tt">系統流程圖</span><span class="ds">代理鏈與自動開通管線</span></span></a>
+        <a class="toc-item" href="#arch"><span class="n">6</span><span class="tx"><span class="tt">系統架構</span><span class="ds">四層分層與技術棧</span></span></a>
+        <a class="toc-item" href="#manual"><span class="n">7</span><span class="tx"><span class="tt">使用手冊</span><span class="ds">端點、Header、Request / Response</span></span></a>
+        <a class="toc-item" href="#api"><span class="n">8</span><span class="tx"><span class="tt">API 端點總覽</span><span class="ds">管理端與代理端介面</span></span></a>
+        <a class="toc-item" href="#evolution"><span class="n">9</span><span class="tx"><span class="tt">版本演進</span><span class="ds">v1.0 → v1.10 時間軸</span></span></a>
+        <a class="toc-item" href="#value"><span class="n">10</span><span class="tx"><span class="tt">技術價值</span><span class="ds">可遷移的工程能力佐證</span></span></a>
+      </div>
+    </nav>
+
+    <!-- 1 專案摘要 -->
+    <section id="summary">
+      <h2 class="sec"><span class="num">1</span>專案摘要</h2>
+      <p class="sectlead lead-line">把「<span class="rd">員工各自拿金鑰亂打 API</span>」變成「<span class="mk">公司統一發放、統一代理、全程可稽核</span>」的中控平台。</p>
+      <p>後端（FastAPI）作為所有 LLM 呼叫的 <span class="mk">唯一代理出口</span>，<span class="hl">原生 API Key 加密存於後端、永不下發前端</span>；使用者改持 <span class="hl">SDK Key + User Token</span> 雙因子憑證呼叫統一端點，由後端換發金鑰、限流、寫入稽核後回傳。</p>
+      <div class="grid cols3" style="margin-top:18px;">
+        <div class="subcard">
+          <h4><span class="ico">代</span>代理層</h4>
+          <p><span class="hl">單一後端出口</span>，支援 OpenRouter（外網）與企業地端 OpenAI-compatible 模型，多金鑰 failover。</p>
+        </div>
+        <div class="subcard">
+          <h4><span class="ico">控</span>中控管理</h4>
+          <p><span class="hl">部門 → 專案 → 使用者 → 金鑰</span>的階層式組織，模型白名單與用量成本三維度報表。</p>
+        </div>
+        <div class="subcard">
+          <h4><span class="ico">動</span>自動開通</h4>
+          <p>申請表單 + 規則路由 + <span class="hl">AI 欄位驗證</span>，信心足夠即全自動建立憑證並寄送通知信。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 目的 -->
+    <section id="purpose">
+      <h2 class="sec"><span class="num">2</span>目的</h2>
+      <div class="grid cols2" style="margin-top:18px;">
+        <div class="subcard">
+          <h4>🔐 安全隔離</h4>
+          <p>原生 API Key 集中後端加密保管，<span class="hl">前端與使用者永遠取不到明文</span>，杜絕金鑰外流與硬編碼風險。</p>
+        </div>
+        <div class="subcard">
+          <h4>💰 成本控管</h4>
+          <p>每一次模型呼叫都<span class="hl">歸戶到部門 / 專案 / 使用者</span>，可逐層彙總 token 與美元成本，支援多應用分別計費。</p>
+        </div>
+        <div class="subcard">
+          <h4>📊 可稽核性</h4>
+          <p><span class="hl">用量 Log 與操作稽核 Log 雙軌記錄</span>，搭配 Seq 集中式 Log，異常可追蹤、責任可歸屬。</p>
+        </div>
+        <div class="subcard">
+          <h4>⚡ 統一接點</h4>
+          <p>對使用者提供穩定、簡化的呼叫 schema；<span class="hl">底層供應商、金鑰輪替、限流全部透明</span>。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 解決的問題 -->
+    <section id="problem">
+      <h2 class="sec"><span class="num">3</span>解決的問題與效益</h2>
+      <p class="sectlead">企業導入 LLM 的六大實際痛點，以及平台如何對應、帶來什麼效益。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th style="width:38%">實際痛點 / 風險</th><th>平台的解法</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>金鑰散落、難以管控</strong><br><span class="muted small">員工各自申請金鑰，<span class="rd">外流即難以追查與撤銷</span></span></td>
+              <td>金鑰集中後端加密保管；對使用者改發雙因子憑證，<span class="hl">可隨時撤銷</span>且不影響其他人。</td>
+            </tr>
+            <tr>
+              <td><strong>成本黑箱</strong><br><span class="muted small"><span class="rd">無法得知哪個部門 / 專案花了多少</span></span></td>
+              <td>每次呼叫寫入 <code>usage_logs</code> 並標註部門 / 專案 / 使用者，<span class="hl">儀表板逐層彙總成本</span>。</td>
+            </tr>
+            <tr>
+              <td><strong>無白名單控管</strong><br><span class="muted small">使用者可任意呼叫<span class="rd">昂貴或未核可的模型</span></span></td>
+              <td>模型白名單由 DB 驅動（<code>models.is_active</code>），呼叫前先檢查，未核可一律 403。</td>
+            </tr>
+            <tr>
+              <td><strong>供應商限流 / 地端 GPU 被打爆</strong></td>
+              <td>平台層主動限速（RPM + 最小間隔）；OpenRouter <span class="hl">多把 Key failover</span>，地端則排隊等待。</td>
+            </tr>
+            <tr>
+              <td><strong>單一供應商綁定</strong></td>
+              <td>抽象出 provider 層，同一套白名單與認證同時支援 OpenRouter 與企業地端模型。</td>
+            </tr>
+            <tr>
+              <td><strong>開通流程仰賴線下人工</strong><br><span class="muted small"><span class="rd">申請、審核、建帳、發憑證耗時且易出錯</span></span></td>
+              <td>線上申請表單 + 規則路由 + AI（Claude）欄位驗證，<span class="hl">信心足夠即自動開通</span>並寄送憑證信。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>量化效益</h3>
+      <div class="metrics">
+        <div class="metric">
+          <div class="big">分鐘級</div>
+          <div class="ml">申請開通時間</div>
+          <div class="ms"><span class="arw">人工數天 →</span> 規則 + AI 自動開通</div>
+        </div>
+        <div class="metric">
+          <div class="big">0 <small>把</small></div>
+          <div class="ml">前端 / 客戶端持有金鑰</div>
+          <div class="ms">原生 Key <span class="rd">永不下發前端</span></div>
+        </div>
+        <div class="metric">
+          <div class="big">100<small>%</small></div>
+          <div class="ml">呼叫可歸戶</div>
+          <div class="ms">每筆都標部門 / 專案 / 使用者</div>
+        </div>
+        <div class="metric">
+          <div class="big">≥ 95</div>
+          <div class="ml">AI 信心門檻自動放行</div>
+          <div class="ms">低於門檻才轉人工審核</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 核心概念與角色 -->
+    <section id="concept">
+      <h2 class="sec"><span class="num">4</span>核心概念與角色</h2>
+      <p class="sectlead">理解平台前需先掌握的組織模型、憑證與權限角色。</p>
+
+      <h3>組織模型</h3>
+      <p>資源以階層方式組織，呼叫用量沿此階層逐層歸戶與彙總：</p>
+      <div class="flow" style="flex-direction:row; flex-wrap:wrap; gap:10px; align-items:center;">
+        <div class="flow-node" style="flex:1; min-width:120px;"><div class="t">部門</div><div class="d">成本中心，綁 OpenRouter Key 與 SDK Key</div></div>
+        <div class="arrow" style="padding:0 4px;">→</div>
+        <div class="flow-node" style="flex:1; min-width:120px;"><div class="t">專案</div><div class="d">部門下的應用，含專案代碼</div></div>
+        <div class="arrow" style="padding:0 4px;">→</div>
+        <div class="flow-node" style="flex:1; min-width:120px;"><div class="t">使用者</div><div class="d">員工，持 User Token</div></div>
+        <div class="arrow" style="padding:0 4px;">→</div>
+        <div class="flow-node" style="flex:1; min-width:120px;"><div class="t">用量紀錄</div><div class="d">每次呼叫歸戶到上述三層</div></div>
+      </div>
+
+      <h3>三組呼叫憑證</h3>
+      <div class="grid cols3">
+        <div class="subcard">
+          <span class="badge">X-SDK-Key</span>
+          <p class="label">部門層級 · 存取金鑰</p>
+          <p>以部門為單位發放，代表「哪個部門的程式在呼叫」。DB 僅存 argon2id hash + 公開 prefix，明文僅建立時顯示一次。</p>
+        </div>
+        <div class="subcard">
+          <span class="badge">X-User-Token</span>
+          <p class="label">使用者層級 · 加密 payload</p>
+          <p>以員工為單位發放，AES-256-GCM 加密、內含使用者識別與發行時間，可由撤銷端點即時失效。</p>
+        </div>
+        <div class="subcard">
+          <span class="badge">X-Project-Code</span>
+          <p class="label">專案層級 · 歸戶代碼</p>
+          <p>決定這次呼叫的用量算到哪個專案；同把 SDK Key 可呼叫同部門任一專案。</p>
+        </div>
+      </div>
+      <div class="note info">
+        <div class="head">認證 vs 歸戶</div>
+        <span class="hl">SDK Key + User Token</span> 構成雙因子認證（兩者部門須一致，任一失敗一律回 <code>401 unauthorized</code>，<span class="key">不揭露是哪一項失敗</span>）；<span class="hl">Project Code</span> 不屬認證祕密，而是用量歸戶欄位（缺漏或不屬該部門回 <code>400</code>）。
+      </div>
+
+      <h3>角色與權限</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:34%">資源 / 動作</th><th>管理員 admin</th><th>一般使用者 user</th></tr></thead>
+          <tbody>
+            <tr><td>部門 / 專案 / 金鑰 CRUD</td><td>✅ 全平台</td><td>❌</td></tr>
+            <tr><td>使用者管理 / 產生 · 撤銷 Token</td><td>✅</td><td>❌（僅可改自己密碼）</td></tr>
+            <tr><td>模型白名單與分級</td><td>✅ 可開關 / 分級</td><td>僅讀已啟用</td></tr>
+            <tr><td>用量與成本統計</td><td>✅ 全部</td><td>✅ 僅自身部門 / 個人</td></tr>
+            <tr><td>系統稽核 Log</td><td>✅</td><td>❌</td></tr>
+            <tr><td>API Key 申請表單</td><td>✅ 檢視全部</td><td>✅ 送出並檢視自己的</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted small">角色不固化於 JWT，每次請求即時由 DB 讀取，確保降級立即生效；前端僅依角色顯示 / 隱藏按鈕，實際過濾一律由後端完成。</p>
+    </section>
+
+    <!-- 5 系統流程圖 -->
+    <section id="flow">
+      <h2 class="sec"><span class="num">5</span>系統流程圖</h2>
+
+      <h3>流程 A：模型呼叫代理鏈（核心資料流）</h3>
+      <p class="sectlead">使用者應用如何透過平台安全地呼叫 LLM。</p>
+      <div class="flow">
+        <div class="flow-node">
+          <div class="t">使用者應用 / SDK</div>
+          <div class="d">Headers：<code>X-SDK-Key</code> + <code>X-User-Token</code> + <code>X-Project-Code</code>　Body：<code>{ model, text, images, files }</code></div>
+        </div>
+        <div class="arrow">↓<span class="lbl">POST /api/v1/model/chat（或 /chat/stream）</span></div>
+        <div class="flow-node accent">
+          <div class="t">後端代理層（FastAPI）</div>
+          <div class="d">
+            1. SDK Key（argon2 比對）→ 部門　2. 解密 User Token → 使用者　3. 部門一致性 + Project 歸屬檢查<br>
+            4. 模型白名單檢查　5. 依 provider 分流 + 速率限制　6. 改寫 Request → 下游
+          </div>
+        </div>
+        <div class="arrow">↓<span class="lbl">注入解密後金鑰 · 401 自動換下一把 Key（failover）</span></div>
+        <div class="flow-node ext">
+          <div class="t">下游模型供應商</div>
+          <div class="d">OpenRouter（外網，多 Key pool）｜ Internal 地端 OpenAI-compatible（vLLM / Ollama / TGI…）</div>
+        </div>
+        <div class="arrow">↓<span class="lbl">回應（精簡過濾，移除內部識別與成本欄位）</span></div>
+        <div class="flow-node">
+          <div class="t">回傳使用者應用</div>
+          <div class="d">統一格式 <code>{ success, code, data, detail }</code>；<code>data</code> 為純文字回答（串流則以 SSE 逐段回傳）</div>
+        </div>
+        <div class="arrow">↓<span class="lbl">回應後以 BackgroundTask 寫入（不拖慢呼叫）</span></div>
+        <div class="flow-node store">
+          <div class="t">PostgreSQL · usage_logs</div>
+          <div class="d">部門 / 專案 / 使用者 / 模型 / token / 成本 / 延遲 / 狀態，供報表與稽核</div>
+        </div>
+      </div>
+      <div class="note tip">
+        <div class="head">🔑 安全關鍵</div>
+        OpenRouter 原生 Key <span class="hl">全程僅存後端（AES-256-GCM）</span>，<span class="key">禁止</span>出現在回應、Log、前端；使用者拿到的永遠是<span class="hl">可撤銷</span>的雙因子憑證。任一驗證失敗一律回 <code>401 unauthorized</code>，<span class="key">不揭露是哪一項失敗</span>。
+      </div>
+
+      <h3>流程 B：API Key 申請自動開通（v1.9 系列核心創新）</h3>
+      <p class="sectlead">把線下審核流程數位化、智慧化的混合式自動開通管線。</p>
+      <div class="flow">
+        <div class="flow-node">
+          <div class="t">使用者送出申請表單</div>
+          <div class="d">部門名 / 代號、專案名 / 連結、負責人（Combobox 選取現有成員，信箱自動帶入）</div>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="flow-node accent">
+          <div class="t">規則路由</div>
+          <div class="d">依部門 / 專案 / 使用者存在性，判定 → 自動處理 ｜ 轉人工 ｜ 取消</div>
+        </div>
+        <div class="arrow">↓<span class="lbl">需驗證時</span></div>
+        <div class="flow-node accent">
+          <div class="t">AI 欄位驗證（Claude Sonnet）</div>
+          <div class="d">驗證欄位正確性（尤其 GitHub / Replit 連結），輸出信心分數</div>
+        </div>
+        <div class="arrow">↓<span class="lbl">信心 ≥ 95 → 自動開通；否則轉人工</span></div>
+        <div class="flow-node store">
+          <div class="t">自動建立：專案 → 使用者 → SDK Key → User Token</div>
+          <div class="d">申請單狀態流轉：manual_pending → agent_done → done</div>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="flow-node">
+          <div class="t">Email 通知（Microsoft Graph）</div>
+          <div class="d">夾帶完整憑證寄給負責人；Graph 未設定則優雅降級略過</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 系統架構 -->
+    <section id="arch">
+      <h2 class="sec"><span class="num">6</span>系統架構</h2>
+      <p class="sectlead">Monorepo 前後端分離，以 Docker Compose 編排，Coolify 正式部署。</p>
+
+      <div class="layer">
+        <div class="lh">前端層 · Frontend</div>
+        <div class="lb">
+          <span class="chip"><b>Next.js</b> App Router</span>
+          <span class="chip"><b>TypeScript</b> 5.x</span>
+          <span class="chip"><b>Redux Toolkit</b> 狀態管理</span>
+          <span class="chip"><b>Tailwind CSS</b></span>
+          <span class="chip">管理 UI · 用量儀表板 · 申請表單</span>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="lh">後端層 · Backend（分層架構）</div>
+        <div class="lb">
+          <span class="chip"><b>FastAPI</b> + Uvicorn</span>
+          <span class="chip"><b>Pydantic v2</b> 驗證</span>
+          <span class="chip">api → <b>services</b> → repositories → models</span>
+          <span class="chip"><b>clients/</b> OpenRouter · Internal 統一出口</span>
+          <span class="chip">JWT 認證 · 權限 Dependency</span>
+          <span class="chip">Swagger <code>/api/docs</code></span>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="lh">資料與基礎設施 · Data &amp; Infra</div>
+        <div class="lb">
+          <span class="chip"><b>PostgreSQL 17</b>（軟刪除 · UUIDv7）</span>
+          <span class="chip"><b>Alembic</b> Migration + Seed</span>
+          <span class="chip"><b>Seq</b> 集中式 Log</span>
+          <span class="chip"><b>Adminer</b> DB 管理</span>
+          <span class="chip"><b>Docker Compose</b> · Coolify</span>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="lh">外部整合 · External</div>
+        <div class="lb">
+          <span class="chip"><b>OpenRouter API</b>（多模型供應商閘道）</span>
+          <span class="chip"><b>企業地端 LLM</b>（OpenAI-compatible）</span>
+          <span class="chip"><b>DF-SSO</b>（OIDC 單一登入）</span>
+          <span class="chip"><b>Microsoft Graph</b>（通知信）</span>
+          <span class="chip"><b>Claude API</b>（AI 欄位驗證）</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7 使用手冊 -->
+    <section id="manual">
+      <h2 class="sec"><span class="num">7</span>使用手冊</h2>
+      <p class="sectlead">SDK 使用者拿到三組憑證後，如何呼叫代理端點。完整使用者說明另見 <code>docs/tutorial/openrouter-platform-user-guide.html</code>。</p>
+
+      <h3>① 端點與認證 Header</h3>
+      <p>所有模型呼叫皆透過單一端點，三個 Header 皆必填：</p>
+      <div class="codeblock">
+        <div class="lang">HTTP</div>
+        <pre><code><span class="k">POST</span> /api/v1/model/chat
+Content-Type: application/json
+X-SDK-Key: &lt;SDK Key 明文&gt;
+X-User-Token: &lt;User Token 明文&gt;
+X-Project-Code: &lt;專案代碼&gt;</code></pre>
+      </div>
+      <p class="muted small">平台提供測試與正式兩套環境，Base URL 不同；串流呼叫改用 <code>/api/v1/model/chat/stream</code>（SSE）。</p>
+
+      <h3>② Request Body 欄位</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>欄位</th><th>型別</th><th>必填</th><th>說明</th></tr></thead>
+          <tbody>
+            <tr><td><code>model</code></td><td>string</td><td>是</td><td>模型 id（例 <code>google/gemini-2.5-flash</code>），須在白名單內</td></tr>
+            <tr><td><code>text</code></td><td>string</td><td>否</td><td>使用者輸入文字</td></tr>
+            <tr><td><code>images</code></td><td>string[]</td><td>否</td><td>圖片 URL 或 <code>data:image/...;base64,...</code></td></tr>
+            <tr><td><code>files</code></td><td>object[]</td><td>否</td><td>PDF 等檔案；僅檔名寫入用量紀錄，內容不留存（法務考量）</td></tr>
+            <tr><td><code>tools</code></td><td>object[]</td><td>否</td><td>原樣轉發；目前僅支援 OpenRouter server 端工具（如 web search）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>③ Response 統一格式</h3>
+      <div class="grid cols2">
+        <div class="codeblock">
+          <div class="lang">JSON · 成功</div>
+          <pre><code>{
+  <span class="k">"success"</span>: <span class="k">true</span>,
+  <span class="k">"code"</span>: <span class="s">200</span>,
+  <span class="k">"data"</span>: <span class="s">"模型回答的文字內容..."</span>,
+  <span class="k">"detail"</span>: <span class="s">"success"</span>
+}</code></pre>
+        </div>
+        <div class="codeblock">
+          <div class="lang">JSON · 失敗</div>
+          <pre><code>{
+  <span class="k">"success"</span>: <span class="k">false</span>,
+  <span class="k">"code"</span>: <span class="s">403</span>,
+  <span class="k">"data"</span>: <span class="k">null</span>,
+  <span class="k">"detail"</span>: <span class="s">"model_forbidden"</span>
+}</code></pre>
+        </div>
+      </div>
+      <p class="muted small">成功時 <code>data</code> 為模型回答的<strong>純文字字串</strong>（已剝除 id / usage / provider 等內部欄位）；<code>detail</code> 失敗時為錯誤碼。</p>
+
+      <h3>④ 查詢可用模型清單（免憑證）</h3>
+      <div class="codeblock">
+        <div class="lang">HTTP</div>
+        <pre><code><span class="k">GET</span> /api/v1/allowed/models</code></pre>
+      </div>
+      <p class="muted small">回應 <code>data[]</code> 每筆的 <code>model_key</code> 即為 <code>model</code> 欄位要填入的值；僅回傳已啟用（白名單內）模型，定價等內部欄位不對外。</p>
+
+      <div class="note warn">
+        <div class="head">⚠ 憑證保管</div>
+        SDK Key 與 User Token <strong>只在建立時顯示一次</strong>，遺失只能請管理員重新發放（舊憑證隨即撤銷）。<strong>禁止</strong>寫死於前端 / 公開 repo / 客戶端 App，僅可存放於受控後端或 CI Secret。
+      </div>
+    </section>
+
+    <!-- 8 API 端點總覽 -->
+    <section id="api">
+      <h2 class="sec"><span class="num">8</span>API 端點總覽</h2>
+      <p class="sectlead">管理端（登入 Cookie 認證）與代理端（三組 Header）嚴格分離；完整 Schema 見後端 Swagger <code>/api/docs</code>。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>分類</th><th>路徑前綴</th><th>說明</th></tr></thead>
+          <tbody>
+            <tr><td>認證</td><td><code>/api/v1/auth/*</code></td><td>本地登入、Refresh、登出、改密；另有 DF-SSO OIDC 流程</td></tr>
+            <tr><td>使用者</td><td><code>/api/v1/users/*</code></td><td>admin CRUD + User Token 產生 / 撤銷</td></tr>
+            <tr><td>組織</td><td><code>/api/v1/departments/*</code>、<code>/api/v1/projects/*</code></td><td>部門、專案管理</td></tr>
+            <tr><td>OpenRouter Key</td><td><code>/api/v1/openrouter-keys/*</code></td><td>部門層級 Key 管理（加密保管）</td></tr>
+            <tr><td>SDK Key</td><td><code>/api/v1/sdk-keys/*</code></td><td>SDK 金鑰管理</td></tr>
+            <tr><td>模型</td><td><code>/api/v1/models/*</code>、<code>/api/v1/allowed/models</code></td><td>白名單 / 分級 / 同步；公開查詢已啟用模型</td></tr>
+            <tr><td>用量與統計</td><td><code>/api/v1/usage-logs/*</code>、<code>/api/v1/stats/*</code></td><td>用量查詢、依部門 / 專案 / 使用者彙總</td></tr>
+            <tr><td>申請開通</td><td><code>/api/v1/applications/*</code></td><td>API Key 申請表單送出 / 檢視 / 生命週期流轉</td></tr>
+            <tr><td>代理（非串流）</td><td><code>/api/v1/model/chat</code></td><td>SDK 呼叫模型（canonical）</td></tr>
+            <tr><td>代理（串流）</td><td><code>/api/v1/model/chat/stream</code></td><td>SSE 串流回應</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 9 版本演進 -->
+    <section id="evolution">
+      <h2 class="sec"><span class="num">9</span>版本演進</h2>
+      <p class="sectlead">從 MVP 的 API 代理層，成長為「申請—審核—開通—通知」一條龍的自動化平台。</p>
+      <div class="timeline">
+        <div class="tl-item milestone">
+          <div class="ver">v1.0 <span class="badge green">MVP</span></div>
+          <div class="desc">基礎多租戶框架：本地登入、部門 / 專案組織、OpenRouter 代理端點、SDK 雙因子認證、用量記錄與儀表板。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.1 · 模型管理與同步</div>
+          <div class="desc">白名單由環境變數升級為 DB 驅動；模型分級、OpenRouter 餘額同步、手動觸發同步機制。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.2 · 多 provider + 速率限制</div>
+          <div class="desc">支援企業地端 OpenAI-compatible 模型；Key 級速率限制；代理端點收斂為統一 <code>/model/chat</code>。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.3 · DF-SSO 單一登入</div>
+          <div class="desc">整合公司中央認證，支援 OIDC 登入與 back-channel logout，保留本地帳密作離線除錯。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.4 · 部署與 UX 維護</div>
+          <div class="desc">環境變數結構重整、SSO 姓名顯示、Postgres healthcheck、多網域 Email 支援等穩定化修正。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.5 · 專案維度串接</div>
+          <div class="desc">「專案」串入代理鏈與稽核（<code>project_uid</code>）；儀表板擴展為部門 / 專案 / 使用者三層篩選。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.6 · 管理動線整合</div>
+          <div class="desc">SDK Key 管理整合進部門頁（行展開）；理順部門 → 專案 → 使用者 → 金鑰的線性設定動線。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.7 · 串流回應（SSE）</div>
+          <div class="desc">新增 <code>/model/chat/stream</code>，Server-Sent Events 即時回傳，呈現打字機效果，failover 邏輯沿用。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.8 · 檔案上傳</div>
+          <div class="desc">聊天請求新增 <code>files</code> 欄位支援 PDF 等文件；用量紀錄僅存檔名（法務考量，不存內容）。</div>
+        </div>
+        <div class="tl-item milestone">
+          <div class="ver">v1.9.0–1.9.2 <span class="badge green">核心創新</span></div>
+          <div class="desc">申請表單 + 5 態生命週期 + 規則路由 + <span class="hl">AI（Claude）欄位驗證自動開通</span> + Microsoft Graph 憑證通知信。將線下審核<span class="hl">完全數位化、智慧化</span>。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.10 · 申請欄位下拉化</div>
+          <div class="desc">負責人改為 Combobox 選取現有成員、信箱自動帶入唯讀，從輸入端降低人工配對落空。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10 技術價值 -->
+    <section id="value">
+      <h2 class="sec"><span class="num">10</span>技術價值</h2>
+      <p class="sectlead">這份專案展現的可遷移工程能力 —— 適合作為下一份工作的技術佐證。</p>
+      <div class="grid cols2">
+        <div class="subcard">
+          <h4>🛡️ 安全工程</h4>
+          <p><span class="hl">AES-256-GCM</span> 對稱加密保管金鑰、<span class="hl">argon2id</span> 雜湊比對 SDK Key、雙因子憑證設計、錯誤訊息不洩漏細節（統一 401）、敏感資訊全程環境變數注入。</p>
+        </div>
+        <div class="subcard">
+          <h4>🏗️ 代理 / 閘道架構</h4>
+          <p>後端作為<span class="hl">唯一出口</span>收斂所有對外呼叫，client 與 service 層職責分離；以 <span class="hl">provider 抽象</span>同時支援雲端與地端模型，新增供應商不動業務邏輯。</p>
+        </div>
+        <div class="subcard">
+          <h4>⚙️ 可靠性設計</h4>
+          <p><span class="hl">多金鑰 failover</span>、指數退避重試、依 <code>Retry-After</code> 處理 429、主動限速（RPM + 最小間隔）、地端排隊與逾時控制 —— 完整的韌性策略。</p>
+        </div>
+        <div class="subcard">
+          <h4>🌊 串流與非同步</h4>
+          <p><span class="hl">SSE 串流端點</span>、commit point 後禁止重試、斷線即取消上游避免額外計費、用量於 <code>finally</code> 確保入帳；BackgroundTask 解耦記帳與回應延遲。</p>
+        </div>
+        <div class="subcard">
+          <h4>🤖 AI 賦能自動化</h4>
+          <p>以 LLM（Claude）做欄位語意驗證並輸出信心分數，結合規則路由形成 <span class="hl">「規則 + AI」混合決策</span>，把人工審核轉為條件式全自動開通。</p>
+        </div>
+        <div class="subcard">
+          <h4>📈 可觀測與稽核</h4>
+          <p><span class="hl">用量 Log 與操作稽核 Log 雙軌</span>、Seq 集中式 Log、成本可逐層歸戶，兼顧營運成本控管與資安追蹤需求。</p>
+        </div>
+        <div class="subcard">
+          <h4>🧱 工程化實踐</h4>
+          <p><span class="hl">Monorepo 前後端分離</span>、分層架構（api / service / repository / model）、Pydantic 契約、Alembic Migration、Swagger 文件、Docker Compose 部署與 healthcheck。</p>
+        </div>
+        <div class="subcard">
+          <h4>🔄 持續迭代能力</h4>
+          <p><span class="hl">10 個版本穩定演進</span>，每版皆有設計提案（propose）與任務拆解（tasks）文件，向後相容（deprecated alias）、軟刪除保留歷史，展現規格驅動開發紀律。</p>
+        </div>
+      </div>
+      <div class="note info">
+        <div class="head">💡 一句話總結</div>
+        本專案完整涵蓋「<span class="mk">安全 × 成本 × 可靠性 × 自動化</span>」四大企業級平台關注點，<span class="hl">從 0 到 1 設計並迭代</span>一套對接多家 LLM 供應商的中控系統，是<span class="hl">後端架構、API 閘道設計與 AI 整合能力</span>的綜合展現。
+      </div>
+    </section>
+
+    <footer class="page">
+      DF-OpenRouter 派工系統 · LLM API 中控派發管理平台 · 本文件為專案說明用途，技術棧與版本以原始碼為準。
+    </footer>
+
+  </div>
+</body>
+</html>

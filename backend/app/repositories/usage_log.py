@@ -222,20 +222,23 @@ class UsageLogRepository:
         user_uid: UUID | None = None,
         from_time: datetime | None,
         to_time: datetime | None,
-    ) -> list[tuple[UUID, str, str, int, int, Decimal]]:
+    ) -> list[tuple[UUID, str, str, str | None, int, int, Decimal]]:
         """依專案彙總;歷史 project_uid 為 NULL 的紀錄不出現(JOIN 內連線)。"""
         stmt = (
             select(
                 UsageLog.project_uid,
                 Project.code,
                 Project.name,
+                Project.description,
                 func.count(UsageLog.pid),
                 func.coalesce(func.sum(UsageLog.total_tokens), 0),
                 func.coalesce(func.sum(UsageLog.cost_usd), 0),
             )
             .select_from(UsageLog)
             .join(Project, Project.project_uid == UsageLog.project_uid)
-            .group_by(UsageLog.project_uid, Project.code, Project.name)
+            .group_by(
+                UsageLog.project_uid, Project.code, Project.name, Project.description
+            )
         )
         stmt = self._apply_filters(
             stmt,
@@ -249,7 +252,8 @@ class UsageLogRepository:
         )
         rows = (await self.db.execute(stmt)).all()
         return [
-            (r[0], r[1], r[2], int(r[3]), int(r[4]), Decimal(r[5])) for r in rows
+            (r[0], r[1], r[2], r[3], int(r[4]), int(r[5]), Decimal(r[6]))
+            for r in rows
         ]
 
     async def by_user(

@@ -155,9 +155,10 @@ async def by_project_endpoint(
             project_uid=r[0],
             project_code=r[1],
             project_name=r[2],
-            total_requests=r[3],
-            total_tokens=r[4],
-            total_cost_usd=r[5],
+            project_description=r[3],
+            total_requests=r[4],
+            total_tokens=r[5],
+            total_cost_usd=r[6],
         )
         for r in rows
     ]

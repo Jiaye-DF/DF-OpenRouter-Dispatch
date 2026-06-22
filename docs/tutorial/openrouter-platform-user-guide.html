@@ -213,6 +213,7 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
             <tr><td class="mono">model</td><td>string</td><td>是</td><td>OpenRouter 模型 id(例:<code>google/gemini-2.5-flash</code>),須在管理員設定的白名單內</td></tr>
             <tr><td class="mono">text</td><td>string</td><td>否</td><td>使用者輸入的文字</td></tr>
             <tr><td class="mono">images</td><td>string[]</td><td>否</td><td>圖片 URL 或 <code>data:image/...;base64,...</code> 字串陣列</td></tr>
+            <tr><td class="mono">files</td><td>object[]</td><td>否</td><td>上傳檔案(如 PDF),每筆為 <code>{ "filename": "報表.pdf", "file_data": "..." }</code>;<code>file_data</code> 可為 <code>data:application/pdf;base64,...</code> 或可公開存取的遠端 URL。<strong>僅檔名會寫入用量紀錄,檔案內容不留存</strong>(法務考量),且是否支援讀取取決於該模型本身的多模態能力</td></tr>
             <tr><td class="mono">videos</td><td>string[]</td><td>否</td><td>暫不支援,送出即回 <code>400 feature_not_supported</code></td></tr>
             <tr><td class="mono">tools</td><td>object[]</td><td>否</td><td>工具清單,格式同 OpenAI <code>tools</code> 規格,原樣轉發給下游。<strong>目前僅支援 OpenRouter server 端內建工具</strong>(如 web search,見下方範例);會回 <code>tool_calls</code> 的 function calling 尚未開放</td></tr>
           </tbody>
@@ -230,7 +231,7 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
         </div>
         <ul class="small muted">
           <li>此端點<strong>不需任何憑證</strong>,可直接於瀏覽器開啟:<a class="link" href="https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/allowed/models" target="_blank" rel="noreferrer">https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/allowed/models</a></li>
-          <li>回應 <code>data[]</code>(陣列)每筆的 <code>model_key</code> 即為呼叫上方端點時 <code>model</code> 欄位要填入的值;<code>name</code> 為顯示名稱、<code>description</code> / <code>context_length</code> / <code>modality</code> / <code>input_modalities</code> / <code>output_modalities</code> 供參考(modality tag 為陣列,例 ["text","image"])。</li>
+          <li>回應 <code>data[]</code>(陣列)每筆的 <code>model_key</code> 即為呼叫上方端點時 <code>model</code> 欄位要填入的值;<code>provider</code>(來源,如 <code>openrouter</code>)、<code>name</code> 為顯示名稱、<code>description</code> / <code>context_length</code> / <code>modality</code> / <code>input_modalities</code> / <code>output_modalities</code> 供參考(modality tag 為陣列,例 ["text","image"])。</li>
           <li>僅回傳已啟用(白名單內)的模型;定價、tokenizer 等內部欄位不對外。</li>
         </ul>
       </div>
@@ -248,6 +249,27 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
   ]
 }</code></pre>
       </div>
+
+      <p class="fw">含檔案(PDF)的 Request 範例:</p>
+      <div class="codeblock">
+        <div class="lang">JSON</div>
+        <button class="copy-btn" data-copy>複製</button>
+        <pre><code>{
+  "model": "google/gemini-2.5-flash",
+  "text": "請摘要這份 PDF 的重點",
+  "files": [
+    {
+      "filename": "季報.pdf",
+      "file_data": "data:application/pdf;base64,JVBERi0xLjcKJ..."
+    }
+  ]
+}</code></pre>
+      </div>
+      <ul class="small muted">
+        <li><code>file_data</code> 可改用可公開存取的遠端 URL(如 <code>https://example.com/季報.pdf</code>)。</li>
+        <li>能否實際讀取 PDF 取決於所選模型的多模態能力;不支援的模型可能忽略檔案或由 OpenRouter 回對應錯誤。</li>
+        <li>基於法務考量,<strong>僅檔名會寫入用量紀錄</strong>,檔案內容只用於本次請求、不留存。</li>
+      </ul>
 
       <p class="fw">啟用 web search 的 Request 範例:</p>
       <div class="codeblock">
@@ -438,7 +460,7 @@ X-User-Token: &lt;User Token 明文&gt;
 X-Project-Code: &lt;專案代碼&gt;</code></pre>
       </div>
       <ul class="muted">
-        <li>Header 與 Request Body <strong>與 <code>/model/chat</code> 完全相同</strong>(<code>model</code> / <code>text</code> / <code>images</code> / <code>tools</code>);<strong>不需</strong>額外帶 <code>stream</code> 欄位,端點本身即代表串流。</li>
+        <li>Header 與 Request Body <strong>與 <code>/model/chat</code> 完全相同</strong>(<code>model</code> / <code>text</code> / <code>images</code> / <code>files</code> / <code>tools</code>);<strong>不需</strong>額外帶 <code>stream</code> 欄位,端點本身即代表串流。</li>
         <li>回應 <code>Content-Type</code> 為 <code>text/event-stream</code>,<strong>不</strong>套用統一 <code>{ success, code, data, detail }</code> 包裝;每筆事件為精簡的 <code>data: {"id":"...","content":"..."}</code>,最後以 <code>data: [DONE]</code> 收尾。文字內容位於 <code>content</code>;OpenRouter 的 <code>provider</code> / <code>cost</code> / <code>usage</code> 等內部欄位<strong>不會</strong>外露。</li>
         <li><strong>開串流前</strong>的錯誤(憑證 / 白名單 / 速率限制等)仍以一般 HTTP 4xx/5xx + <code>{ success:false, … }</code> JSON 回絕,<strong>不</strong>會進入串流;因此程式應先檢查回應的 <code>Content-Type</code> / 狀態碼再決定是否逐塊讀取。</li>
         <li>本端點<strong>僅支援 OpenRouter 模型</strong>;internal 模型呼叫此端點會回 <code>400 feature_not_supported</code>。</li>
@@ -558,6 +580,8 @@ if __name__ == "__main__":
             <tr><td><span class="badge gray">404</span></td><td class="mono small">model_not_found</td><td class="muted">OpenRouter 找不到此模型</td></tr>
             <tr><td><span class="badge gray">429</span></td><td class="mono small">rate_limited</td><td class="muted">OpenRouter Key 短時間呼叫過於頻繁;建議指數退避重試</td></tr>
             <tr><td><span class="badge gray">502</span></td><td class="mono small">openrouter_unavailable</td><td class="muted">OpenRouter 服務暫時不可用,請確認 OpenRouter Key 是否有正確加入</td></tr>
+            <tr><td><span class="badge gray">500</span></td><td class="mono small">provider_misconfigured</td><td class="muted">僅 internal 模型:該模型的後端設定不完整,請聯絡管理員</td></tr>
+            <tr><td><span class="badge gray">502</span></td><td class="mono small">internal_unavailable</td><td class="muted">僅 internal 模型:內部模型服務暫時不可用,建議稍後重試</td></tr>
             <tr><td><span class="badge red">500</span></td><td class="mono small">操作失敗</td><td class="muted">後端異常,請聯絡管理員並提供時間點</td></tr>
           </tbody>
         </table>

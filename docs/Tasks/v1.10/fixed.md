@@ -120,3 +120,161 @@ user = User(
 - 行為：能對應到成本中心代碼的新進員工，登入即帶部門與員工編號；對不上的維持空部門待管理者指派。
 - 風險：低。僅在「首次建立成員」路徑新增欄位填值，既有使用者登入不受影響。
 - 連動：自動指派成功的使用者，管理者就**不必再手動改部門**，自然也不會再走到本文件上半段那條稽核 log 路徑（該路徑亦已修正）。
+
+---
+
+# Fix: 掃描報告 260622 — CORS 回退 + prod fail-fast + 申請單併發 race
+
+> 來源:`docs/Tasks/scan-project/Issue-Scan-Project-260622052905.md`。本批處理該報告唯一 🔴 與一項 🟠。
+
+## R-BE-008 🔴 + R-BE-020 🟠：CORS 萬用字元回退 + prod 啟動把關
+
+### 問題
+
+`main.py` 的 `allow_origins=settings.cors_origins_list or ["*"]`:`CORS_ORIGINS` 未設(空字串)→ `cors_origins_list` 回 `[]` → 回退 `["*"]`，搭配 `allow_credentials=True` 構成「任意來源帶 cookie」。env **有讀**，問題是「漏設時靜默退化成最不安全狀態」。
+
+### 修正
+
+1. [main.py](backend/app/main.py)：移除 `or ["*"]`，改 `allow_origins=settings.cors_origins_list`（空就是不開放跨域，不回退）。
+2. [config.py](backend/app/core/config.py)：新增 `@model_validator(mode="after") _fail_fast_in_prod`，`is_prod` 為真時斷言 `len(JWT_SECRET) >= 32` 且 `cors_origins_list` 非空，否則 raise——讓「prod 忘了設」在**啟動當下**就爆，而非上線後被攻擊才暴露。
+3. 本機開發在 `.env` 明確填 `CORS_ORIGINS=http://localhost:3000`。
+
+## AD-002 🟠：同 (部門+專案+負責人) 併發送單 race → 重複開通
+
+### 問題
+
+`route → AI → provision → commit` 全程對 project / user 無鎖、無唯一約束。同 owner 同專案的兩個並發請求(最常見:使用者雙擊送出)都在 `route()` 看到「無既有資料」→ 各自開通 → 重複建立 Project / User / SDK Key，繞過 `system_cancel` 去重。
+
+### 修正（採交易級 advisory lock，不改 schema、不影響既有資料）
+
+[api_key_requests.py](backend/app/api/v1/api_key_requests.py)：新增 `_lock_dedup_key()`，以 `pg_advisory_xact_lock(hashtext(:k)::bigint)` 對 `部門代號|專案名|負責人email`(正規化小寫)上交易鎖。
+
+- `create` 端點:`route()` 前取鎖。
+- `process` 端點(admin 人工開通):同樣取鎖，與 create 一致。
+
+鎖隨交易 commit 自動釋放;後到者等先到者 commit 後再 `route()`，屆時既有 project/user 已可見 → 正確走沿用/`system_cancel` 去重，不再重複建立。
+
+> 選擇 advisory lock 而非 DB 唯一約束:後者需新 migration，且 `users(email)` / `projects(department_uid,name)` 加唯一約束有撞既有重複資料與軟刪除語義的風險;advisory lock 自我內聚、可逆、零 schema 變更。
+
+### 影響範圍
+
+- 行為：併發送單由「都成功、產生重複」變為「序列化，第二筆走去重/沿用」。正常單一送單無感（鎖瞬間取得即放行）。
+- 風險：低。鎖粒度限於同 (部門+專案+負責人)，不影響其他送單併發。
+
+## R-BE-012 🟠：`process` 端點把原始例外字串回前端
+
+### 問題
+
+人工開通失敗時 `raise AppError((pr.error ...) or "provision_failed", code=409)`;`pr.error = str(exc)[:300]` 是**原始例外字串**，`AppError` 首參即 `detail`，經 `failure_response` 原樣回前端，可能洩漏 SQL 約束名 / 表名，甚至 `IntegrityError` 的 `DETAIL: Key (email)=(...)` 回灌**他人 email(PII)**。
+
+### 修正
+
+[api_key_requests.py](backend/app/api/v1/api_key_requests.py)：`process` 端點 `except` 改為 `logger.exception(...)` 把細節(含 `pr.error`)只進 log，對外固定 `raise AppError("provision_failed", code=409)`。新增模組 `logger`。
+
+### 影響範圍
+
+- 行為：admin 開通失敗時畫面只見穩定錯誤碼 `provision_failed`，真正原因進 Seq/console 供排查。
+- 風險：低。不影響成功路徑;失敗診斷改由 log 取得。
+
+## AD-003 🟠：usage_log `create_task` fire-and-forget 漏記帳
+
+### 問題
+
+`schedule_usage_log` 用 `asyncio.create_task(_task())` 但回傳無人持有 reference。CPython 文件明載 event loop 只持 task 的 weak reference,無強引用者可能在完成前被 GC 靜默取消 → `usage_logs` 隨機漏寫(對以計費/用量為核心的閘道是資料正確性問題)。串流路徑同樣經此函式。
+
+### 修正
+
+[proxy.py](backend/app/services/proxy.py)：新增 module-level `_usage_log_tasks: set`，建立後 `add` 持強引用、`add_done_callback(discard)` 完成移除。
+
+## AD-007 🔵：OpenRouter Key failover 迴圈內 N+1 重查全表
+
+### 問題
+
+非串流(`run_chat`)與串流(`stream`)兩條 OR 路徑的 failover 迴圈,每圈呼叫 `pick_random_active` → 重查整張 `openrouter_keys`(最多 5 次)。internal 路徑早已是「迴圈外查一次、記憶體 shuffle」。
+
+### 修正（記憶體預取,非 Redis)
+
+[proxy.py](backend/app/services/proxy.py)：兩處改為迴圈外 `OpenRouterKeyRepository(db).list_active_by_department()` 查一次,`random.sample(keys, len(keys))[:_MAX_RETRIES]` 記憶體內 shuffle 後依序取,移除 per-iteration 查詢與 `tried` 排除集合。
+
+> **設計討論**:此處只是「同一請求內重複查同一張表」,把結果存進區域變數即可,**非跨 worker 共享狀態**,故用記憶體預取而非 Redis。Redis 留給真正需要跨 worker 一致的項目(M3 多 worker 速率限制、AD-006 per-caller 配額、壞 key cooldown)——本批經討論**暫不導入 Redis**。
+
+## R-LOG-006 🔵：新增 `/api/v1/version` 端點
+
+### 修正
+
+- [config.py](backend/app/core/config.py)：新增 `APP_VERSION`(預設 `1.10.0`)作為部署版本標記;[.env.example](.env.example) 同步。
+- [health.py](backend/app/api/v1/health.py)：新增 `version_router`,`GET /api/v1/version` 回 `{version, app}`;[api/v1/__init__.py](backend/app/api/v1/__init__.py) 註冊。
+
+## AD-008 🔵：`api_key_requests.status` server_default 對齊狀態機
+
+### 問題
+
+DB 欄位 DEFAULT 為 `pending`,但 v1.9.1 狀態機無此值(`manual_pending` 才是初始態);0013 只改了既有資料、未改欄位 DEFAULT。
+
+### 修正
+
+- [models/api_key_request.py](backend/app/models/api_key_request.py)：`server_default="pending"` → `"manual_pending"`。
+- 新增 migration [0016_api_key_request_status_default.py](backend/alembic/versions/0016_api_key_request_status_default.py)：`ALTER COLUMN status SET DEFAULT 'manual_pending'`(僅變更 DEFAULT,不動既有資料)。
+
+---
+
+## 本輪掃描報告處理進度小結
+
+| 項目 | 嚴重度 | 狀態 |
+| --- | --- | --- |
+| R-BE-008 CORS 回退 | 🔴 | ✅ |
+| R-BE-020 prod fail-fast | 🟠 | ✅ |
+| AD-002 併發送單 race | 🟠 | ✅ |
+| R-BE-012 process 端點錯誤洩漏 | 🟠 | ✅ |
+| AD-003 usage_log 漏記帳 | 🟠 | ✅ |
+| AD-004 SSE relay 非 OR 收尾 | 🟡 | ✅ |
+| AD-005 prompt at-rest PII | 🟡 | ⏸ 暫維持現狀(使用者決策 2026-06-22) |
+| AD-006 per-caller 配額 | 🟡 | ⏸ 待 Redis 任務 |
+| R-LOG-006 version 端點 | 🔵 | ✅ |
+| AD-007 failover N+1 | 🔵 | ✅ |
+| AD-008 status 預設值 | 🔵 | ✅ |
+| AD-001 SDK Key 明文 | 🟠 | ⏸ 暫維持現狀(使用者決策 2026-06-22,已文件化取捨) |
+
+## AD-004 🟡：SSE 串流非 OpenRouterError 例外不補送收尾
+
+### 問題
+
+relay 階段只 `except OpenRouterError`。串流中途若發生非 OR 例外(httpx `ReadError`、`asyncio.TimeoutError` 等),不送 `error chunk + [DONE]` → SSE 客戶端無預警截斷、等不到結束而 hang;另 `finally` 的 `agen.aclose()` 若自身拋例外會蓋掉記帳。
+
+### 修正
+
+[proxy.py](backend/app/services/proxy.py)：
+- relay `try` 新增泛型 `except Exception` 分支,非 OR 例外同樣補送 `{"error":"stream_incomplete"}` + `[DONE]`(`CancelledError` 屬 BaseException 不落此分支,呼叫端斷線交 finally 記帳後自然傳播)。
+- `finally` 的 `agen.aclose()` 包 `try/except`,確保其失敗不影響下方 `schedule_usage_log` 記帳。
+
+## 維持現狀(使用者決策 2026-06-22)
+
+- **AD-001**(SDK Key 明文存 DB,🟠):已簽核取捨,暫維持現狀。
+- **AD-005**(prompt / images 全文落地 `usage_logs`,🟡):暫維持現狀。
+- **AD-006 / M3**:暫不導入 Redis;維持單 worker 記憶體速率限制,水平擴展才上 Redis(見 fixed 末段「路線 A」與專案記憶)。
+
+---
+
+# Enhance: 壞 key 短期停用 cooldown(路線 A,Postgres 不用 Redis)
+
+> 對應 scan 報告「壞 key cooldown」面向。使用者 2026-06-22 選定「不導入 Redis」,改用 Postgres 欄位實作(跨 worker 天然一致、持久、到期自動恢復)。
+
+## 問題
+
+OpenRouter Key 撞 401(失效)/ 402(餘額不足)時,原本只在「當次請求」內 `continue` 換下一把,**跨請求沒有記憶**——下一個請求仍可能再隨機抽到同一把壞 key,反覆 401/402、反覆 failover,造成可預期延遲與無謂上游呼叫。
+
+## 修正(Postgres 欄位,非 Redis)
+
+1. [models/openrouter_key.py](backend/app/models/openrouter_key.py)：新增 `disabled_until timestamptz`(可空)。
+2. migration [0017_openrouter_keys_disabled_until.py](backend/alembic/versions/0017_openrouter_keys_disabled_until.py)：`ADD COLUMN disabled_until`。
+3. [repositories/openrouter_key.py](backend/app/repositories/openrouter_key.py)：`list_active_by_department` 加 `OR(disabled_until IS NULL, disabled_until < now())` → 派工跳過未到期的壞 key。
+4. [proxy.py](backend/app/services/proxy.py)：新增 `schedule_key_cooldown()`(獨立 session、fire-and-forget、`now()+make_interval` 用 DB 時鐘),在非串流與串流兩條 OR 路徑的 **401**(`OpenRouterAuthError`)與 **402**(`OpenRouterError.status==402`)時呼叫,設 `disabled_until = now()+600s`。
+
+## 為什麼用 Postgres 不用 Redis
+
+cooldown 的「跳過名單」要跨 worker / 跨請求一致,但**寫入頻率低**(只有壞 key 才寫)、**讀取本就在查 keys 表**——用既有 Postgres 一個欄位即可,跨 worker 天然一致且持久(重啟不丟),比 Redis 更合適。RPM 那種高頻計數才需要 Redis(暫不做)。
+
+## 影響範圍
+
+- 行為:壞 key 被自動跳過 10 分鐘,到期自動再納入,無需人工。寫入走背景 task(與記帳同一強引用 set),不影響當次 dispatch 延遲。
+- 風險:低。`disabled_until` 可空、預設不停用,既有資料與 admin 後台列表查詢(未過濾 cooldown)不受影響;sync 流程仍涵蓋全部 key。

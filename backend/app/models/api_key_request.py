@@ -31,7 +31,7 @@ class ApiKeyRequest(Base, TimestampMixin):
     #   manual_pending 待人工處理 / agent_done Agent 已處理 / done 已處理 /
     #   revoked 已撤銷 / cancelled 已取消
     status: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default="pending"
+        String(16), nullable=False, server_default="manual_pending"
     )
     # 取消資訊
     cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -41,3 +41,9 @@ class OpenRouterKey(Base, TimestampMixin):
     min_request_interval_ms: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+
+    # 壞 key 短期停用:dispatch 撞 401(失效)/ 402(餘額不足)時設為 now()+cooldown,
+    # 派工查詢(list_active_by_department)會跳過未到期者;到期自動恢復,不需人工。
+    disabled_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

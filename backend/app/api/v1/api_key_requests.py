@@ -3,12 +3,15 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
 from app.clients.openrouter.client import OpenRouterClient, get_openrouter_client
 from app.core.audit import write_audit
 from app.core.deps import ClientIpDep, DbDep, UserDep
 from app.core.exceptions import AppError
+from app.core.logging import get_logger
 from app.core.response import success_response
 from app.models.api_key_request import ApiKeyRequest
 from app.repositories.api_key_request import ApiKeyRequestRepository
@@ -25,6 +28,8 @@ from app.services import api_key_request_provision as provision
 from app.services import api_key_request_router as router_svc
 from app.services.email_graph import send_provision_email
 
+logger = get_logger(__name__)
+
 router = APIRouter(prefix="/api-key-requests", tags=["api-key-requests"])
 
 # AI 欄位驗證信心分數達此門檻才自動開通,否則降級人工(v1.9.x 由 95 調整為 90)。
@@ -33,6 +38,19 @@ AI_AUTO_PROVISION_THRESHOLD = 90
 
 def _now() -> datetime:
     return datetime.now(tz=UTC)
+
+
+async def _lock_dedup_key(db: AsyncSession, *, department_code: str, project_name: str, owner_email: str) -> None:
+    """交易級 advisory lock,序列化「同部門+同專案+同負責人」併發送單。
+
+    避免兩個並發請求都在 route() 看到「無既有資料」而各自開通,重複建立
+    Project / User / SDK Key 並繞過 system_cancel 去重。鎖隨交易 commit 自動釋放;
+    後到者會等先到者 commit 後再 route(),屆時即可正確走沿用/去重路徑。
+    """
+    key = f"{department_code.strip().lower()}|{project_name.strip().lower()}|{owner_email.strip().lower()}"
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:k)::bigint)"), {"k": key}
+    )
 
 
 def _detail(row: ApiKeyRequest) -> dict:
@@ -127,6 +145,13 @@ async def create_api_key_request(
     client: Annotated[OpenRouterClient, Depends(get_openrouter_client)],
 ):
     repo = ApiKeyRequestRepository(db)
+    # 先取去重鎖,序列化同 (部門+專案+負責人) 的併發送單,再進 route→provision。
+    await _lock_dedup_key(
+        db,
+        department_code=body.department_code,
+        project_name=body.project_name,
+        owner_email=body.owner_email,
+    )
     row = ApiKeyRequest(
         request_uid=UUID(str(uuid7())),
         applicant_user_uid=actor.user_uid,
@@ -290,6 +315,13 @@ async def process_api_key_request(
     if row.status != "manual_pending":
         raise AppError("invalid_status", code=409)
 
+    # 與 create 一致:序列化同 (部門+專案+負責人) 的併發開通,避免重複建立。
+    await _lock_dedup_key(
+        db,
+        department_code=row.department_code,
+        project_name=row.project_name,
+        owner_email=row.owner_email,
+    )
     route = await router_svc.route(db, row)
     if route.matched_department is None:
         # 新部門 / 硬規則命中:無既有部門可沿用開通,須先於後台建立部門與 Key。
@@ -303,9 +335,13 @@ async def process_api_key_request(
                 raise RuntimeError(pr.error or "provision_failed")
     except Exception as exc:  # noqa: BLE001
         await db.rollback()
-        raise AppError(
-            (pr.error if pr is not None else None) or "provision_failed", code=409
-        ) from exc
+        # 原始例外可能含 SQL 約束 / 表名 / 他人 email,只進 log,不回前端。
+        logger.exception(
+            "人工開通失敗 request_uid=%s detail=%s",
+            row.request_uid,
+            (pr.error if pr is not None else None),
+        )
+        raise AppError("provision_failed", code=409) from exc
 
     row.status = "done"
     row.handled_by_user_uid = actor.user_uid

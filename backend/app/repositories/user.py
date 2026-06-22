@@ -100,6 +100,27 @@ class UserRepository:
             stmt = stmt.where(User.department_uid == department_uid)
         return list((await self.db.execute(stmt)).scalars().all())
 
+    async def list_owner_options(self, *, limit: int = 2000) -> list[User]:
+        """供申請表單『專案負責人』下拉:未刪除、啟用、具 Email 的使用者。
+
+        排除系統管理員(account='admin'):admin 不得作為 API 申請負責人,
+        與規則路由比對(list_by_email)一致。名稱取自 SSO 帶入的 M365 顯示名,
+        確保負責人名稱與 M365 資訊一致。
+        """
+        stmt = (
+            select(User)
+            .where(
+                User.is_deleted.is_(False),
+                User.is_active.is_(True),
+                User.email.is_not(None),
+                User.email != "",
+                User.account != "admin",
+            )
+            .order_by(User.username.asc())
+            .limit(limit)
+        )
+        return list((await self.db.execute(stmt)).scalars().all())
+
     def add(self, user: User) -> None:
         self.db.add(user)
 

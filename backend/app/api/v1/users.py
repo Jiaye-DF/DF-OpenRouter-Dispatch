@@ -198,7 +198,10 @@ async def update_user(
         target_type="user",
         target_uid=user.user_uid,
         ip=ip,
-        extra={**fields, "tokens_revoked": tokens_revoked},
+        extra={
+            **body.model_dump(exclude_unset=True, mode="json"),
+            "tokens_revoked": tokens_revoked,
+        },
     )
     await db.commit()
     return success_response(

@@ -72,8 +72,9 @@
     flex: none; width: 32px; height: 32px; border-radius: 9px; background: #eff6ff; color: var(--blue);
     display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px;
   }
+  a.toc-item .tx { display: flex; flex-direction: column; }
   a.toc-item .tx .tt { font-weight: 700; font-size: 15px; }
-  a.toc-item .tx .ds { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  a.toc-item .tx .ds { color: var(--muted); font-size: 13px; margin-top: 3px; }
 
   /* 區塊卡片化 */
   section {
@@ -159,6 +160,16 @@
   .flow-node.store { border-color: var(--green-border); background: var(--green-bg); }
   .arrow { align-self: center; color: var(--muted); font-size: 20px; line-height: 1; padding: 8px 0; text-align: center; }
   .arrow .lbl { display: block; font-size: 12px; }
+
+  /* Mermaid 流程圖（同 DF-SSO 做法） */
+  figure.diagram { margin: 18px 0; }
+  pre.mermaid {
+    background: #fff; color: var(--text);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px; text-align: center; overflow-x: auto;
+    font-size: 13px; line-height: 1.5;
+  }
+  figure.diagram figcaption { text-align: center; color: var(--muted); font-size: 13px; margin-top: 8px; }
 
   /* 分層架構 */
   .layer { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
@@ -262,7 +273,7 @@
     <!-- 3 解決的問題 -->
     <section id="problem">
       <h2 class="sec"><span class="num">3</span>解決的問題與效益</h2>
-      <p class="sectlead">企業導入 LLM 的六大實際痛點，以及平台如何對應、帶來什麼效益。</p>
+      <p class="sectlead">企業導入 LLM 的四大實際痛點，以及平台如何對應、帶來什麼效益。</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -280,14 +291,6 @@
             <tr>
               <td><strong>無白名單控管</strong><br><span class="muted small">使用者可任意呼叫<span class="rd">昂貴或未核可的模型</span></span></td>
               <td>模型白名單由 DB 驅動（<code>models.is_active</code>），呼叫前先檢查，未核可一律 403。</td>
-            </tr>
-            <tr>
-              <td><strong>供應商限流 / 地端 GPU 被打爆</strong></td>
-              <td>平台層主動限速（RPM + 最小間隔）；OpenRouter <span class="hl">多把 Key failover</span>，地端則排隊等待。</td>
-            </tr>
-            <tr>
-              <td><strong>單一供應商綁定</strong></td>
-              <td>抽象出 provider 層，同一套白名單與認證同時支援 OpenRouter 與企業地端模型。</td>
             </tr>
             <tr>
               <td><strong>開通流程仰賴線下人工</strong><br><span class="muted small"><span class="rd">申請、審核、建帳、發憑證耗時且易出錯</span></span></td>
@@ -385,35 +388,30 @@
 
       <h3>流程 A：模型呼叫代理鏈（核心資料流）</h3>
       <p class="sectlead">使用者應用如何透過平台安全地呼叫 LLM。</p>
-      <div class="flow">
-        <div class="flow-node">
-          <div class="t">使用者應用 / SDK</div>
-          <div class="d">Headers：<code>X-SDK-Key</code> + <code>X-User-Token</code> + <code>X-Project-Code</code>　Body：<code>{ model, text, images, files }</code></div>
-        </div>
-        <div class="arrow">↓<span class="lbl">POST /api/v1/model/chat（或 /chat/stream）</span></div>
-        <div class="flow-node accent">
-          <div class="t">後端代理層（FastAPI）</div>
-          <div class="d">
-            1. SDK Key（argon2 比對）→ 部門　2. 解密 User Token → 使用者　3. 部門一致性 + Project 歸屬檢查<br>
-            4. 模型白名單檢查　5. 依 provider 分流 + 速率限制　6. 改寫 Request → 下游
-          </div>
-        </div>
-        <div class="arrow">↓<span class="lbl">注入解密後金鑰 · 401 自動換下一把 Key（failover）</span></div>
-        <div class="flow-node ext">
-          <div class="t">下游模型供應商</div>
-          <div class="d">OpenRouter（外網，多 Key pool）｜ Internal 地端 OpenAI-compatible（vLLM / Ollama / TGI…）</div>
-        </div>
-        <div class="arrow">↓<span class="lbl">回應（精簡過濾，移除內部識別與成本欄位）</span></div>
-        <div class="flow-node">
-          <div class="t">回傳使用者應用</div>
-          <div class="d">統一格式 <code>{ success, code, data, detail }</code>；<code>data</code> 為純文字回答（串流則以 SSE 逐段回傳）</div>
-        </div>
-        <div class="arrow">↓<span class="lbl">回應後以 BackgroundTask 寫入（不拖慢呼叫）</span></div>
-        <div class="flow-node store">
-          <div class="t">PostgreSQL · usage_logs</div>
-          <div class="d">部門 / 專案 / 使用者 / 模型 / token / 成本 / 延遲 / 狀態，供報表與稽核</div>
-        </div>
-      </div>
+      <figure class="diagram">
+        <pre class="mermaid">
+%%{init: {'sequence': {'mirrorActors': false, 'actorMargin': 45}} }%%
+sequenceDiagram
+  participant U as 👤 使用者應用 / SDK
+  participant B as 🛡️ 後端代理層 · FastAPI
+  participant P as 🌐 模型供應商
+  participant D as 🗄️ PostgreSQL
+
+  U->>B: ① POST /api/v1/model/chat<br/>X-SDK-Key + X-User-Token + X-Project-Code
+  Note over B: SDK Key argon2 比對 → 部門<br/>解密 User Token → 使用者<br/>部門一致性 + Project 歸屬檢查<br/>任一失敗 → 🛑 401 unauthorized
+  Note over B: 模型白名單檢查<br/>未核可 → 🛑 403 model_forbidden
+  B->>P: ② 改寫 Request + 注入解密後金鑰
+  Note over P: OpenRouter（多 Key pool）<br/>或 Internal 地端模型（vLLM / Ollama…）
+  alt 401 · 單把 Key 失效
+    Note over B,P: 換下一把 active Key（failover）
+  end
+  P-->>B: ③ 回應
+  Note over B: 精簡過濾 — 移除 id / usage / provider 等內部欄位
+  B-->>U: ④ { success, code, data, detail }<br/>data = 純文字（串流則 SSE 逐段回傳）
+  B->>D: ⑤ BackgroundTask 寫 usage_logs<br/>部門 / 專案 / 使用者 / token / 成本 / 延遲
+        </pre>
+        <figcaption>圖 1 · 模型呼叫代理鏈（含驗證、failover 與用量入帳）</figcaption>
+      </figure>
       <div class="note tip">
         <div class="head">🔑 安全關鍵</div>
         OpenRouter 原生 Key <span class="hl">全程僅存後端（AES-256-GCM）</span>，<span class="key">禁止</span>出現在回應、Log、前端；使用者拿到的永遠是<span class="hl">可撤銷</span>的雙因子憑證。任一驗證失敗一律回 <code>401 unauthorized</code>，<span class="key">不揭露是哪一項失敗</span>。
@@ -421,32 +419,29 @@
 
       <h3>流程 B：API Key 申請自動開通（v1.9 系列核心創新）</h3>
       <p class="sectlead">把線下審核流程數位化、智慧化的混合式自動開通管線。</p>
-      <div class="flow">
-        <div class="flow-node">
-          <div class="t">使用者送出申請表單</div>
-          <div class="d">部門名 / 代號、專案名 / 連結、負責人（Combobox 選取現有成員，信箱自動帶入）</div>
-        </div>
-        <div class="arrow">↓</div>
-        <div class="flow-node accent">
-          <div class="t">規則路由</div>
-          <div class="d">依部門 / 專案 / 使用者存在性，判定 → 自動處理 ｜ 轉人工 ｜ 取消</div>
-        </div>
-        <div class="arrow">↓<span class="lbl">需驗證時</span></div>
-        <div class="flow-node accent">
-          <div class="t">AI 欄位驗證（Claude Sonnet）</div>
-          <div class="d">驗證欄位正確性（尤其 GitHub / Replit 連結），輸出信心分數</div>
-        </div>
-        <div class="arrow">↓<span class="lbl">信心 ≥ 95 → 自動開通；否則轉人工</span></div>
-        <div class="flow-node store">
-          <div class="t">自動建立：專案 → 使用者 → SDK Key → User Token</div>
-          <div class="d">申請單狀態流轉：manual_pending → agent_done → done</div>
-        </div>
-        <div class="arrow">↓</div>
-        <div class="flow-node">
-          <div class="t">Email 通知（Microsoft Graph）</div>
-          <div class="d">夾帶完整憑證寄給負責人；Graph 未設定則優雅降級略過</div>
-        </div>
-      </div>
+      <figure class="diagram">
+        <pre class="mermaid">
+flowchart TD
+  A([👤 使用者送出申請表單<br/>部門 · 專案 · 負責人]) --> B{規則路由<br/>部門 / 專案 / 使用者存在性}
+  B -->|資料異常 / 重複| X[🛑 取消申請<br/>狀態 cancelled]
+  B -->|需人工| H[轉人工審核<br/>狀態 manual_pending]
+  B -->|可自動驗證| C[🤖 AI 欄位驗證<br/>Claude Sonnet · 驗 GitHub / Replit 連結]
+  C --> D{信心分數}
+  D -->|低於 95| H
+  D -->|達 95 以上| E[自動建立<br/>專案 → 使用者 → SDK Key → User Token<br/>狀態 agent_done]
+  E --> F[[📧 Email 通知 · Microsoft Graph<br/>夾帶完整憑證寄給負責人]]
+  H --> G([完成 · 狀態 done])
+  F --> G
+
+  classDef ok fill:#ecfdf5,stroke:#6ee7b7,color:#065f46;
+  classDef ai fill:#eff6ff,stroke:#bfdbfe,color:#1e3a8a;
+  classDef stop fill:#fef2f2,stroke:#fecaca,color:#991b1b;
+  class E,F,G ok;
+  class C ai;
+  class X stop;
+        </pre>
+        <figcaption>圖 2 · 申請自動開通管線（規則 + AI 混合決策）</figcaption>
+      </figure>
     </section>
 
     <!-- 6 系統架構 -->
@@ -691,5 +686,17 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
     </footer>
 
   </div>
+
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'default',
+      securityLevel: 'loose',
+      fontFamily: '"Microsoft JhengHei", "PingFang TC", "Segoe UI", system-ui, sans-serif',
+      sequence: { useMaxWidth: true, mirrorActors: false, wrap: true },
+      flowchart: { useMaxWidth: true, htmlLabels: true }
+    });
+  </script>
 </body>
 </html>

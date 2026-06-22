@@ -85,7 +85,7 @@ GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/allowed/models
 ```
 
 - 此端點**不需任何憑證**,可直接於瀏覽器開啟。
-- 回應 `data[]`(陣列)每筆的 `model_key` 即為呼叫 §4 端點時 `model` 欄位要填入的值;`name` 為模型顯示名稱、`description` / `context_length` / `modality` 供參考。
+- 回應 `data[]`(陣列)每筆的 `model_key` 即為呼叫 §4 端點時 `model` 欄位要填入的值;`provider`(來源,如 `openrouter`)、`name` 為模型顯示名稱、`description` / `context_length` / `modality` / `input_modalities` / `output_modalities` 供參考(modality tag 為陣列,例 `["text","image"]`)。
 - 僅回傳已啟用(白名單內)的模型,清單與管理員後台維護結果同步。
 - 定價、tokenizer 等內部欄位不對外;若需完整資訊請聯絡管理員。
 
@@ -159,24 +159,7 @@ GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/allowed/models
 {
   "success": true,
   "code": 200,
-  "data": {
-    "id": "gen-...",
-    "model": "openai/gpt-4o-mini",
-    "choices": [
-      {
-        "index": 0,
-        "message": { "role": "assistant", "content": "..." },
-        "finish_reason": "stop"
-      }
-    ],
-    "usage": {
-      "prompt_tokens": 12,
-      "completion_tokens": 34,
-      "total_tokens": 46,
-      "cost": 0.000123
-    },
-    "created": 1731400000
-  },
+  "data": "模型回答的文字內容...",
   "detail": "success"
 }
 ```
@@ -194,7 +177,7 @@ GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/allowed/models
 
 - `success`:布林,程式判斷成功失敗。
 - `code`:對應 HTTP status。
-- `data`:成功時為 OpenRouter 原始回應(已去除內部 metadata)。
+- `data`:成功時為**模型回應的純文字字串**(已剝除 id / usage / provider 等 OpenRouter 內部欄位;這些僅寫入後台 usage_logs,不外露)。
 - `detail`:成功固定為 `"success"`;失敗為錯誤碼或中文描述。
 
 ---
@@ -225,7 +208,7 @@ SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 USER_TOKEN = "<admin 發放的 User Token>"
 PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
 
-def chat(model: str, text: str) -> dict:
+def chat(model: str, text: str) -> str:
     resp = httpx.post(
         API_URL,
         headers={
@@ -241,11 +224,11 @@ def chat(model: str, text: str) -> dict:
     body = resp.json()
     if not body["success"]:
         raise RuntimeError(f"{body['code']} {body['detail']}")
-    return body["data"]
+    return body["data"]  # data 即模型回應的純文字字串
 
 if __name__ == "__main__":
     result = chat("openai/gpt-4o-mini", "用一句話介紹台灣")
-    print(result["choices"][0]["message"]["content"])
+    print(result)
 ```
 
 ### web search(查今日美元換台幣即時匯率)
@@ -273,7 +256,7 @@ SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 USER_TOKEN = "<admin 發放的 User Token>"
 PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
 
-def chat_with_web_search(model: str, text: str) -> dict:
+def chat_with_web_search(model: str, text: str) -> str:
     resp = httpx.post(
         API_URL,
         headers={
@@ -301,7 +284,7 @@ if __name__ == "__main__":
         "openai/gpt-4o-mini",
         "今天 1 美元可以換多少新台幣?請用最新即時匯率回答,並標註資料來源與查詢時間。",
     )
-    print(result["choices"][0]["message"]["content"])
+    print(result)
 ```
 
 ### 檔案上傳(PDF,讓模型讀文件)
@@ -512,8 +495,8 @@ if __name__ == "__main__":
 | 429 | `rate_limited` | OpenRouter Key 短時間呼叫過於頻繁;建議指數退避重試 |
 <!-- | 429 | `internal_busy` | 本地模型排隊已超時(`data.retry_after_seconds`);依該秒數退避後重試 | -->
 | 502 | `openrouter_unavailable` | OpenRouter 服務暫時不可用,請確認 OpenRouter Key 是否有正確加入 |
-<!-- | 502 | `internal_unavailable` | 本地模型 server 暫時不可用,稍後再試 | -->
-<!-- | 500 | `provider_misconfigured` | 本地模型設定未完成,請聯絡管理員 | -->
+| 500 | `provider_misconfigured` | 僅 internal 模型:該模型後端設定不完整,請聯絡管理員 |
+| 502 | `internal_unavailable` | 僅 internal 模型:內部模型服務暫時不可用,稍後再試 |
 | 500 | `操作失敗` | 後端異常,請聯絡管理員並提供時間點 |
 
 ---

@@ -256,6 +256,7 @@ export interface StatsByProject {
   project_uid: string;
   project_code: string;
   project_name: string;
+  project_description: string | null; // 專案描述(Excel 匯出「備註」欄)
   total_requests: number;
   total_tokens: number;
   total_cost_usd: string;

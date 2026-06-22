@@ -33,6 +33,7 @@ class ProjectStatItem(BaseModel):
     project_uid: UUID
     project_code: str
     project_name: str
+    project_description: str | None
     total_requests: int
     total_tokens: int
     total_cost_usd: Decimal

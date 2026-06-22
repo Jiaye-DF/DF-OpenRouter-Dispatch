@@ -67,15 +67,16 @@ export function exportDashboardToExcel(
 
   const projectSpec: SheetSpec = {
     name: "專案",
-    header: ["專案代碼", "專案名稱", "請求數", "Tokens", "成本 (USD)"],
+    header: ["專案代碼", "專案名稱", "備註", "請求數", "Tokens", "成本 (USD)"],
     rows: (data.byProject ?? []).map((p) => [
       p.project_code,
       p.project_name,
+      p.project_description ?? "",
       p.total_requests,
       p.total_tokens,
       toUSDNumber(p.total_cost_usd),
     ]),
-    usdColumns: [4],
+    usdColumns: [5],
   };
 
   const userSpec: SheetSpec = {

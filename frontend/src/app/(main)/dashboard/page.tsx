@@ -165,14 +165,10 @@ export default function DashboardPage() {
           actorDeptUid={actorDeptUid}
         />
         <KpiCards data={overview} loading={loading} />
-        <div className="grid gap-6 lg:grid-cols-2">
-          <DeptTokensBar data={byDept} />
-          <ModelTokensStacked data={byModel} />
-        </div>
-        <div className="grid gap-6 lg:grid-cols-2">
-          <ByProjectBar data={byProject} />
-          <ByUserBar data={byUser} />
-        </div>
+        <DeptTokensBar data={byDept} />
+        <ModelTokensStacked data={byModel} />
+        <ByProjectBar data={byProject} />
+        <ByUserBar data={byUser} />
         <DailyTimeseriesLine
           data={timeseries}
           granularity={granularity}

@@ -25,6 +25,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.security import hash_password
 from app.models.user import User
+from app.repositories.department import DepartmentRepository
 from app.repositories.refresh_token import RefreshTokenRepository
 from app.repositories.user import UserRepository
 from app.services import auth as auth_service
@@ -33,6 +34,35 @@ logger = get_logger(__name__)
 
 # Back-channel logout timestamp 容許誤差（雙向 abs,毫秒）
 _BACK_CHANNEL_MAX_DRIFT_MS = 30_000
+
+# DF-SSO erpData 欄位對應(見 DF-SSO INTEGRATION.md「用戶資料格式」):
+# gen01=員工編號、gen03=成本中心代碼(對應本地 departments.code)。
+_ERP_EMPLOYEE_ID_KEY = "gen01"
+_ERP_COST_CENTER_KEY = "gen03"
+
+
+async def _resolve_erp_profile(
+    db: AsyncSession, erp_data: dict | None
+) -> tuple[UUID | None, str | None]:
+    """從 SSO erpData 解出 (department_uid, employee_id)。
+
+    成本中心代碼(gen03)對應 departments.code 查出部門;查無或 erpData 為 null 時
+    department_uid 回 None(維持「管理者後補」行為),並記 log 方便排查。
+    """
+    if not erp_data:
+        return None, None
+    employee_id = (str(erp_data.get(_ERP_EMPLOYEE_ID_KEY) or "").strip()) or None
+    cost_center = (str(erp_data.get(_ERP_COST_CENTER_KEY) or "").strip()) or None
+    department_uid: UUID | None = None
+    if cost_center:
+        dept = await DepartmentRepository(db).get_by_code(cost_center)
+        if dept is not None:
+            department_uid = dept.department_uid
+        else:
+            logger.warning(
+                "SSO erpData 成本中心代碼 %s 在 departments 查無對應,部門留空", cost_center
+            )
+    return department_uid, employee_id
 
 
 @dataclass(slots=True)
@@ -70,7 +100,9 @@ async def sso_login(
     if user is None:
         # 首次以 SSO 登入且系統無此帳號 → 自動建立「一般成員(role=user)」。
         # 員工名稱取 SSO 回傳的本人姓名(info.name),非帳號 / 部門代號 / 英文別名;
-        # 姓名為空才退而以 Email 前綴暫代。部門留空,由 admin 後續指派。
+        # 姓名為空才退而以 Email 前綴暫代。
+        # 員工編號與部門由 erpData 帶入(gen01 / gen03→departments.code);查無則留空待 admin 後補。
+        department_uid, employee_id = await _resolve_erp_profile(db, info.erp_data)
         user = User(
             user_uid=UUID(str(uuid7())),
             account=f"sso_{secrets.token_hex(12)}",
@@ -78,11 +110,18 @@ async def sso_login(
             password_hash=hash_password(secrets.token_urlsafe(32)),
             role="user",
             email=email,
+            department_uid=department_uid,
+            employee_id=employee_id,
             sso_user_id=info.user_id or None,
         )
         repo.add(user)
         await db.flush()
-        logger.info("SSO 首次登入自動建立成員 account=%s email=%s", user.account, email)
+        logger.info(
+            "SSO 首次登入自動建立成員 account=%s email=%s department_uid=%s",
+            user.account,
+            email,
+            department_uid,
+        )
     elif not user.is_active:
         raise SsoError("sso_inactive")
 

@@ -1,3 +1,4 @@
+import json
 from typing import Any
 from uuid import UUID
 
@@ -20,7 +21,12 @@ async def write_audit(
     ip: str | None = None,
     extra: dict[str, Any] | None = None,
 ) -> None:
-    """寫入稽核 log。呼叫端負責 commit。"""
+    """寫入稽核 log。呼叫端負責 commit。
+
+    extra 透過 JSON round-trip 轉為 JSON-safe(UUID / datetime 等以 str 落地),
+    避免呼叫端傳入未經 mode="json" 序列化的 Pydantic dump 導致 JSONB 寫入失敗。
+    """
+    safe_extra = json.loads(json.dumps(extra or {}, default=str))
     row = AuditLog(
         audit_log_uid=UUID(str(uuid7())),
         actor_user_uid=actor_user_uid,
@@ -31,7 +37,7 @@ async def write_audit(
         result=result,
         detail=detail,
         ip=ip,
-        extra=extra or {},
+        extra=safe_extra,
     )
     db.add(row)
     await db.flush()

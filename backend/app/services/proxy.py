@@ -43,13 +43,18 @@ from app.models.internal_key import InternalKey
 from app.models.model import Model
 from app.models.usage_log import UsageLog
 from app.repositories.internal_key import InternalKeyRepository
+from app.repositories.openrouter_key import OpenRouterKeyRepository
 from app.services.internal_key import decrypt_key as decrypt_internal_key
-from app.services.openrouter_key import decrypt_key, pick_random_active
+from app.services.openrouter_key import decrypt_key
 from app.services.rate_limit import RateLimitExceeded, get_limiter
 
 logger = get_logger(__name__)
 
 _MAX_RETRIES = 5
+
+# 持有 fire-and-forget 記帳 task 的強引用,避免 event loop 只持 weak ref 時被 GC
+# 在完成前靜默取消,導致 usage_logs 漏寫(帳對不起來)。完成後自動移除。
+_usage_log_tasks: set[asyncio.Task[None]] = set()
 
 
 def _rewrite_request(
@@ -326,9 +331,13 @@ def schedule_usage_log(
                 await session.rollback()
 
     try:
-        asyncio.create_task(_task())
+        task = asyncio.create_task(_task())
     except RuntimeError:
         logger.warning("schedule_usage_log 無 running loop,略過")
+        return
+    # 持強引用直到完成,避免 task 被 GC 中途取消而漏記帳。
+    _usage_log_tasks.add(task)
+    task.add_done_callback(_usage_log_tasks.discard)
 
 
 async def run_chat(
@@ -440,19 +449,14 @@ async def _run_chat_openrouter(
     model = payload["model"]
     model_uid = model_row.model_uid
 
-    tried: set[UUID] = set()
     last_err: Exception | None = None
     rate_limited_all = True  # 全部撞速率才回 rate_limited,否則回 openrouter_unavailable
     started = time.monotonic()
 
-    for _ in range(_MAX_RETRIES):
-        key_row = await pick_random_active(
-            db, department_uid=department_uid, exclude_uids=tried
-        )
-        if key_row is None:
-            break
-        tried.add(key_row.openrouter_key_uid)
-
+    # 迴圈外查一次 active key,記憶體內 shuffle 後依序取(最多 _MAX_RETRIES 把);
+    # 對齊 internal 路徑,避免 failover 每圈重查整張表。
+    keys = await OpenRouterKeyRepository(db).list_active_by_department(department_uid)
+    for key_row in random.sample(keys, len(keys))[:_MAX_RETRIES]:
         # rate limiter:不等待,撞速率即換下一把
         limiter = await get_limiter(key_row.openrouter_key_uid)
         try:
@@ -914,7 +918,6 @@ async def _stream_openrouter(
     model = payload["model"]
     model_uid = model_row.model_uid
 
-    tried: set[UUID] = set()
     last_err: Exception | None = None
     rate_limited_all = True
     started = time.monotonic()
@@ -939,13 +942,10 @@ async def _stream_openrouter(
         )
 
     # --- Phase 1:Key failover,直到成功連上(收到第一個 chunk)---
-    for _ in range(_MAX_RETRIES):
-        key_row = await pick_random_active(
-            db, department_uid=department_uid, exclude_uids=tried
-        )
-        if key_row is None:
-            break
-        tried.add(key_row.openrouter_key_uid)
+    # 迴圈外查一次 active key,記憶體內 shuffle 後依序取(最多 _MAX_RETRIES 把),
+    # 對齊 internal 路徑,避免每圈重查整張表。
+    keys = await OpenRouterKeyRepository(db).list_active_by_department(department_uid)
+    for key_row in random.sample(keys, len(keys))[:_MAX_RETRIES]:
 
         limiter = await get_limiter(key_row.openrouter_key_uid)
         try:
@@ -1041,8 +1041,19 @@ async def _stream_openrouter(
         logger.exception("OR 串流中途失敗")
         yield 'data: {"error":"openrouter_unavailable"}\n\n'
         yield "data: [DONE]\n\n"
+    except Exception as exc:  # noqa: BLE001
+        # 非 OpenRouterError(逾時 / 連線中斷等)同樣不靜默截斷,補送收尾,避免 SSE 客戶端 hang。
+        # CancelledError 屬 BaseException 不會落此分支;呼叫端斷線交由 finally 記帳後自然傳播。
+        last_err = exc
+        error_code = "stream_incomplete"
+        logger.exception("串流中途非預期失敗")
+        yield 'data: {"error":"stream_incomplete"}\n\n'
+        yield "data: [DONE]\n\n"
     finally:
-        await agen.aclose()
+        try:
+            await agen.aclose()
+        except Exception:  # noqa: BLE001 - 上游已壞時 aclose 可能拋例外,不可蓋掉下方記帳
+            logger.exception("串流 aclose 失敗")
         resp = _stream_state_to_resp(state)
         schedule_usage_log(
             department_uid=department_uid,

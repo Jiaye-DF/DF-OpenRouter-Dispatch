@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +10,8 @@ class Settings(BaseSettings):
     # --- App ---
     APP_ENV: str = "dev"
     APP_NAME: str = "backend"
+    # 部署版本標記,供 /api/v1/version 確認線上 build(滾動更新後驗證用)。
+    APP_VERSION: str = "1.10.0"
     LOG_LEVEL: str = "INFO"
 
     # --- Backend / Uvicorn ---
@@ -90,6 +93,20 @@ class Settings(BaseSettings):
     @property
     def is_prod(self) -> bool:
         return self.APP_ENV.lower() in ("prod", "production")
+
+    @model_validator(mode="after")
+    def _fail_fast_in_prod(self) -> "Settings":
+        """正式環境啟動把關:安全前提缺漏即 raise,避免靜默以最不安全狀態上線。"""
+        if not self.is_prod:
+            return self
+        errors: list[str] = []
+        if len(self.JWT_SECRET) < 32:
+            errors.append("JWT_SECRET 長度須 >= 32")
+        if not self.cors_origins_list:
+            errors.append("CORS_ORIGINS 不可為空(prod 不允許回退為任意來源)")
+        if errors:
+            raise ValueError("正式環境組態檢查失敗:" + "；".join(errors))
+        return self
 
     @property
     def sso_enabled(self) -> bool:

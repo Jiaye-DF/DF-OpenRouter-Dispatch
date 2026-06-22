@@ -1,7 +1,7 @@
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.openrouter_key import OpenRouterKey
@@ -42,10 +42,15 @@ class OpenRouterKeyRepository:
         return items, total
 
     async def list_active_by_department(self, department_uid: UUID) -> list[OpenRouterKey]:
+        # 跳過短期停用(disabled_until 未到期)的壞 key;到期或未設者照常納入。
         stmt = select(OpenRouterKey).where(
             OpenRouterKey.department_uid == department_uid,
             OpenRouterKey.is_active.is_(True),
             OpenRouterKey.is_deleted.is_(False),
+            or_(
+                OpenRouterKey.disabled_until.is_(None),
+                OpenRouterKey.disabled_until < func.now(),
+            ),
         )
         return list((await self.db.execute(stmt)).scalars().all())
 

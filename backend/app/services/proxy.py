@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
@@ -52,9 +52,43 @@ logger = get_logger(__name__)
 
 _MAX_RETRIES = 5
 
-# 持有 fire-and-forget 記帳 task 的強引用,避免 event loop 只持 weak ref 時被 GC
-# 在完成前靜默取消,導致 usage_logs 漏寫(帳對不起來)。完成後自動移除。
+# 持有 fire-and-forget 背景 task(記帳 / key cooldown)的強引用,避免 event loop 只持
+# weak ref 時被 GC 在完成前靜默取消。完成後自動移除。
 _usage_log_tasks: set[asyncio.Task[None]] = set()
+
+# 壞 key(401 失效 / 402 餘額不足)短期停用秒數;到期後 dispatch 自動再納入。
+_KEY_COOLDOWN_SECONDS = 600
+
+
+def schedule_key_cooldown(key_uid: UUID, *, seconds: int = _KEY_COOLDOWN_SECONDS) -> None:
+    """壞 key 後台寫入 disabled_until = now()+seconds(獨立 session,fire-and-forget)。
+
+    用 DB 時鐘(now())避免跨機時鐘不一致;失敗只記 log,不影響當前 dispatch。
+    """
+
+    async def _task() -> None:
+        async with SessionLocal() as session:
+            try:
+                await session.execute(
+                    text(
+                        "UPDATE openrouter_keys "
+                        "SET disabled_until = now() + make_interval(secs => :s) "
+                        "WHERE openrouter_key_uid = :uid"
+                    ),
+                    {"s": seconds, "uid": str(key_uid)},
+                )
+                await session.commit()
+            except Exception:
+                logger.exception("寫入 key cooldown 失敗 uid=%s", key_uid)
+                await session.rollback()
+
+    try:
+        task = asyncio.create_task(_task())
+    except RuntimeError:
+        logger.warning("schedule_key_cooldown 無 running loop,略過")
+        return
+    _usage_log_tasks.add(task)
+    task.add_done_callback(_usage_log_tasks.discard)
 
 
 def _rewrite_request(
@@ -488,6 +522,7 @@ async def _run_chat_openrouter(
             resp_body = await client.chat_completion(payload, api_key=raw_key)
         except OpenRouterAuthError as exc:
             last_err = exc
+            schedule_key_cooldown(key_row.openrouter_key_uid)  # 401 失效 → 短期停用
             logger.warning("OpenRouter 401;切換下一把 Key")
             continue
         except OpenRouterModelNotFoundError as exc:
@@ -537,6 +572,8 @@ async def _run_chat_openrouter(
             raise AppError("rate_limited", code=429) from exc
         except OpenRouterError as exc:
             last_err = exc
+            if exc.status == 402:
+                schedule_key_cooldown(key_row.openrouter_key_uid)  # 402 餘額不足 → 短期停用
             logger.exception("OpenRouter 其他錯誤;嘗試下一把")
             continue
 
@@ -982,6 +1019,7 @@ async def _stream_openrouter(
         except OpenRouterAuthError as exc:
             last_err = exc
             await candidate.aclose()
+            schedule_key_cooldown(key_row.openrouter_key_uid)  # 401 失效 → 短期停用
             logger.warning("OR 串流 401;切換下一把 Key")
             continue
         except OpenRouterModelNotFoundError as exc:
@@ -999,6 +1037,8 @@ async def _stream_openrouter(
         except OpenRouterError as exc:
             last_err = exc
             await candidate.aclose()
+            if exc.status == 402:
+                schedule_key_cooldown(key_row.openrouter_key_uid)  # 402 餘額不足 → 短期停用
             logger.exception("OR 串流其他錯誤;嘗試下一把")
             continue
 

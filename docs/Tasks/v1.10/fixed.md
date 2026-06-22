@@ -251,4 +251,30 @@ relay 階段只 `except OpenRouterError`。串流中途若發生非 OR 例外(ht
 
 - **AD-001**(SDK Key 明文存 DB,🟠):已簽核取捨,暫維持現狀。
 - **AD-005**(prompt / images 全文落地 `usage_logs`,🟡):暫維持現狀。
-- **AD-006 / M3 / 壞 key cooldown**:歸入未來 Redis 任務,本批不導入 Redis。
+- **AD-006 / M3**:暫不導入 Redis;維持單 worker 記憶體速率限制,水平擴展才上 Redis(見 fixed 末段「路線 A」與專案記憶)。
+
+---
+
+# Enhance: 壞 key 短期停用 cooldown(路線 A,Postgres 不用 Redis)
+
+> 對應 scan 報告「壞 key cooldown」面向。使用者 2026-06-22 選定「不導入 Redis」,改用 Postgres 欄位實作(跨 worker 天然一致、持久、到期自動恢復)。
+
+## 問題
+
+OpenRouter Key 撞 401(失效)/ 402(餘額不足)時,原本只在「當次請求」內 `continue` 換下一把,**跨請求沒有記憶**——下一個請求仍可能再隨機抽到同一把壞 key,反覆 401/402、反覆 failover,造成可預期延遲與無謂上游呼叫。
+
+## 修正(Postgres 欄位,非 Redis)
+
+1. [models/openrouter_key.py](backend/app/models/openrouter_key.py)：新增 `disabled_until timestamptz`(可空)。
+2. migration [0017_openrouter_keys_disabled_until.py](backend/alembic/versions/0017_openrouter_keys_disabled_until.py)：`ADD COLUMN disabled_until`。
+3. [repositories/openrouter_key.py](backend/app/repositories/openrouter_key.py)：`list_active_by_department` 加 `OR(disabled_until IS NULL, disabled_until < now())` → 派工跳過未到期的壞 key。
+4. [proxy.py](backend/app/services/proxy.py)：新增 `schedule_key_cooldown()`(獨立 session、fire-and-forget、`now()+make_interval` 用 DB 時鐘),在非串流與串流兩條 OR 路徑的 **401**(`OpenRouterAuthError`)與 **402**(`OpenRouterError.status==402`)時呼叫,設 `disabled_until = now()+600s`。
+
+## 為什麼用 Postgres 不用 Redis
+
+cooldown 的「跳過名單」要跨 worker / 跨請求一致,但**寫入頻率低**(只有壞 key 才寫)、**讀取本就在查 keys 表**——用既有 Postgres 一個欄位即可,跨 worker 天然一致且持久(重啟不丟),比 Redis 更合適。RPM 那種高頻計數才需要 Redis(暫不做)。
+
+## 影響範圍
+
+- 行為:壞 key 被自動跳過 10 分鐘,到期自動再納入,無需人工。寫入走背景 task(與記帳同一強引用 set),不影響當次 dispatch 延遲。
+- 風險:低。`disabled_until` 可空、預設不停用,既有資料與 admin 後台列表查詢(未過濾 cooldown)不受影響;sync 流程仍涵蓋全部 key。

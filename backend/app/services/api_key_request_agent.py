@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass
 
 from app.clients.openrouter.client import OpenRouterClient
@@ -57,7 +58,15 @@ def _parse_content(content: str) -> tuple[int, str]:
         # 去除 ```json ... ``` 圍欄
         text = text.removeprefix("```json").removeprefix("```").strip()
         text = text.removesuffix("```").strip()
-    data = json.loads(text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        # 模型可能在 JSON 前後夾帶說明文字(Anthropic 經 OpenRouter 不嚴格保證
+        # json_object),撈出第一個 {...} 區段再 parse;撈不到才讓例外往上拋。
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match is None:
+            raise
+        data = json.loads(match.group(0))
     confidence = int(data["confidence"])
     confidence = max(0, min(100, confidence))
     reason = str(data.get("reason", ""))
@@ -91,12 +100,26 @@ async def validate_fields(
             payload, api_key=settings.DEFAULT_OPENROUTER_KEY
         )
         content = resp["choices"][0]["message"]["content"]
-        confidence, reason = _parse_content(content)
-        return AgentDecision(confidence=confidence, reason=reason)
     except Exception:  # noqa: BLE001
         # 完整例外(含上游供應商 / 狀態碼 / 原始 JSON)只進系統日誌,
         # 對外一律收斂為通用訊息,避免暴露內部 API 設計。
-        logger.exception("API Key 申請 AI 欄位驗證失敗")
+        logger.exception("API Key 申請 AI 欄位驗證失敗:OpenRouter 呼叫失敗")
         return AgentDecision(
             confidence=0, reason="", error="AI 欄位驗證暫時無法使用,已改由人工審核"
         )
+
+    # 記錄 AI 原始輸出供除錯(模型是否照格式吐 JSON / 信心理由)。
+    logger.info("API Key 申請 AI 欄位驗證原始回覆: %r", content)
+
+    try:
+        confidence, reason = _parse_content(content)
+    except Exception:  # noqa: BLE001
+        # 解析失敗(模型未照 JSON 格式)→ 連同原始內容記錄,對外仍收斂為通用訊息。
+        logger.exception(
+            "API Key 申請 AI 欄位驗證失敗:回覆非預期格式,原始內容=%r", content
+        )
+        return AgentDecision(
+            confidence=0, reason="", error="AI 欄位驗證暫時無法使用,已改由人工審核"
+        )
+
+    return AgentDecision(confidence=confidence, reason=reason)

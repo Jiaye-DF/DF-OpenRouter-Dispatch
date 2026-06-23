@@ -214,7 +214,7 @@ DB 欄位 DEFAULT 為 `pending`,但 v1.9.1 狀態機無此值(`manual_pending` �
 ### 修正
 
 - [models/api_key_request.py](backend/app/models/api_key_request.py)：`server_default="pending"` → `"manual_pending"`。
-- 新增 migration [0016_api_key_request_status_default.py](backend/alembic/versions/0016_api_key_request_status_default.py)：`ALTER COLUMN status SET DEFAULT 'manual_pending'`(僅變更 DEFAULT,不動既有資料)。
+- 新增 migration [0016_apireq_status_default.py](backend/alembic/versions/0016_apireq_status_default.py)：`ALTER COLUMN status SET DEFAULT 'manual_pending'`(僅變更 DEFAULT,不動既有資料)。
 
 ---
 
@@ -266,7 +266,7 @@ OpenRouter Key 撞 401(失效)/ 402(餘額不足)時,原本只在「當次請求
 ## 修正(Postgres 欄位,非 Redis)
 
 1. [models/openrouter_key.py](backend/app/models/openrouter_key.py)：新增 `disabled_until timestamptz`(可空)。
-2. migration [0017_openrouter_keys_disabled_until.py](backend/alembic/versions/0017_openrouter_keys_disabled_until.py)：`ADD COLUMN disabled_until`。
+2. migration [0017_orkey_disabled_until.py](backend/alembic/versions/0017_orkey_disabled_until.py)：`ADD COLUMN disabled_until`。
 3. [repositories/openrouter_key.py](backend/app/repositories/openrouter_key.py)：`list_active_by_department` 加 `OR(disabled_until IS NULL, disabled_until < now())` → 派工跳過未到期的壞 key。
 4. [proxy.py](backend/app/services/proxy.py)：新增 `schedule_key_cooldown()`(獨立 session、fire-and-forget、`now()+make_interval` 用 DB 時鐘),在非串流與串流兩條 OR 路徑的 **401**(`OpenRouterAuthError`)與 **402**(`OpenRouterError.status==402`)時呼叫,設 `disabled_until = now()+600s`。
 

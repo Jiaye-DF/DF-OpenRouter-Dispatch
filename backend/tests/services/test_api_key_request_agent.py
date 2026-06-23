@@ -79,6 +79,19 @@ async def test_json_with_code_fence_is_parsed(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_json_with_surrounding_prose_is_parsed(monkeypatch):
+    """模型在 JSON 前後夾帶說明文字時,仍應撈出 {...} 區段解析。"""
+    _patch_settings(monkeypatch)
+    client = _FakeClient(
+        content='好的,我的判斷如下:\n{"confidence": 88, "reason": "合理"}\n以上。'
+    )
+    res = await agent.validate_fields(client, _req(), _dept())
+    assert res.confidence == 88
+    assert res.reason == "合理"
+    assert res.error is None
+
+
+@pytest.mark.asyncio
 async def test_confidence_is_clamped(monkeypatch):
     _patch_settings(monkeypatch)
     client = _FakeClient(content='{"confidence": 150, "reason": "超界"}')

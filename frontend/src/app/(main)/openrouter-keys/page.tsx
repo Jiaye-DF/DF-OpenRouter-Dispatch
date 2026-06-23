@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/EmptyState";
+import { Combobox } from "@/components/ui/Combobox";
 import { PageHint } from "@/components/common/PageHint";
 import { useDialog } from "@/lib/dialog";
 import { useConfirm } from "@/components/common/ConfirmDialog";
@@ -55,6 +56,9 @@ export default function OpenRouterKeysPage() {
   const [saving, setSaving] = React.useState(false);
 
   const [lastCreated, setLastCreated] = React.useState<string | null>(null);
+
+  // 查詢:依部門過濾當前頁(純前端,不動後端)
+  const [deptFilter, setDeptFilter] = React.useState("");
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -207,6 +211,17 @@ export default function OpenRouterKeysPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / size));
 
+  // 查詢用選項(僅列出當前頁 Key 實際使用到的部門)與過濾結果
+  const deptOptions = [
+    { value: "", label: "全部部門" },
+    ...depts
+      .filter((d) => items.some((k) => k.department_uid === d.department_uid))
+      .map((d) => ({ value: d.department_uid, label: d.name })),
+  ];
+  const visibleItems = deptFilter
+    ? items.filter((k) => k.department_uid === deptFilter)
+    : items;
+
   return (
     <>
       <PageTitle
@@ -224,7 +239,20 @@ export default function OpenRouterKeysPage() {
         餘額由「模型管理 · 同步」自動更新。
       </PageHint>
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 flex flex-col gap-4">
+          {/* 查詢:依部門過濾 */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="shrink-0 text-sm text-muted-foreground">查詢部門：</span>
+            <Combobox
+              options={deptOptions}
+              value={deptFilter}
+              onChange={setDeptFilter}
+              placeholder="全部部門"
+              searchPlaceholder="輸入部門名稱搜尋..."
+              className="w-full sm:w-72"
+            />
+          </div>
+
           {loading ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -233,6 +261,8 @@ export default function OpenRouterKeysPage() {
             </div>
           ) : items.length === 0 ? (
             <EmptyState title="尚無 OpenRouter Key" />
+          ) : visibleItems.length === 0 ? (
+            <EmptyState title="查無符合的 Key" description="調整查詢條件或選「全部部門」" />
           ) : (
             <Table>
               <THead>
@@ -247,7 +277,7 @@ export default function OpenRouterKeysPage() {
                 </TR>
               </THead>
               <TBody>
-                {items.map((k) => (
+                {visibleItems.map((k) => (
                   <TR key={k.openrouter_key_uid}>
                     <TD>
                       <div className="flex gap-1">

@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/EmptyState";
+import { Combobox } from "@/components/ui/Combobox";
 import { useDialog } from "@/lib/dialog";
 import { useToast } from "@/components/ui/toaster";
 import { useConfirm } from "@/components/common/ConfirmDialog";
@@ -77,6 +78,9 @@ export default function DepartmentsPage() {
   // sub-section「+ 新增 SDK Key」inline input(依 dept_uid 保存名稱草稿)
   const [newKeyDraft, setNewKeyDraft] = React.useState<Record<string, string>>({});
   const [addingKeyDeptUid, setAddingKeyDeptUid] = React.useState<string | null>(null);
+
+  // 查詢:依部門過濾當前頁(純前端,不動後端)
+  const [deptFilter, setDeptFilter] = React.useState("");
 
   const size = 20;
 
@@ -324,6 +328,18 @@ export default function DepartmentsPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / size));
 
+  // 查詢用選項與過濾結果(以當前頁載入的部門為基礎)
+  const deptOptions = React.useMemo(
+    () => [
+      { value: "", label: "全部部門" },
+      ...items.map((d) => ({ value: d.department_uid, label: `${d.name}(${d.code})` })),
+    ],
+    [items]
+  );
+  const visibleItems = deptFilter
+    ? items.filter((d) => d.department_uid === deptFilter)
+    : items;
+
   return (
     <>
       <PageTitle
@@ -339,7 +355,20 @@ export default function DepartmentsPage() {
         }
       />
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 flex flex-col gap-4">
+          {/* 查詢:依部門過濾 */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="shrink-0 text-sm text-muted-foreground">查詢部門：</span>
+            <Combobox
+              options={deptOptions}
+              value={deptFilter}
+              onChange={setDeptFilter}
+              placeholder="全部部門"
+              searchPlaceholder="輸入名稱或代碼搜尋..."
+              className="w-full sm:w-72"
+            />
+          </div>
+
           {loading ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -353,6 +382,8 @@ export default function DepartmentsPage() {
                 isAdmin ? "按右上角「新增部門」開始建立" : "請聯絡管理員建立"
               }
             />
+          ) : visibleItems.length === 0 ? (
+            <EmptyState title="查無符合的部門" description="調整查詢條件或選「全部部門」" />
           ) : (
             <Table>
               <THead>
@@ -367,7 +398,7 @@ export default function DepartmentsPage() {
                 </TR>
               </THead>
               <TBody>
-                {items.map((d) => {
+                {visibleItems.map((d) => {
                   const keys = keysByDept[d.department_uid] ?? [];
                   const isOpen = expanded.has(d.department_uid);
                   return (

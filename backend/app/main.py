@@ -45,7 +45,9 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins_list or ["*"],
+        # 不回退 ["*"]:CORS_ORIGINS 未設即不開放跨域。搭配 allow_credentials=True,
+        # 萬用字元會構成「任意來源帶 cookie」風險;prod 漏設於啟動時 fail-fast(見 config)。
+        allow_origins=settings.cors_origins_list,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

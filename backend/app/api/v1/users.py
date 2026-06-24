@@ -1,6 +1,5 @@
 import asyncio
 import secrets
-from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Query
@@ -12,9 +11,7 @@ from app.core.exceptions import AppError
 from app.core.response import success_response
 from app.core.security import hash_password
 from app.models.user import User
-from app.models.user_token_revocation import UserTokenRevocation
 from app.repositories.user import UserRepository
-from app.repositories.user_token_revocation import UserTokenRevocationRepository
 from app.schemas.common import Page
 from app.schemas.user import (
     UserCreateRequest,
@@ -25,6 +22,7 @@ from app.schemas.user import (
     UserUpdateRequest,
 )
 from app.services import auth as auth_service
+from app.services import user_token as user_token_service
 
 
 def _gen_internal_account() -> str:
@@ -167,6 +165,7 @@ async def update_user(
         raise AppError("not_found", code=404)
     # 修改任一寫入 User Token payload 的欄位(employee_id/email)、影響 token 驗證的 department_uid,
     # 或顯示用 username,皆自動撤銷該使用者既有 User Token,避免下發資料與當前實際身分不一致。
+    # 撤銷走 service(同時處理浮水印表與 user_tokens 表);新 token 待下次發放時依新身分產生。
     snapshot = (user.username, user.employee_id, user.email, user.department_uid)
     fields = body.model_dump(exclude_unset=True)
     for k, v in fields.items():
@@ -177,18 +176,9 @@ async def update_user(
         snapshot
         != (user.username, user.employee_id, user.email, user.department_uid)
     ):
-        now = datetime.now(tz=UTC)
-        rev_repo = UserTokenRevocationRepository(db)
-        rev_repo.add(
-            UserTokenRevocation(
-                user_tokens_revocation_uid=UUID(str(uuid7())),
-                user_uid=user.user_uid,
-                revoked_issued_at=now,
-                revoked_at=now,
-                reason="user_profile_changed",
-            )
+        await user_token_service.revoke_tokens(
+            db, user_uid=user.user_uid, reason="user_profile_changed"
         )
-        await db.flush()
         tokens_revoked = True
     await write_audit(
         db,

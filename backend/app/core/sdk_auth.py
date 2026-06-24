@@ -32,6 +32,7 @@ async def resolve_sdk_caller(
     from app.repositories.project import ProjectRepository
     from app.repositories.sdk_api_key import SdkApiKeyRepository
     from app.repositories.user import UserRepository
+    from app.repositories.user_token import UserTokenRepository
     from app.repositories.user_token_revocation import UserTokenRevocationRepository
 
     # --- 1. SDK Key ---
@@ -87,10 +88,19 @@ async def resolve_sdk_caller(
     if user.department_uid != token_dept_uid:
         raise _UNAUTHORIZED
 
-    rev_repo = UserTokenRevocationRepository(db)
-    latest_rev = await rev_repo.latest_for_user(user_uid)
-    if latest_rev is not None and issued_at < latest_rev.revoked_issued_at:
-        raise _UNAUTHORIZED
+    # token 撤銷判定 — 雙路徑:
+    # 新表掃描得到(已落地 token)→ 以本表 revoked_at 判定;
+    # 找不到(已發出、未落地的舊 token)→ 回退舊浮水印方法,避免既有 token 無故 401。
+    token_repo = UserTokenRepository(db)
+    stored = await token_repo.get_by_user_and_token(user_uid, user_token_raw)
+    if stored is not None:
+        if stored.revoked_at is not None:
+            raise _UNAUTHORIZED
+    else:
+        rev_repo = UserTokenRevocationRepository(db)
+        latest_rev = await rev_repo.latest_for_user(user_uid)
+        if latest_rev is not None and issued_at < latest_rev.revoked_issued_at:
+            raise _UNAUTHORIZED
 
     # --- 5. X-Project-Code 必須屬於 SDK Key 的部門且仍啟用 ---
     project_repo = ProjectRepository(db)

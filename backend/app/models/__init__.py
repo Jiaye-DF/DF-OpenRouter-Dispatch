@@ -12,6 +12,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.sdk_api_key import SdkApiKey
 from app.models.usage_log import UsageLog
 from app.models.user import User
+from app.models.user_token import UserToken
 from app.models.user_token_revocation import UserTokenRevocation
 
 __all__ = [
@@ -29,5 +30,6 @@ __all__ = [
     "SdkApiKey",
     "UsageLog",
     "User",
+    "UserToken",
     "UserTokenRevocation",
 ]

@@ -19,7 +19,7 @@ from app.repositories.project import ProjectRepository
 from app.repositories.sdk_api_key import SdkApiKeyRepository
 from app.repositories.user import UserRepository
 from app.services.sdk_key import create_sdk_key, reveal_sdk_key
-from app.services.user_token import generate_token, revoke_tokens
+from app.services.user_token import get_or_create_token
 
 if TYPE_CHECKING:
     from app.services.api_key_request_router import RouteResult
@@ -119,12 +119,9 @@ async def provision(
                 target_uid=sdk.sdk_api_key_uid,
             )
 
-        # 5) User Token:沿用既有使用者時先撤舊,再重發
-        if route.matched_user is not None:
-            await revoke_tokens(
-                db, user_uid=user.user_uid, reason="api_key_request_reissue"
-            )
-        token, _issued_at = await generate_token(db, user_uid=user.user_uid)
+        # 5) User Token:一人一把,固定不變;已存在則沿用同一把,不撤銷不重發
+        #    (使同一使用者跨多專案/重複申請拿到的都是同一把,避免舊 token 被作廢)
+        token, _issued_at = await get_or_create_token(db, user_uid=user.user_uid)
 
         # 6) 一次性憑證
         provisioned_secrets = {

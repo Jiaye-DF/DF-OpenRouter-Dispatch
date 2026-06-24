@@ -11,14 +11,15 @@ from app.services import user_token as user_token_service
 router = APIRouter(prefix="/users", tags=["user-tokens"])
 
 
-@router.post("/{user_uid}/tokens", summary="產生 User Token（一次性顯示，admin）")
+@router.post("/{user_uid}/tokens", summary="取得 User Token（一人一把、固定不變，admin）")
 async def generate_user_token(
     user_uid: UUID,
     admin: AdminDep,
     db: DbDep,
     ip: ClientIpDep,
 ):
-    token, issued_at = await user_token_service.generate_token(db, user_uid=user_uid)
+    # 冪等:已存在則回傳同一把;無有效 token 才產生並落地。不再每次重發。
+    token, issued_at = await user_token_service.get_or_create_token(db, user_uid=user_uid)
     await write_audit(
         db,
         actor_user_uid=admin.user_uid,

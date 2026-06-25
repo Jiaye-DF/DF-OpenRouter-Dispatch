@@ -172,7 +172,7 @@ volumes:
 
 - 敏感資訊（`JWT_SECRET`、`ENCRYPTION_KEY`、`INITIAL_ADMIN_PASSWORD`、`POSTGRES_PASSWORD`）一律於 Coolify 後台填寫。OpenRouter 原生 API Key **不**以環境變數注入，改由 admin 於後台建立部門層級 Key（AES-256-GCM 加密存 DB）。
 - `SERVICE_URL_*` 變數無需手動填值，Coolify 於部署時自動注入對應公開網址。
-- 環境變數新增流程詳見 [60-naming-env.md](./60-naming-env.md)。
+- 環境變數新增流程詳見 [60-naming-env.md](../00-overview/91-project-naming-env.md)。
 
 ## 6. 部署流程
 

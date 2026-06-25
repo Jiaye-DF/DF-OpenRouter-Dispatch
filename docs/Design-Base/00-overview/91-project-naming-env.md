@@ -96,3 +96,5 @@ NEXT_PUBLIC_API_BASE_URL=
 | `/merge-main` | 合併當前分支至 `main` |
 | `/scan-project` | 掃描專案結構並分析潛在問題 |
 | `/dev-up` | 一鍵啟動本機開發環境 |
+| `/propose-to-tasks` | 從 propose 拆出 multi-agent 可並行 tasks(原 HE prompts) |
+| `/reflect-rules` | 讀全版本 `fixed.md` 找 pattern → 候選升規(原 HE prompts) |

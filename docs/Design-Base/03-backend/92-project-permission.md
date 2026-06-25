@@ -8,7 +8,7 @@
 
 | 主體 | 認證方式 | 使用端點 | 典型情境 |
 | --- | --- | --- | --- |
-| 管理使用者（User） | 平台自簽 JWT Cookie（本地登入，見 [70-auth.md](./70-auth.md)） | `/api/v1/*`（管理 API） | Web 管理介面操作 |
+| 管理使用者（User） | 平台自簽 JWT Cookie（本地登入，見 [70-auth.md](../03-backend/91-project-auth.md)） | `/api/v1/*`（管理 API） | Web 管理介面操作 |
 | SDK 呼叫端（Proxy Caller） | `X-SDK-Key`（部門識別，argon2 hash 比對）+ `X-User-Token`（AES-256-GCM 加密使用者身分）**雙因子** | `/api/v1/model/openrouter/*`（代理端點） | 使用者應用 / SDK 呼叫模型 |
 
 - 管理 API 與代理 API **禁止**共用認證；代理端點**禁止**接受 Cookie，管理端點**禁止**接受 `X-SDK-Key` / `X-User-Token`。
@@ -223,7 +223,7 @@ ip               # 來源 IP
 created_at
 ```
 
-代理端呼叫的業務紀錄寫入 `usage_logs`（詳見 [50-openrouter.md § 10](./50-openrouter.md#10-用量紀錄usage-log)），**不**重複寫入稽核表，但兩者**應**可透過 `user_uid` + 時間範圍交叉查詢。
+代理端呼叫的業務紀錄寫入 `usage_logs`（詳見 [50-openrouter.md § 10](../90-third-party-service/50-openrouter.md#10-用量紀錄usage-log)），**不**重複寫入稽核表，但兩者**應**可透過 `user_uid` + 時間範圍交叉查詢。
 
 ## 10. 禁止事項
 

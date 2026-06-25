@@ -126,7 +126,7 @@ def upgrade() -> None:
 | 10 | worker id | 0–1023 |
 | 12 | 同一毫秒內的 sequence | 0–4095 |
 
-- **自訂 epoch**:`2026-01-01T00:00:00Z`(寫死於 [`backend/app/core/snowflake.py`](../../backend/app/core/snowflake.py))。
+- **自訂 epoch**:`2026-01-01T00:00:00Z`(寫死於 [`backend/app/core/snowflake.py`](../../../backend/app/core/snowflake.py))。
 - **輸出**:`generate_id_str()` 回傳十進位字串(最長 19 字),寫入欄位型別 `VARCHAR(64)` 即可。
 - **worker id**:由環境變數 `SNOWFLAKE_WORKER_ID` 注入(0–1023),預設為 `1`。
 

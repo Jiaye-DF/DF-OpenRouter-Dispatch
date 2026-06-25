@@ -113,7 +113,7 @@ SDK
 - 舊路徑 `POST /api/v1/model/openrouter/chat` 保留為 **deprecated alias**（內部 forward 到同 handler;Swagger 標 `deprecated: true`),**至少保留至 v1.4**。
 - Request 採**平台簡化 schema**（`{ model, text, images }`,v1.6.1 起可選帶 `tools`),由後端改寫為各 provider 的 chat/completions 格式;目前 OpenRouter 與 Internal 都是 OpenAI-compatible,改寫邏輯一致。
 - 本版本**不**做 OpenAI passthrough;唯一例外是 `tools`(v1.6.1)受控放行,原樣透傳給下游以啟用 OpenRouter server 端內建工具(如 web search);會回 `tool_calls` 的 function calling 尚未開放。後續版本若需擴充新 action,於同 `/model/` 命名空間下新增。
-- 非代理端點（管理 UI 用）使用 `/api/v1/<resource>`,遵循 [20-backend.md § 3](./20-backend.md#3-路由與-api-命名)。
+- 非代理端點（管理 UI 用）使用 `/api/v1/<resource>`,遵循 [20-backend.md § 3](../03-backend/90-project-backend.md#3-路由與-api-命名)。
 
 ## 6. 請求改寫與欄位過濾
 
@@ -242,7 +242,7 @@ OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`）�
 - **餘額同步(best-effort)**:對每把 `is_active=TRUE` Key 以該 Key 自身呼叫 `GET /auth/key`,回填 `credits_used_usd` / `credits_limit_usd` / `credits_is_free_tier` / `credits_synced_at`;個別 Key 失敗**不**整批 rollback,僅累計 `credits_failed` 計數於 response。
 - **稽核**:寫入 `action="sync_models_and_credits"`,`detail` 包含 added / updated / deactivated / credits_synced / credits_failed。
 
-詳細流程、錯誤對照與 SQL 細節參見 [../Tasks/v1.1/propose-v1.1.0.md § 6](../Tasks/v1.1/propose-v1.1.0.md)。
+詳細流程、錯誤對照與 SQL 細節參見 [../Tasks/v1.1/propose-v1.1.0.md § 6](../../Tasks/v1.1/propose-v1.1.0.md)。
 
 ## 14. 速率限制(v1.2)
 
@@ -258,7 +258,7 @@ OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`）�
 - **OpenRouter**:per-Key 計數;撞限額**換下一把 active Key**(failover,不 sleep);全撞牆 → 429 `rate_limited`。
 - **Internal**:per-Provider 全域計數;撞限額**等待**至下一個 slot;等待超過 `INTERNAL_LLM_RATE_WAIT_TIMEOUT` → 429 `internal_busy`(回 `data.retry_after_seconds`)。
 
-實作位置:[`backend/app/services/rate_limit.py`](../../backend/app/services/rate_limit.py);詳細演算法見 [../Tasks/v1.2/propose-v1.2.0.md § 6](../Tasks/v1.2/propose-v1.2.0.md)。
+實作位置:[`backend/app/services/rate_limit.py`](../../../backend/app/services/rate_limit.py);詳細演算法見 [../Tasks/v1.2/propose-v1.2.0.md § 6](../../Tasks/v1.2/propose-v1.2.0.md)。
 
 ## 15. 內部 Provider(v1.2)
 

@@ -1,6 +1,9 @@
-# 00 · 專案總覽與規範索引
+# 90 · 專案總覽(DF-OpenRouter-Dispatch)
 
-本文件是 Design-Base 的入口，定義專案目標、技術棧、Monorepo 結構、規範索引與優先順序。所有 AI 協作與 Task 產出前，應先閱讀本檔，再依需求切入其他章節。
+> **本檔為本專案特有的「專案總覽」**(原扁平 `docs/Design-Base/00-overview.md`,2026-06-25 遷入 HE 巢狀結構)。
+> **規範優先序、輸出語言、版本鎖定、按需載入**以 HE 通用層為準:`00-overview/00-overview.md`、`01-versions.md`、`docs/Design-Base/README.md`。本檔只保留**專案目標 / 技術棧 / Monorepo / 服務組成 / 資料流**等專案事實。
+
+本文件定義專案目標、技術棧、Monorepo 結構與服務組成。任何 Task 產出前,先讀 HE 入口(`00-overview/00-overview.md` + `docs/Design-Base/README.md` 的「任務→檔案」對照表),再依需求切入。
 
 ## 目標
 
@@ -112,18 +115,21 @@ DF-OpenRouter-Dispatch/
 
 ## 規範索引
 
-| 文件 | 涵蓋範圍 |
-| --- | --- |
-| [00-overview.md](./00-overview.md) | 本檔：目標、技術棧、Monorepo、規範索引、優先順序 |
-| [10-frontend.md](./10-frontend.md) | 前端基本設計（技術棧細節、Layout、Dialog、Loading/Empty、a11y） |
-| [20-backend.md](./20-backend.md) | 後端基本設計（Response 格式、錯誤訊息、分層、路由命名、Logging、CORS、測試） |
-| [30-database.md](./30-database.md) | 資料表規範（pid / UID、軟刪除、Migration、Trigger） |
-| [40-deployment.md](./40-deployment.md) | Docker Compose 部署規範（檔名、SERVICE_URL、變數注入） |
-| [50-openrouter.md](./50-openrouter.md) | OpenRouter 整合（Client、代理流程、串流、重試、用量） |
-| [60-naming-env.md](./60-naming-env.md) | 命名慣例、環境變數、Git 流程 |
-| [70-auth.md](./70-auth.md) | 認證設計（本地登入、JWT、失效清單、密碼規則） |
-| [80-permission.md](./80-permission.md) | 權限設計（管理端 / 代理端分離、角色、配額、稽核） |
-| [90-task-spec.md](./90-task-spec.md) | Task 產出規範（描述格式、對齊章節、DoD、前置檢查） |
+> 完整「任務 → 必讀檔」對照見 [`docs/Design-Base/README.md`](../README.md)。下表為**舊扁平檔 → 新巢狀位置**對照(舊扁平檔已移除,內容見新位置)。
+
+| 舊扁平檔(已移除) | 新位置(本專案內容) | HE 通用對應 |
+| --- | --- | --- |
+| `00-overview.md` | `00-overview/90-project-overview.md`(本檔) | `00-overview/00-overview.md` |
+| `10-frontend.md` | `02-frontend/90-project-frontend.md` | `02-frontend/00-overview.md` |
+| `11-ui-ux.md` | `02-frontend/91-project-ui-ux.md` | `02-frontend/05-components.md` |
+| `20-backend.md` | `03-backend/90-project-backend.md` | `03-backend/00-overview.md` |
+| `30-database.md` | `04-databases/90-project-database.md` | `04-databases/*` |
+| `40-deployment.md` | `06-Coolify-CD/90-project-deployment.md` | `06-Coolify-CD/*` |
+| `50-openrouter.md` | `90-third-party-service/50-openrouter.md` | `90-third-party-service/01-client-design.md` |
+| `60-naming-env.md` | `00-overview/91-project-naming-env.md` | `00-overview/02-secrets.md` / `03-env-layers.md` |
+| `70-auth.md` | `03-backend/91-project-auth.md` | `03-backend/02-auth.md` |
+| `80-permission.md` | `03-backend/92-project-permission.md` | (HE 無;本專案特有) |
+| `90-task-spec.md` | `01-propose/90-project-task-spec.md` | `01-propose/*` |
 
 ## 關鍵字語義
 
@@ -135,8 +141,12 @@ DF-OpenRouter-Dispatch/
 | **應** | 強烈建議，除非有正當理由 |
 | **可** | 允許的做法，不強制 |
 
-## 規範優先順序
+## 規範優先順序(已對齊 HE)
 
-衝突時以下列順序決定：
-
-**`docs/Tasks/v<major>.<minor>/{propose,tasks}-v<major>.<minor>.<patch>.md`（版本功能設計)** > **`docs/Design-Base/*`（基礎設計）** > **[CLAUDE.md](../../CLAUDE.md)（AI 協作規範）** > 其他。
+> **2026-06-25 起改採 HE 序**(原「Tasks 最高」已廢止):
+>
+> ```
+> docs/Design-Base/* > docs/Arch/* > AGENTS.md / CLAUDE.md > docs/Tasks/*
+> ```
+>
+> 基礎規範(Design-Base)為**不可違反的地板**,版本 `propose/tasks` **不可**凌駕;要改規則**先改 Design-Base 再開 Task**。完整說明見 `00-overview/00-overview.md`。

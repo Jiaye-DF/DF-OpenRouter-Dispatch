@@ -4,7 +4,7 @@
 
 > **本平台為 admin 後台管理系統**，**禁止**任何自助流程（註冊 / 忘記密碼 / Email 驗證）。所有帳號生命週期由 admin 於後台操作。
 
-> 代理端（`/api/v1/model/openrouter/*`）**不**套用本文件，改以 **SDK Key + 加密 User Token** 雙因子認證，詳見 [50-openrouter.md § 3](./50-openrouter.md#3-本地認證sdk-key--user-token-雙因子) 與 [80-permission.md § 1](./80-permission.md#1-主體類型)。
+> 代理端（`/api/v1/model/openrouter/*`）**不**套用本文件，改以 **SDK Key + 加密 User Token** 雙因子認證，詳見 [50-openrouter.md § 3](../90-third-party-service/50-openrouter.md#3-本地認證sdk-key--user-token-雙因子) 與 [80-permission.md § 1](../03-backend/92-project-permission.md#1-主體類型)。
 
 > **v1.3 起**：管理端登入新增 **DF-SSO** 入口（見 [§ 18](#18-df-sso-登入整合v13)）作為主要登入方式；§ 5–§ 16 的帳號密碼登入仍**並存保留**，登入頁同時提供「透過 DF-SSO 登入」按鈕與帳密表單。
 
@@ -30,7 +30,7 @@
 
 ## 3. 環境變數
 
-於 `.env.example` 登記（對齊 [60-naming-env.md § 2.1](./60-naming-env.md#21-本專案環境變數分區)）：
+於 `.env.example` 登記（對齊 [60-naming-env.md § 2.1](../00-overview/91-project-naming-env.md#21-本專案環境變數分區)）：
 
 ```dotenv
 # --- Auth / Security ---
@@ -56,14 +56,14 @@ INITIAL_ADMIN_PASSWORD=
 
 ### 4.1 `users`
 
-對齊 [30-database.md § 1](./30-database.md#1-必備欄位)：
+對齊 [30-database.md § 1](../04-databases/90-project-database.md#1-必備欄位)：
 
 | 欄位 | 型別 | 說明 |
 | --- | --- | --- |
 | `account` | `VARCHAR(64) NOT NULL` | 登入帳號，唯一 |
 | `username` | `VARCHAR(128) NOT NULL` | 顯示名稱，可重複 |
 | `password_hash` | `VARCHAR(255) NOT NULL` | argon2id / bcrypt |
-| `role` | `VARCHAR(16) NOT NULL` | `'admin'` \| `'user'`（見 [80-permission.md § 2](./80-permission.md#2-角色定義)） |
+| `role` | `VARCHAR(16) NOT NULL` | `'admin'` \| `'user'`（見 [80-permission.md § 2](../03-backend/92-project-permission.md#2-角色定義)） |
 | `failed_login_count` | `INT NOT NULL DEFAULT 0` | 連續失敗次數 |
 | `locked_until` | `TIMESTAMPTZ` | 鎖定至該時間；`NULL` 代表未鎖 |
 | `password_changed_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | 密碼變更時間（下次更新時刷新） |
@@ -364,7 +364,7 @@ Request ─▶ Cookie: access_token=<JWT>
 - Refresh Token rotation 邏輯封裝於 `backend/app/services/auth/refresh.py`，**必須**包在 DB transaction。
 - `require_user` / `require_admin` Dependency 封裝於 `backend/app/core/deps.py`；受保護 router **必須**透過 Dependency 注入。
 - Token 明文（Access JWT、Refresh secret）與密碼明文**禁止**寫入 Log；如需記錄只保留前後 4 字元。
-- 所有涉及 `users` / `refresh_tokens` 的寫入流程**必須**在 Dependency / Service 層顯式 `await db.commit()`（對齊 [20-backend.md § 8](./20-backend.md#8-session-與-transaction-規範)）。
+- 所有涉及 `users` / `refresh_tokens` 的寫入流程**必須**在 Dependency / Service 層顯式 `await db.commit()`（對齊 [20-backend.md § 8](../03-backend/90-project-backend.md#8-session-與-transaction-規範)）。
 
 ## 18. DF-SSO 登入整合（v1.3）
 

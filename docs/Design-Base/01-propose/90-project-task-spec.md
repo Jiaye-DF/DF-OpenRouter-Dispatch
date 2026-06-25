@@ -1,4 +1,7 @@
-# 90 · Task 產出規範
+# 90 · Task 產出規範(DF-OpenRouter-Dispatch 特有)
+
+> **本檔為本專案特有的 Task 產出規範**(原扁平 `docs/Design-Base/90-task-spec.md`,2026-06-25 遷入)。通用版本工作流(propose / tasks / fixed / changelog / multi-agent)以 HE 的 `01-propose/00-overview.md` ～ `07-rule-evolution.md` 為準;本檔為其**專案專屬補充**(對齊章節、OpenRouter / 稽核 / UID 等本專案硬性檢核)。
+> **載入原則改採 HE Just-in-time Loading**:不再要求「讀全部 Design-Base」,改依 `docs/Design-Base/README.md` 的「任務→檔案」對照表按需載入。
 
 本文件規範 `docs/Tasks/v<major>.<minor>/{propose,tasks}-v<major>.<minor>.<patch>.md` 的撰寫格式、前置檢查與對齊 Design-Base 的強制流程。所有 AI 協作產出的 Task **必須**符合本規範。
 
@@ -26,8 +29,8 @@
 - 前置依賴:<列出前版本已完成的功能,或寫「無」>
 - 本版本範圍:<一句話摘要>
 - 對齊的 Design-Base 章節:
-  - [00-overview.md § 技術棧](../../Design-Base/00-overview.md#技術棧)
-  - [20-backend.md § 1 統一 Response 格式](../../Design-Base/20-backend.md#1-統一-response-格式)
+  - [00-overview.md § 技術棧](../../Design-Base/00-overview/90-project-overview.md#技術棧)
+  - [20-backend.md § 1 統一 Response 格式](../../Design-Base/03-backend/90-project-backend.md#1-統一-response-格式)
   - …
 - 母本 propose(若有):[`propose-v<major>.<minor>.<patch>.md`](./propose-v<major>.<minor>.<patch>.md)
 
@@ -53,20 +56,20 @@
 
 AI 在產出或修改 `docs/Tasks/v<major>.<minor>/tasks-v<major>.<minor>.<patch>.md` **之前必須**完成:
 
-1. **閱讀全部 Design-Base 檔案**：`00-overview.md` → `90-task-spec.md`。
+1. **按需載入 Design-Base**(HE Just-in-time Loading):依 `docs/Design-Base/README.md` 的「任務 → 必讀檔」對照表載入該任務情境的規範檔,**不必**全資料夾掃描;永遠載入 `00-overview/00-overview.md` + 涉及領域的 `0X/00-overview.md` 風格地板。
 2. **確認對齊章節**：在 Task 的「對齊的 Design-Base 章節」列出引用的具體章節錨點，**不得**只寫檔名。
 3. **檢查衝突**：Task 的設計**禁止**與 Design-Base 的任何規定衝突；若規範缺漏，**應**先補 Design-Base 再開 Task。
 4. **檢查 `.env.example`**：若 Task 涉及新環境變數，**必須**同步於 `.env.example` 加上 key。
 5. **檢查 Migration**：若 Task 涉及 DB Schema，**必須**同步產生 Alembic Migration 檔（`backend/alembic/versions/<revision>_<描述>.py`),透過 `alembic revision -m "<描述>"` 或 `alembic revision --autogenerate -m "<描述>"` 產生。
-6. **檢查 OpenRouter 整合**：若 Task 涉及代理、模型呼叫或金鑰流，**必須**對齊 [50-openrouter.md](./50-openrouter.md)。
+6. **檢查 OpenRouter 整合**：若 Task 涉及代理、模型呼叫或金鑰流，**必須**對齊 [50-openrouter.md](../90-third-party-service/50-openrouter.md)。
 
 ## 4. 產出內容規範
 
 ### 4.1 Response Schema
 
 - **必須**使用 Pydantic BaseModel 明確定義，**禁止**使用 `dict` 當 response type。
-- 欄位命名對照 [60-naming-env.md § 1](./60-naming-env.md#1-命名慣例)。
-- 資料表對外識別**必須**使用 `<table>_uid` (UUIDv7)，**禁止**暴露內部 `pid` 或外部系統 id 作為操作 key（詳見 [30-database.md](./30-database.md)）。
+- 欄位命名對照 [60-naming-env.md § 1](../00-overview/91-project-naming-env.md#1-命名慣例)。
+- 資料表對外識別**必須**使用 `<table>_uid` (UUIDv7)，**禁止**暴露內部 `pid` 或外部系統 id 作為操作 key（詳見 [30-database.md](../04-databases/90-project-database.md)）。
 
 ### 4.2 API 路徑
 
@@ -83,19 +86,19 @@ AI 在產出或修改 `docs/Tasks/v<major>.<minor>/tasks-v<major>.<minor>.<patch
 
 ### 4.4 錯誤處理
 
-- Task 設計**必須**附上「錯誤處理對照表」，列出主要錯誤情境與 HTTP status code，遵循 [20-backend.md § 2](./20-backend.md#2-錯誤訊息規範) 與 [50-openrouter.md § 9](./50-openrouter.md#9-錯誤對應)。
+- Task 設計**必須**附上「錯誤處理對照表」，列出主要錯誤情境與 HTTP status code，遵循 [20-backend.md § 2](../03-backend/90-project-backend.md#2-錯誤訊息規範) 與 [50-openrouter.md § 9](../90-third-party-service/50-openrouter.md#9-錯誤對應)。
 
 ### 4.5 用量與稽核
 
-- 代理端功能**必須**說明如何寫入 `usage_logs`（對齊 [50-openrouter.md § 10](./50-openrouter.md#10-用量紀錄usage-log)）。
-- 管理端異動操作**必須**說明如何寫入稽核 Log（對齊 [80-permission.md § 9](./80-permission.md#9-稽核-log)）。
+- 代理端功能**必須**說明如何寫入 `usage_logs`（對齊 [50-openrouter.md § 10](../90-third-party-service/50-openrouter.md#10-用量紀錄usage-log)）。
+- 管理端異動操作**必須**說明如何寫入稽核 Log（對齊 [80-permission.md § 9](../03-backend/92-project-permission.md#9-稽核-log)）。
 
 ## 5. 禁止事項
 
 Task 設計**禁止**：
 
 - 引入 Design-Base 未允許的技術棧或套件。
-- 繞過統一 Response 格式（`{ success, code, data, detail }`）；串流端點例外，但須以 [20-backend.md § 1](./20-backend.md#1-統一-response-格式) 的方式處理起始錯誤。
+- 繞過統一 Response 格式（`{ success, code, data, detail }`）；串流端點例外，但須以 [20-backend.md § 1](../03-backend/90-project-backend.md#1-統一-response-格式) 的方式處理起始錯誤。
 - 繞過 Table 設計必備欄位（`pid` / `<table>_uid` / `is_active` / `is_deleted` / `created_at` / `updated_at`）。
 - 在前端直接呼叫 OpenRouter API 或繞過後端代理。
 - 將外部系統的內部 id（例如 OpenRouter 回傳的 `id`）作為本地 PK 或對外 UID。

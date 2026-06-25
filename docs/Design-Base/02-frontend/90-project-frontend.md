@@ -1,6 +1,6 @@
 # 10 · 前端基本設計
 
-本文件定義前端（Next.js / React / Tailwind）不隨版本異動的基礎規範。技術棧版本詳見 [00-overview.md § 技術棧](./00-overview.md#技術棧)。
+本文件定義前端（Next.js / React / Tailwind）不隨版本異動的基礎規範。技術棧版本詳見 [00-overview.md § 技術棧](../00-overview/90-project-overview.md#技術棧)。
 
 ## 技術棧與套件
 
@@ -122,7 +122,7 @@ Header 與 NavBar 為**獨立兩列**，職責不同：
 
 ## 5. API 串接格式
 
-後端統一 Response 結構詳見 [20-backend.md § 1 統一 Response 格式](./20-backend.md#1-統一-response-格式)。前端型別定義：
+後端統一 Response 結構詳見 [20-backend.md § 1 統一 Response 格式](../03-backend/90-project-backend.md#1-統一-response-格式)。前端型別定義：
 
 ```ts
 interface ApiResponse<T = unknown> {
@@ -143,7 +143,7 @@ interface ApiResponse<T = unknown> {
   - HTTP 401 → 自動導向 `/login`
 - **禁止**在元件內直接 `fetch`；一律透過 `lib/api/*` 的函式。
 - 伺服器資料（列表、詳細）**應**使用 RTK Query，避免自行處理 loading / error。
-- **禁止**在前端直接呼叫 OpenRouter API，所有模型呼叫**必須**經由後端代理（見 [50-openrouter.md](./50-openrouter.md)）。
+- **禁止**在前端直接呼叫 OpenRouter API，所有模型呼叫**必須**經由後端代理（見 [50-openrouter.md](../90-third-party-service/50-openrouter.md)）。
 
 ## 6. Dialog 與訊息提示
 

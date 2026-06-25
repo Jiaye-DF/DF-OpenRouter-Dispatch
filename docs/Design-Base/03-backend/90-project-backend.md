@@ -1,6 +1,6 @@
 # 20 · 後端基本設計
 
-本文件定義後端（FastAPI / Uvicorn / Pydantic / SQLAlchemy）不隨版本異動的基礎規範。技術棧版本詳見 [00-overview.md § 技術棧](./00-overview.md#技術棧)。資料表與 Migration 規範獨立於 [30-database.md](./30-database.md)。
+本文件定義後端（FastAPI / Uvicorn / Pydantic / SQLAlchemy）不隨版本異動的基礎規範。技術棧版本詳見 [00-overview.md § 技術棧](../00-overview/90-project-overview.md#技術棧)。資料表與 Migration 規範獨立於 [30-database.md](../04-databases/90-project-database.md)。
 
 ## 目錄結構
 
@@ -68,7 +68,7 @@ class ApiResponse(BaseModel, Generic[T]):
 
 ### 串流端點（SSE / chunked）例外
 
-模型串流回應（如 OpenRouter `stream=true`）屬例外，**允許**以 SSE 或 chunked text 回傳原始 chunk，**不**包在 `ApiResponse` 內；但起始錯誤（驗證失敗、配額不足、OpenRouter 拒絕）**必須**在第一個 chunk 前以 HTTP 4xx/5xx + `ApiResponse` 回絕。詳見 [50-openrouter.md](./50-openrouter.md)。
+模型串流回應（如 OpenRouter `stream=true`）屬例外，**允許**以 SSE 或 chunked text 回傳原始 chunk，**不**包在 `ApiResponse` 內；但起始錯誤（驗證失敗、配額不足、OpenRouter 拒絕）**必須**在第一個 chunk 前以 HTTP 4xx/5xx + `ApiResponse` 回絕。詳見 [50-openrouter.md](../90-third-party-service/50-openrouter.md)。
 
 ## 2. 錯誤訊息規範
 
@@ -98,7 +98,7 @@ class ApiResponse(BaseModel, Generic[T]):
 
 - 所有 API **必須**以 `/api/v1` 為前綴。
 - 路徑使用小寫、複數、連字號：`/api/v1/api-keys`、`/api/v1/usage-logs`。
-- 單一資源使用 UID：`/api/v1/api-keys/{api_key_uid}`（對外識別規則詳見 [30-database.md](./30-database.md)）。
+- 單一資源使用 UID：`/api/v1/api-keys/{api_key_uid}`（對外識別規則詳見 [30-database.md](../04-databases/90-project-database.md)）。
 - 分頁查詢使用 query string：`?page=1&size=20`；回傳 `data: { items, total, page, size }`。
 - FastAPI 路由依資源分檔放置於 `app/api/v1/`，每個資源對應一個 router。
 - 商業邏輯集中於 `app/services/`，外部服務呼叫集中於 `app/clients/<service>/`，**禁止**重複實作。
@@ -106,7 +106,7 @@ class ApiResponse(BaseModel, Generic[T]):
 
 ## 4. Swagger 文件
 
-- 位於 `/api/docs`（強制規範於 [CLAUDE.md](../../CLAUDE.md)），**禁用** `/swagger`、`/docs`、`/openapi` 等其他路徑。
+- 位於 `/api/docs`（強制規範於 [CLAUDE.md](../../../CLAUDE.md)），**禁用** `/swagger`、`/docs`、`/openapi` 等其他路徑。
 - FastAPI 初始化時**必須**明確指定 `docs_url="/api/docs"`。
 - 每個路由**必須**提供 `summary` 與 `description`。
 - Request / Response schema **必須**以 Pydantic 明確定義，**禁止**使用 `dict` 當 response type。

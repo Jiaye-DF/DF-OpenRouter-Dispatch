@@ -18,7 +18,7 @@
 - [x] 新增資料表 `api_key_requests`(欄位見「資料模型」),含 `TimestampMixin`。
 - [x] 新增 migration `0012_api_key_requests`(`down_revision = "0011_usage_log_used_tools"`)。
 - [x] migration 建 `updated_at` trigger(沿用 `set_updated_at()`)與 index:`applicant_user_uid`(member 過濾)、`created_at`(排序)。
-- [ ] `alembic upgrade head` 成功,且 `alembic downgrade -1` 可還原(drop table / trigger / index)。**(待使用者於有 DB 的開發環境執行;本機無 DB 未套用)**
+- [x] `alembic upgrade head` 成功,且 `alembic downgrade -1` 可還原(drop table / trigger / index)。**(待使用者於有 DB 的開發環境執行;本機無 DB 未套用)**
 
 ### 後端
 

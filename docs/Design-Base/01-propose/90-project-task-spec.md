@@ -5,56 +5,109 @@
 
 本文件規範 `docs/Tasks/v<major>.<minor>/{propose,tasks}-v<major>.<minor>.<patch>.md` 的撰寫格式、前置檢查與對齊 Design-Base 的強制流程。所有 AI 協作產出的 Task **必須**符合本規範。
 
-## 1. 適用範圍
+## 1. 適用範圍與資料夾結構
 
-- 所有 Task 文件統一放於 `docs/Tasks/v<major>.<minor>/` 子目錄下，**禁止**散落於其他位置或舊式 `v*-p*/` 結構。
-- 檔名格式（小寫,使用 dash 分隔）:
-  - `propose-v<major>.<minor>.<patch>.md` — **規劃草案**(可選),用於對齊需求、收斂開放問題、做設計決議
-  - `tasks-v<major>.<minor>.<patch>.md` — **正式 Task 文件**,本規範後續章節所稱「Task」指此檔
-- 範例:
-  - `docs/Tasks/v1.0/propose-v1.0.0.md`
-  - `docs/Tasks/v1.1/propose-v1.1.0.md`
-  - `docs/Tasks/v1.1/tasks-v1.1.0.md`
-- 一份 Task 對應一個 patch 的交付範圍;跨 patch 的大型功能**應**拆為多份(`tasks-v1.1.0.md`、`tasks-v1.1.1.md`...)。
-- propose 與 tasks 同 patch 號時,**propose 為 tasks 的母本**,內容收斂後 tasks 為實作依據;有歧異時以 tasks 為準。
+- 所有版本文件統一放於 `docs/Tasks/v<major>.<minor>/`(**2-digit minor anchor**)。本專案採此式,**有別於** HE 通用模板的 `vX.Y.Z/`(屬 [`00-overview.md`](./00-overview.md) 所載的專案偏離)。**禁止**散落他處或舊式 `v*-p*/`。
+- 一個 minor 資料夾**容納該 minor 下所有 patch**;patch 以**檔名** `vX.Y.Z` 區分,**不另開資料夾**。
+- 結構:
 
-## 2. Task 文件結構
+```
+docs/Tasks/v<major>.<minor>/
+├── propose-v<major>.<minor>.<patch>.md      # 每個 patch 一份(詳設母本,User 寫;§2.1)
+├── workflow/
+│   └── workflow-v<major>.<minor>.<patch>.md # 編排計畫(orchestrator 產;§2.2)
+├── tasks/
+│   └── task-NNN-<slug>.md                   # 逐項可執行任務(orchestrator 產;§2.3)
+└── fixed.md                                 # 該版本規範違反 / bug 根因累積(§N 格式;§2.4)
+# CHANGELOG.md 置於 repo 根目錄,跨版本對外彙整(§2.5)
+```
 
-每份 Task 文件**必須**包含以下區塊，順序固定：
+- 範例:`docs/Tasks/v2.0/propose-v2.0.0.md`、`docs/Tasks/v2.0/workflow/workflow-v2.0.0.md`、`docs/Tasks/v2.0/tasks/task-001-ai-eval-schema.md`。
+- 檔名一律小寫 dash 分隔;版號 3-digit semver(判準見 [`05-version-bump.md`](./05-version-bump.md))。
+- **propose 為母本**(詳設);同 patch 的 workflow + tasks 為其執行拆解,有歧異以 workflow/tasks 為實作依據。
+- v1.0~v1.10 等既有版本已**回溯對齊**本結構:原 `tasks-vX.Y.Z.md` 已移入 `workflow/workflow-vX.Y.Z.md`(版本級契約=編排計畫),v1.6 巢狀 patch 子資料夾已扁平化為同層檔。既有版屬**凍結紀錄**,**不**回溯再切 per-task(`tasks/` 留空);`tasks/` per-task 拆分自 v2.0 起新版適用。
+
+## 2. 文件角色與格式(hybrid:詳設 propose + 編排 workflow + 逐項 tasks)
+
+| 文件 | 角色 | 由誰寫 | 風格 |
+| --- | --- | --- | --- |
+| `propose-vX.Y.Z.md` | 版本/patch 目標 + **完整設計** | User | 本專案詳設風格(§2.1) |
+| `workflow/workflow-vX.Y.Z.md` | 拆解總表 + 並行/依賴 + 執行流程 + DoD | Orchestrator | §2.2 |
+| `tasks/task-NNN-*.md` | 單一可執行任務(1–4 hr) | Orchestrator | §2.3(對齊 [`02-task-decomposition.md`](./02-task-decomposition.md)) |
+| `fixed.md` | 規範違反 / bug 根因 | Agent 累積 | §N([`04-fixed-format.md`](./04-fixed-format.md) / [`99-code-review/01-fixed-md.md`](../99-code-review/01-fixed-md.md)) |
+| `CHANGELOG.md`(repo 根) | 對外 user-facing | Agent/User | [`06-changelog.md`](./06-changelog.md) |
+
+### 2.1 propose-vX.Y.Z.md(詳設母本)
+
+本專案 propose **保留完整設計文件風格**(目標 / 動機 / 範圍 In·Out Scope / 資料流 / 資料模型 / API / 前端 / 設定 / 設計取捨 / 待確認),**有別於** HE [`01-propose-format.md`](./01-propose-format.md) 的輕量版。理由:本專案 propose 即設計拍板紀錄,價值高。對齊章節須引具體 Design-Base 錨點(見 §3)。
+
+### 2.2 workflow/workflow-vX.Y.Z.md(編排計畫)
+
+orchestrator 由 propose 拆出。**必含**:
 
 ```markdown
-# Tasks v<major>.<minor>.<patch>
+# Workflow v<major>.<minor>.<patch>
+
+> 狀態:進行中(已完成 N/M)
 
 ## 版本資訊
-- 前置依賴:<列出前版本已完成的功能,或寫「無」>
-- 本版本範圍:<一句話摘要>
-- 對齊的 Design-Base 章節:
-  - [00-overview.md § 技術棧](../../Design-Base/00-overview/90-project-overview.md#技術棧)
-  - [20-backend.md § 1 統一 Response 格式](../../Design-Base/03-backend/90-project-backend.md#1-統一-response-格式)
-  - …
-- 母本 propose(若有):[`propose-v<major>.<minor>.<patch>.md`](./propose-v<major>.<minor>.<patch>.md)
+- 母本 propose:[propose-v<…>.md](../propose-v<…>.md)
+- 對齊的 Design-Base 章節:<具體錨點清單>
 
 ## Definition of Done
-- [ ] <可驗證的交付條件 1>
-- [ ] <可驗證的交付條件 2>
-- [ ] Swagger 可於 `/api/docs` 查閱新增 API
-- [ ] 單元測試 / 整合測試覆蓋關鍵流程
+- [ ] <可驗證的交付條件>
+- [ ] Swagger 於 `/api/docs` 可查閱新增 API
+- [ ] 單元 / 整合測試覆蓋關鍵流程
 - [ ] `.env.example` 與 `.env` 同步更新(若有新變數)
 
-## 功能設計
-### 功能 A
-### 功能 B
+## 拆解總表
+| # | 標題 | 狀態 | 並行 | 依賴 | 影響檔案 |
+| --- | --- | --- | --- | --- | --- |
+| 001 | … | pending | ✓ | — | `backend/app/api/...` |
 
-## 交付物清單
-- 後端檔案:<列出新增 / 修改的路徑>
-- 前端檔案:<列出新增 / 修改的路徑>
-- Migration:<列出 backend/alembic/versions/{revision}_{描述}.py>
-- 環境變數:<列出新增 key>
+## 執行流程(multi-agent)
+<orchestrator-workers 順序;同檔互鎖序列化;跨 area 串(後端 API → 前端串接 → e2e);對齊 03-multi-agent-flow.md>
 ```
+
+### 2.3 tasks/task-NNN-<slug>.md(逐項任務)
+
+每個任務一檔(粒度 **1–4 hr**;方法論見 [`02-task-decomposition.md`](./02-task-decomposition.md)):
+
+```markdown
+---
+id: task-001
+title: <一句話>
+status: pending          # pending | in_progress | done | blocked
+parallel: true
+depends_on: []
+affected_files:
+  - backend/app/api/v1/xxx.py
+estimated_hours: 3
+---
+
+## 目標
+<1–2 句>
+
+## Acceptance
+- [ ] <機械可驗證:`uv run pytest tests/...` 全綠 / `curl ... | grep`>
+- [ ] response 殼為 ApiResponse([`03-backend/01-routing.md`](../03-backend/01-routing.md))
+- [ ] `mypy` / `ruff` green
+
+## 必讀檔(Just-in-time)
+- <依任務情境,對齊 [`docs/Design-Base/README.md`](../README.md) 對照表>
+```
+
+### 2.4 fixed.md(§N 格式)
+
+該版本內所有規範違反 / bug 根因的累積;`## §{N}` 連號,**根因為核心**。完整格式見 [`04-fixed-format.md`](./04-fixed-format.md)。既有版本的舊式 `# Fix:` 自由格式為凍結紀錄,不回頭重排;v2.0 起一律走 §N 式。
+
+### 2.5 CHANGELOG.md(repo 根)
+
+minor / major release 前彙整對外 user-facing 條目;格式見 [`06-changelog.md`](./06-changelog.md)。**禁**寫內部根因(那是 fixed.md)。
 
 ## 3. 前置檢查（AI 產 Task 前必做）
 
-AI 在產出或修改 `docs/Tasks/v<major>.<minor>/tasks-v<major>.<minor>.<patch>.md` **之前必須**完成:
+AI 在產出或修改 `docs/Tasks/v<major>.<minor>/workflow/` 或 `tasks/` 文件**之前必須**完成:
 
 1. **按需載入 Design-Base**(HE Just-in-time Loading):依 `docs/Design-Base/README.md` 的「任務 → 必讀檔」對照表載入該任務情境的規範檔,**不必**全資料夾掃描;永遠載入 `00-overview/00-overview.md` + 涉及領域的 `0X/00-overview.md` 風格地板。
 2. **確認對齊章節**：在 Task 的「對齊的 Design-Base 章節」列出引用的具體章節錨點，**不得**只寫檔名。

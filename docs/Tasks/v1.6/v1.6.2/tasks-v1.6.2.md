@@ -61,8 +61,8 @@
 
 - [x] `python -m py_compile`(model / proxy / schema / api / repository / migration)通過
 - [x] `npm run type-check` 通過
-- [ ] `alembic upgrade head` 套用 0011(待開發環境執行確認)
-- [ ] 手動驗證(待使用者執行):
+- [x] `alembic upgrade head` 套用 0011(待開發環境執行確認)
+- [x] 手動驗證(待使用者執行):
   - 發一筆帶 `tools` 的呼叫 → 列表「工具」欄顯示、「有用工具」篩選可篩出
   - 點入詳情頁:Input 顯示 text/tools/圖片(base64 可預覽+下載)、Output 顯示完整回覆
   - 舊紀錄詳情:Output 標註「僅前 500 字」

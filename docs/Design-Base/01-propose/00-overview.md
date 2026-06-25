@@ -1,8 +1,10 @@
 # 00-overview — Propose / Tasks / Multi-agent 入口
 
 > **何時讀**:啟動新版本 / 拆 tasks / 寫 fixed / multi-agent 並行才讀。
+>
+> ⚠️ **本專案偏離(以 [`90-project-task-spec.md`](./90-project-task-spec.md) 為準)**:本專案版本資料夾採 **2-digit** `docs/Tasks/v<major>.<minor>/`(非 HE 的 `vX.Y.Z/`),內含每 patch 的**詳設** `propose-vX.Y.Z.md` + `workflow/`(編排計畫)+ `tasks/`(逐項任務)。本資料夾其餘 HE 通用檔(`01`~`07`)的 `vX.Y.Z` 命名與**輕量 propose** 作方法論參考;**命名/結構/propose 風格以 `90-project-task-spec.md` 為實際依據**。
 
-本資料夾規範**版本工作流**:User 寫 propose → Agent 拆 tasks → Multi-agent 執行 → fixed → reflect 升級規範。
+本資料夾規範**版本工作流**:User 寫 propose → Agent 拆 workflow + tasks → Multi-agent 執行 → fixed → reflect 升級規範。
 
 ---
 

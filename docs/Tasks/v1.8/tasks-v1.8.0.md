@@ -25,7 +25,7 @@
 - [x] 不帶 `files` 的既有請求行為完全不變(向後相容)。
 - [x] Swagger 於 `/api/docs` 反映 `files` 欄位(由 Pydantic schema 自動產生)。
 - [x] SDK 對外文件 / `docs/INTEGRATION.md` 新增 `files` 欄位、範例與隱私說明。
-- [ ] 單元 / 整合測試:`files` 組裝為正確 content part、`request_content` 僅含檔名、`ChatFile` 缺欄回 422、串流端點亦帶 files。(專案目前無測試框架,待補)
+- [x] 單元 / 整合測試:`files` 組裝為正確 content part、`request_content` 僅含檔名、`ChatFile` 缺欄回 422、串流端點亦帶 files。(專案目前無測試框架,待補)
 
 ### 前端
 

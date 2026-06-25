@@ -19,54 +19,54 @@
 
 ### DB / Migration
 
-- [ ] migration `0014_api_key_requests_notify`(`down_revision = "0013_api_key_requests_lifecycle"`),`ALTER TABLE api_key_requests` 新增 `notified_at` / `notify_error`(見「資料模型」)。
-- [ ] `downgrade` 移除上述兩欄;無資料轉換。
+- [x] migration `0014_api_key_requests_notify`(`down_revision = "0013_api_key_requests_lifecycle"`),`ALTER TABLE api_key_requests` 新增 `notified_at` / `notify_error`(見「資料模型」)。
+- [x] `downgrade` 移除上述兩欄;無資料轉換。
 
 ### 後端 — Email 範本 / Render 層
 
-- [ ] `app/templates/email/base.html`、`app/templates/email/provision.html`(**已於 propose 階段建立**);本版只需接上 render 層。
-- [ ] `services/email_render.py`:`render_email(template_name, **ctx) -> str`,以 `jinja2.Environment` + `FileSystemLoader("app/templates/email")`、`autoescape=True` 載入;自動補基底 context `brand_name` / `platform_url`(取 `FRONTEND_URL`)/ `current_year`。Environment 以 `lru_cache` 單例化。
-- [ ] provision.html 三個 Header 區塊須輸出 **`X-SDK-Key` / `X-User-Token` / `X-Project-Code`**(大小寫對齊 [`INTEGRATION.md`](../../INTEGRATION.md)),並直接帶入該收件人的憑證值(`sdk_key` 空 → 顯示「請向管理員索取」)。
+- [x] `app/templates/email/base.html`、`app/templates/email/provision.html`(**已於 propose 階段建立**);本版只需接上 render 層。
+- [x] `services/email_render.py`:`render_email(template_name, **ctx) -> str`,以 `jinja2.Environment` + `FileSystemLoader("app/templates/email")`、`autoescape=True` 載入;自動補基底 context `brand_name` / `platform_url`(取 `FRONTEND_URL`)/ `current_year`。Environment 以 `lru_cache` 單例化。
+- [x] provision.html 三個 Header 區塊須輸出 **`X-SDK-Key` / `X-User-Token` / `X-Project-Code`**(大小寫對齊 [`INTEGRATION.md`](../../INTEGRATION.md)),並直接帶入該收件人的憑證值(`sdk_key` 空 → 顯示「請向管理員索取」)。
 
 ### 後端 — Graph 寄信 service
 
-- [ ] `services/email_graph.py`:
-  - [ ] `async def send_provision_email(*, to_email, owner_name, project_name, secrets: dict) -> EmailResult`,回 `EmailResult(ok: bool, error: str | None)`。
-  - [ ] 取 token:`POST https://login.microsoftonline.com/{M365_TENANT_ID}/oauth2/v2.0/token`(`grant_type=client_credentials`、`scope=https://graph.microsoft.com/.default`)。
-  - [ ] 寄信:`POST https://graph.microsoft.com/v1.0/users/{M365_MAIL_SENDER}/sendMail`,body `message.body.contentType=HTML`、`content=render_email("provision.html", ...)`、`saveToSentItems=false`。
-  - [ ] **降級**:`settings.m365_mail_enabled` 為 False(四個 env 任一為空)→ 直接回 `EmailResult(ok=False, error="m365_not_configured")`,呼叫端不視為錯誤。
-  - [ ] 失敗(取 token 非 2xx / sendMail 非 2xx / 連線錯誤)→ `logger.warning`(**不含憑證明文**,僅記 request_uid / 收件網域 / 結果)+ 回 `ok=False`。
-  - [ ] httpx 用法與逾時對齊既有 `clients/sso.py`(獨立 `AsyncClient` + `httpx.Timeout`)。
+- [x] `services/email_graph.py`:
+  - [x] `async def send_provision_email(*, to_email, owner_name, project_name, secrets: dict) -> EmailResult`,回 `EmailResult(ok: bool, error: str | None)`。
+  - [x] 取 token:`POST https://login.microsoftonline.com/{M365_TENANT_ID}/oauth2/v2.0/token`(`grant_type=client_credentials`、`scope=https://graph.microsoft.com/.default`)。
+  - [x] 寄信:`POST https://graph.microsoft.com/v1.0/users/{M365_MAIL_SENDER}/sendMail`,body `message.body.contentType=HTML`、`content=render_email("provision.html", ...)`、`saveToSentItems=false`。
+  - [x] **降級**:`settings.m365_mail_enabled` 為 False(四個 env 任一為空)→ 直接回 `EmailResult(ok=False, error="m365_not_configured")`,呼叫端不視為錯誤。
+  - [x] 失敗(取 token 非 2xx / sendMail 非 2xx / 連線錯誤)→ `logger.warning`(**不含憑證明文**,僅記 request_uid / 收件網域 / 結果)+ 回 `ok=False`。
+  - [x] httpx 用法與逾時對齊既有 `clients/sso.py`(獨立 `AsyncClient` + `httpx.Timeout`)。
 
 ### 後端 — 觸發點接線
 
-- [ ] `POST /api-key-requests` 自動開通成功(`agent_done`)、**`db.commit()` 之後**寄信。
-- [ ] `POST /api-key-requests/{uid}/process` admin 人工開通成功(`done`)、`commit` 之後寄信。
-- [ ] 寄送對象固定 `req.owner_email`;寄送後**另起一次 `update + commit`**寫回 `notified_at`(成功)或 `notify_error`(失敗),失敗不影響已開通結果。
-- [ ] `POST /api-key-requests/{uid}/resend-notify`(admin):重讀該單 → 以 `provisioned_secrets`(若已清空則回 `409 secrets_already_claimed`)重寄 → 更新 `notified_at` / `notify_error`。
+- [x] `POST /api-key-requests` 自動開通成功(`agent_done`)、**`db.commit()` 之後**寄信。
+- [x] `POST /api-key-requests/{uid}/process` admin 人工開通成功(`done`)、`commit` 之後寄信。
+- [x] 寄送對象固定 `req.owner_email`;寄送後**另起一次 `update + commit`**寫回 `notified_at`(成功)或 `notify_error`(失敗),失敗不影響已開通結果。
+- [x] `POST /api-key-requests/{uid}/resend-notify`(admin):重讀該單 → 以 `provisioned_secrets`(若已清空則回 `409 secrets_already_claimed`)重寄 → 更新 `notified_at` / `notify_error`。
 
 ### 後端 — Schema
 
-- [ ] `schemas/api_key_request.py`:`ApiKeyRequestResponse` / `ApiKeyRequestDetailResponse` 加 `notified_at: datetime | None`、`notify_error: str | None`;補欄位 `description` 與範例(見「API 文件範例」)。
+- [x] `schemas/api_key_request.py`:`ApiKeyRequestResponse` / `ApiKeyRequestDetailResponse` 加 `notified_at: datetime | None`、`notify_error: str | None`;補欄位 `description` 與範例(見「API 文件範例」)。
 
 ### 後端 — 設定
 
-- [ ] `core/config.py` 新增 `M365_TENANT_ID` / `M365_CLIENT_ID` / `M365_CLIENT_SECRET` / `M365_MAIL_SENDER`(預設皆 `""`)+ `m365_mail_enabled` property(四者皆非空才 True)。
-- [ ] `.env.example` 已新增四鍵(**已完成**);`M365_CLIENT_SECRET` 標 `[COOLIFY]` 注入。
-- [ ] `docker-compose-prod.yml` backend 已加四個 `M365_*`(**已完成**);dev 走 `env_file` 自動帶入。
-- [ ] 新增依賴 `Jinja2`(`uv add jinja2`,寫入 `pyproject.toml`)。
+- [x] `core/config.py` 新增 `M365_TENANT_ID` / `M365_CLIENT_ID` / `M365_CLIENT_SECRET` / `M365_MAIL_SENDER`(預設皆 `""`)+ `m365_mail_enabled` property(四者皆非空才 True)。
+- [x] `.env.example` 已新增四鍵(**已完成**);`M365_CLIENT_SECRET` 標 `[COOLIFY]` 注入。
+- [x] `docker-compose-prod.yml` backend 已加四個 `M365_*`(**已完成**);dev 走 `env_file` 自動帶入。
+- [x] 新增依賴 `Jinja2`(`uv add jinja2`,寫入 `pyproject.toml`)。
 
 ### 前端
 
-- [ ] `types/api.ts`:`ApiKeyRequest` / `ApiKeyRequestDetail` 加 `notifiedAt` / `notifyError`。
-- [ ] `lib/api/endpoints.ts`:新增 `resendApiKeyRequestNotify`(admin)。
-- [ ] `app/(main)/api-key-requests/page.tsx`:詳情顯示「通知狀態」(已通知時間 / 失敗原因);admin 於失敗時可「重送通知」(二次確認 + 錯誤處理)。
+- [x] `types/api.ts`:`ApiKeyRequest` / `ApiKeyRequestDetail` 加 `notifiedAt` / `notifyError`。
+- [x] `lib/api/endpoints.ts`:新增 `resendApiKeyRequestNotify`(admin)。
+- [x] `app/(main)/api-key-requests/page.tsx`:詳情顯示「通知狀態」(已通知時間 / 失敗原因);admin 於失敗時可「重送通知」(二次確認 + 錯誤處理)。
 
 ### 文件
 
-- [ ] `/user-guide`:補「開通後會以 Email 寄送憑證給專案負責人」說明。
-- [ ] `/admin-guide`:補「通知失敗時可重送」與 M365 設定前置(Azure App / `Mail.Send` / 寄件人)。
-- [ ] Swagger(`/api/docs`):新端點 `resend-notify` 與回應新欄位的 Schema / 範例同步。
+- [x] `/user-guide`:補「開通後會以 Email 寄送憑證給專案負責人」說明。
+- [x] `/admin-guide`:補「通知失敗時可重送」與 M365 設定前置(Azure App / `Mail.Send` / 寄件人)。
+- [x] Swagger(`/api/docs`):新端點 `resend-notify` 與回應新欄位的 Schema / 範例同步。
 
 ### 不做(v1.9.2 明確排除)
 

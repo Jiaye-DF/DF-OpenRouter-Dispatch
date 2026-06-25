@@ -91,7 +91,7 @@
 
 ### Design-Base 文件同步
 
-- [ ] [20-backend.md § 3](../../Design-Base/20-backend.md):新增「**代理端 path 收斂**」段落,允許 `/api/v1/model/<action>` 形式(deprecated alias 政策)
+- [x] [20-backend.md § 3](../../Design-Base/20-backend.md):新增「**代理端 path 收斂**」段落,允許 `/api/v1/model/<action>` 形式(deprecated alias 政策)
 - [x] [50-openrouter.md](../../Design-Base/50-openrouter.md):範圍擴大為「Model Provider」(或新增 51-internal.md);新增「速率限制」與「Internal Provider」小節
 - [x] [50-openrouter.md § 9](../../Design-Base/50-openrouter.md#9-錯誤對應):加 `internal_busy` / `internal_unavailable` / `provider_misconfigured` / `provider_not_allowed`
 - [x] [80-permission.md § 5](../../Design-Base/80-permission.md#5-代理端proxy存取規則):path 從 `/model/openrouter/chat` 改為 `/model/chat`(舊路徑說明 deprecated alias)
@@ -105,7 +105,7 @@
   - `min_request_interval_ms=200` 時連續兩次間隔不少於 200ms
   - 等待 > `wait_timeout` → `RateLimitExceeded` + 正確 `retry_after_seconds`
   - 60 秒視窗滑動正確(超過 60s 舊時間戳被清除)
-- [ ] **整合測試**:
+- [x] **整合測試**:
   - OpenRouter 模型呼叫不受影響(回歸 v1.1)
   - Internal 模型成功呼叫一次(mock `INTERNAL_LLM_BASE_URL`)
   - OR Key `rpm_limit=2`,連 3 次第 3 次自動切下一把

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Brain, Save } from "lucide-react";
 import { PageTitle } from "@/components/common/PageTitle";
+import { PageHint } from "@/components/common/PageHint";
 import { Card, CardContent } from "@/components/ui/card";
 import { LoadingButton } from "@/components/common/LoadingButton";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,7 +17,7 @@ import type { JudgeSetting, Model, Paginated } from "@/types/api";
 import { useAppSelector } from "@/store/hooks";
 
 const SLOT_COUNT = 3;
-const SLOT_LABELS = ["判別模型 1", "判別模型 2", "判別模型 3"] as const;
+const SLOT_LABELS = ["模型設定 1", "模型設定 2", "模型設定 3"] as const;
 
 export default function JudgeSettingsPage() {
   const role = useAppSelector((s) => s.auth.actor?.role);
@@ -29,8 +30,6 @@ export default function JudgeSettingsPage() {
 
   // 3 個槽位選中的 model_uid(空字串代表未選)
   const [slots, setSlots] = React.useState<string[]>(["", "", ""]);
-  // 目前已儲存設定的更新時間(若後端有提供)
-  const [savedAt, setSavedAt] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -46,16 +45,11 @@ export default function JudgeSettingsPage() {
 
       // 依 slot 1→3 回填現有設定;未設定時 3 個槽位留空
       const next = ["", "", ""];
-      let latest: string | null = null;
       for (const s of settings ?? []) {
         const idx = s.ai_judge_slot - 1;
         if (idx >= 0 && idx < SLOT_COUNT) next[idx] = s.model_uid;
-        if (s.updated_at && (!latest || s.updated_at > latest)) {
-          latest = s.updated_at;
-        }
       }
       setSlots(next);
-      setSavedAt(latest);
     } catch (err) {
       if (err instanceof ApiError) {
         showDialog({
@@ -124,16 +118,11 @@ export default function JudgeSettingsPage() {
       );
       // 以回傳結果重新回填,確保與後端一致(slot 順序由後端決定)
       const next = ["", "", ""];
-      let latest: string | null = null;
       for (const s of updated ?? []) {
         const idx = s.ai_judge_slot - 1;
         if (idx >= 0 && idx < SLOT_COUNT) next[idx] = s.model_uid;
-        if (s.updated_at && (!latest || s.updated_at > latest)) {
-          latest = s.updated_at;
-        }
       }
       setSlots(next);
-      setSavedAt(latest);
       toast("判別模型已儲存", "success");
     } catch (err) {
       if (err instanceof ApiError) {
@@ -165,16 +154,22 @@ export default function JudgeSettingsPage() {
     <>
       <PageTitle
         title="設定判別模型"
-        description="從模型管理的 active 模型中挑選恰 3 個作為 AI 分析的判別模型(不可重複)"
+        description="設定 AI 分析使用的判別模型(恰 3 個,不可重複)"
       />
+      <PageHint title="設定判別模型做什麼用的?">
+        指定 3 個模型當「模型分析」的評審;系統用它們交叉評審用量紀錄,判斷原模型是否適配並推薦更合適者。從 active 模型挑 3 個,建議跨廠商以抵銷偏好偏差。
+      </PageHint>
 
       <Card>
         <CardContent className="pt-6 flex flex-col gap-6">
           {loading ? (
             <div className="flex flex-col gap-4">
               {Array.from({ length: SLOT_COUNT }).map((_, i) => (
-                <div key={i} className="flex flex-col gap-2">
-                  <Skeleton className="h-4 w-24" />
+                <div
+                  key={i}
+                  className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4"
+                >
+                  <Skeleton className="h-4 w-32 shrink-0" />
                   <Skeleton className="h-9 w-full sm:w-96" />
                 </div>
               ))}
@@ -190,8 +185,11 @@ export default function JudgeSettingsPage() {
                 {SLOT_LABELS.map((label, idx) => {
                   const Icon = Brain;
                   return (
-                    <div key={idx} className="flex flex-col gap-2">
-                      <span className="flex items-center gap-2 text-sm font-medium">
+                    <div
+                      key={idx}
+                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4"
+                    >
+                      <span className="flex w-40 shrink-0 items-center gap-2 text-sm font-medium">
                         <Icon className="h-4 w-4 text-muted-foreground" />
                         {label}
                       </span>
@@ -209,36 +207,23 @@ export default function JudgeSettingsPage() {
                 })}
               </div>
 
-              <div className="flex flex-col gap-3 border-t border-border pt-4">
-                <div className="text-sm text-muted-foreground">
-                  {savedAt ? (
-                    <>
-                      目前設定更新時間:
-                      {new Date(savedAt).toLocaleString("zh-TW", {
-                        hour12: false,
-                      })}
-                    </>
-                  ) : filledCount === SLOT_COUNT ? (
-                    "尚未儲存目前選取的設定。"
-                  ) : (
-                    "尚未設定判別模型。"
+              <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  {hasDuplicate && (
+                    <p className="text-sm text-destructive">
+                      判別模型不可重複,請改選不同的模型。
+                    </p>
                   )}
                 </div>
-                {hasDuplicate && (
-                  <p className="text-sm text-destructive">
-                    判別模型不可重複,請改選不同的模型。
-                  </p>
-                )}
-                <div>
-                  <LoadingButton
-                    onClick={onSave}
-                    loading={saving}
-                    disabled={!canSave}
-                  >
-                    <Save className="h-4 w-4" />
-                    儲存
-                  </LoadingButton>
-                </div>
+                <LoadingButton
+                  onClick={onSave}
+                  loading={saving}
+                  disabled={!canSave}
+                  className="shrink-0"
+                >
+                  <Save className="h-4 w-4" />
+                  儲存
+                </LoadingButton>
               </div>
             </>
           )}

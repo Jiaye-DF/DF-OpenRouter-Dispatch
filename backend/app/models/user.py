@@ -56,7 +56,7 @@ class User(Base, TimestampMixin):
     username: Mapped[str] = mapped_column(
         String(128),
         nullable=False,
-        comment="使用者顯示名稱 | display name",
+        comment="使用者顯示名稱(PII) | display name (PII)",
     )
     password_hash: Mapped[str] = mapped_column(
         String(255),
@@ -76,12 +76,12 @@ class User(Base, TimestampMixin):
     employee_id: Mapped[str | None] = mapped_column(
         String(32),
         nullable=True,
-        comment="員工編號 | employee ID",
+        comment="員工編號(PII) | employee ID (PII)",
     )
     email: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
-        comment="電子郵件 | email",
+        comment="電子郵件(PII) | email (PII)",
     )
     sso_user_id: Mapped[str | None] = mapped_column(
         String(128),

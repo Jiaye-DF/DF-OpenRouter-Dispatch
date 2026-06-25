@@ -22,44 +22,44 @@
 ## Definition of Done
 
 ### Migration
-- [ ] `V8__models.sql` 建立 `models` 表 + index + Trigger(沿用 [30-database.md § 1](../../Design-Base/30-database.md#1-必備欄位) 必備欄位)
-- [ ] `V9__model_tiers.sql` 建立 `model_tiers` 表 + Trigger + seed 4 級(`free`/`cheap`/`standard`/`expensive`)
-- [ ] `V10__openrouter_keys_credits.sql` ALTER `openrouter_keys` 加 4 欄(`credits_used_usd` / `credits_limit_usd` / `credits_is_free_tier` / `credits_synced_at`)
-- [ ] `V11__usage_logs_model_uid.sql` ALTER `usage_logs` 加 `model_uid` UUID FK + index
+- [x] `V8__models.sql` 建立 `models` 表 + index + Trigger(沿用 [30-database.md § 1](../../Design-Base/30-database.md#1-必備欄位) 必備欄位)
+- [x] `V9__model_tiers.sql` 建立 `model_tiers` 表 + Trigger + seed 4 級(`free`/`cheap`/`standard`/`expensive`)
+- [x] `V10__openrouter_keys_credits.sql` ALTER `openrouter_keys` 加 4 欄(`credits_used_usd` / `credits_limit_usd` / `credits_is_free_tier` / `credits_synced_at`)
+- [x] `V11__usage_logs_model_uid.sql` ALTER `usage_logs` 加 `model_uid` UUID FK + index
 
 ### Backend
-- [ ] OpenRouter Client 新增 `list_models()` 與 `get_key_info(api_key)`
-- [ ] `app/services/sync.py`(新)封裝:advisory lock + 10 min throttle + 模型 upsert + 餘額同步 + 自動分級匹配 + 計數
-- [ ] `/api/v1/models`(GET 列表 / GET 單筆 / PATCH / POST sync)4 端點齊全
-- [ ] `/api/v1/model-tiers` CRUD 5 端點齊全
-- [ ] `/api/v1/openrouter-keys` GET response 加 4 欄餘額(僅 admin 可見)
-- [ ] `app/services/proxy.py` `_check_model_whitelist` 改 DB 查詢,回傳 `Model` instance 供 `schedule_usage_log` 取 `model_uid`
-- [ ] `schedule_usage_log` 接受 `model_uid: UUID | None` 並寫入新欄位
-- [ ] `app/core/config.py` 移除 `ALLOWED_MODELS` 設定與 `allowed_models_list` property;`.env.example` 同步移除
-- [ ] 同步 / model PATCH / model toggle / tier CRUD 均寫稽核 Log
-- [ ] Swagger 可於 `/api/docs` 查閱所有新端點
+- [x] OpenRouter Client 新增 `list_models()` 與 `get_key_info(api_key)`
+- [x] `app/services/sync.py`(新)封裝:advisory lock + 10 min throttle + 模型 upsert + 餘額同步 + 自動分級匹配 + 計數
+- [x] `/api/v1/models`(GET 列表 / GET 單筆 / PATCH / POST sync)4 端點齊全
+- [x] `/api/v1/model-tiers` CRUD 5 端點齊全
+- [x] `/api/v1/openrouter-keys` GET response 加 4 欄餘額(僅 admin 可見)
+- [x] `app/services/proxy.py` `_check_model_whitelist` 改 DB 查詢,回傳 `Model` instance 供 `schedule_usage_log` 取 `model_uid`
+- [x] `schedule_usage_log` 接受 `model_uid: UUID | None` 並寫入新欄位
+- [x] `app/core/config.py` 移除 `ALLOWED_MODELS` 設定與 `allowed_models_list` property;`.env.example` 同步移除
+- [x] 同步 / model PATCH / model toggle / tier CRUD 均寫稽核 Log
+- [x] Swagger 可於 `/api/docs` 查閱所有新端點
 
 ### Frontend
-- [ ] `/admin/models` 頁面:列表 / `tier` 徽章 / `is_active` toggle / Drawer 編輯 tier
-- [ ] `/admin/models` 同步按鈕含 cooldown 倒數(成功與 `sync_throttled` 兩種來源同邏輯處理;localStorage 持久化 `last_sync_ts`)
-- [ ] `/admin/model-tiers`(新)CRUD 頁面 — 列表 / 建立 Dialog / 編輯 Drawer / 刪除 Confirm(含 `tier_in_use` 錯誤訊息)
-- [ ] `/admin/openrouter-keys` 列表新增餘額欄(進度條 + Free Tier 徽章 + > 24h 警告色)
-- [ ] Sidebar admin 分組新增「模型管理」、「模型分級」項
+- [x] `/admin/models` 頁面:列表 / `tier` 徽章 / `is_active` toggle / Drawer 編輯 tier
+- [x] `/admin/models` 同步按鈕含 cooldown 倒數(成功與 `sync_throttled` 兩種來源同邏輯處理;localStorage 持久化 `last_sync_ts`)
+- [x] `/admin/model-tiers`(新)CRUD 頁面 — 列表 / 建立 Dialog / 編輯 Drawer / 刪除 Confirm(含 `tier_in_use` 錯誤訊息)
+- [x] `/admin/openrouter-keys` 列表新增餘額欄(進度條 + Free Tier 徽章 + > 24h 警告色)
+- [x] Sidebar admin 分組新增「模型管理」、「模型分級」項
 
 ### Design-Base 文件同步
-- [ ] [50-openrouter.md § 6](../../Design-Base/50-openrouter.md#6-請求改寫與欄位過濾) 白名單檢查描述改為「DB 查 `models.is_active`」,刪除 `ALLOWED_MODELS` 行
-- [ ] [50-openrouter.md § 9](../../Design-Base/50-openrouter.md#9-錯誤對應) 加 `sync_in_progress`/`sync_throttled`/`tier_in_use` 行
-- [ ] [50-openrouter.md § 11](../../Design-Base/50-openrouter.md#11-設定與健康檢查) 移除 `ALLOWED_MODELS` 段
-- [ ] [80-permission.md § 4](../../Design-Base/80-permission.md#4-管理端資源存取規則) 表新增「模型 / 模型分級 / OpenRouter 餘額」資源行
-- [ ] [80-permission.md § 5](../../Design-Base/80-permission.md#5-代理端proxy存取規則) `ALLOWED_MODELS` 行刪除,改述為「`models.is_active` 全域控管」
-- [ ] [11-ui-ux.md § Sidebar](../../Design-Base/11-ui-ux.md) admin 分組新增「模型管理」、「模型分級」
+- [x] [50-openrouter.md § 6](../../Design-Base/50-openrouter.md#6-請求改寫與欄位過濾) 白名單檢查描述改為「DB 查 `models.is_active`」,刪除 `ALLOWED_MODELS` 行
+- [x] [50-openrouter.md § 9](../../Design-Base/50-openrouter.md#9-錯誤對應) 加 `sync_in_progress`/`sync_throttled`/`tier_in_use` 行
+- [x] [50-openrouter.md § 11](../../Design-Base/50-openrouter.md#11-設定與健康檢查) 移除 `ALLOWED_MODELS` 段
+- [x] [80-permission.md § 4](../../Design-Base/80-permission.md#4-管理端資源存取規則) 表新增「模型 / 模型分級 / OpenRouter 餘額」資源行
+- [x] [80-permission.md § 5](../../Design-Base/80-permission.md#5-代理端proxy存取規則) `ALLOWED_MODELS` 行刪除,改述為「`models.is_active` 全域控管」
+- [x] [11-ui-ux.md § Sidebar](../../Design-Base/11-ui-ux.md) admin 分組新增「模型管理」、「模型分級」
 
 ### 測試
-- [ ] 整合測試:同步流程(全新建表 / 既有更新 / OR 下架 / 上游失敗 rollback)
-- [ ] 整合測試:10 min throttle(後端 425 + 前端 cooldown)
-- [ ] 整合測試:餘額部分失敗 best-effort
-- [ ] 整合測試:白名單拒絕(不存在 / 停用 / 軟刪除 三種情境均回 403 `model_forbidden`)
-- [ ] 整合測試:tier CRUD 唯一性、`tier_in_use` 阻擋刪除、自動匹配優先級
+- [x] 整合測試:同步流程(全新建表 / 既有更新 / OR 下架 / 上游失敗 rollback)
+- [x] 整合測試:10 min throttle(後端 425 + 前端 cooldown)
+- [x] 整合測試:餘額部分失敗 best-effort
+- [x] 整合測試:白名單拒絕(不存在 / 停用 / 軟刪除 三種情境均回 403 `model_forbidden`)
+- [x] 整合測試:tier CRUD 唯一性、`tier_in_use` 阻擋刪除、自動匹配優先級
 
 ## 功能設計
 
@@ -186,11 +186,11 @@
 
 ## 自我檢核(對齊 [90-task-spec.md § 6](../../Design-Base/90-task-spec.md#6-檢核清單))
 
-- [ ] 文件結構符合 § 2(版本資訊 / DoD / 功能設計 / 交付物清單)
-- [ ] 已完成 § 3 前置檢查(已讀 Design-Base / 列出對齊章節 / 無衝突 / `.env.example` 同步 / Migration 同步 / OpenRouter 對齊)
-- [ ] Response Schema 符合 § 4.1(Pydantic 明確定義、UID 對外、過濾敏感欄位)
-- [ ] API 路徑符合 § 4.2(管理端 kebab-case 複數)
-- [ ] 已明列敏感欄位過濾表
-- [ ] 已附錯誤處理對照表
-- [ ] 代理端功能已說明 `usage_logs` 寫入;管理端異動已說明稽核 Log
-- [ ] 未觸犯 § 5 禁止事項
+- [x] 文件結構符合 § 2(版本資訊 / DoD / 功能設計 / 交付物清單)
+- [x] 已完成 § 3 前置檢查(已讀 Design-Base / 列出對齊章節 / 無衝突 / `.env.example` 同步 / Migration 同步 / OpenRouter 對齊)
+- [x] Response Schema 符合 § 4.1(Pydantic 明確定義、UID 對外、過濾敏感欄位)
+- [x] API 路徑符合 § 4.2(管理端 kebab-case 複數)
+- [x] 已明列敏感欄位過濾表
+- [x] 已附錯誤處理對照表
+- [x] 代理端功能已說明 `usage_logs` 寫入;管理端異動已說明稽核 Log
+- [x] 未觸犯 § 5 禁止事項

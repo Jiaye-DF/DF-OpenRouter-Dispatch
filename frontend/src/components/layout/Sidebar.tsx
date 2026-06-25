@@ -7,6 +7,7 @@ import {
   BarChart3,
   BookOpen,
   Box,
+  Brain,
   Building2,
   CheckSquare,
   Cloud,
@@ -68,6 +69,17 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/admin/model-tiers",
         label: "模型分級",
         icon: Layers,
+        adminOnly: true,
+      },
+    ],
+  },
+  {
+    label: "AI 分析",
+    items: [
+      {
+        href: "/ai-analysis/judge-settings",
+        label: "設定判別模型",
+        icon: Brain,
         adminOnly: true,
       },
     ],

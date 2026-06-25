@@ -73,4 +73,7 @@ export const API_ENDPOINTS = {
   // Sync 白名單(v1.5)
   allowedModels: "/api/v1/allowed-models",
   allowedModelById: (uid: string) => `/api/v1/allowed-models/${uid}`,
+
+  // AI 分析 — 判別模型設定(v2.0)
+  aiEvalJudgeSettings: "/api/v1/ai-eval/judge-settings",
 } as const;

@@ -390,3 +390,19 @@ export interface SyncThrottledData {
 export interface TierInUseData {
   using_models: string[];
 }
+
+// AI 分析 — 判別模型設定(v2.0)
+// GET/PUT /ai-eval/judge-settings 回傳 list(未設定時為 []);slot 1→3 依序對應 3 個判別模型
+export interface JudgeSetting {
+  ai_judge_slot: number;
+  model_uid: string;
+  model_key: string;
+  name: string;
+  // 後端若回傳更新時間則用以顯示「目前設定更新時間」(未提供則不顯示)
+  updated_at?: string | null;
+}
+
+// judge_model_not_active 的結構化 data:列出缺漏 / 非 active 的 uid
+export interface JudgeModelNotActiveData {
+  model_uids: string[];
+}

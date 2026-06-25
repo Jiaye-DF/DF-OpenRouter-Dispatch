@@ -1,8 +1,10 @@
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, Integer, Numeric, String
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, Numeric, SmallInteger, String
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -37,4 +39,14 @@ class UsageLog(Base, TimestampMixin):
     # 標記供後台篩選與計費分析。server_default false → 既有歷史自動回填 false。
     used_tools: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false", default=False
+    )
+    # v2.0 加入;模型適配評審旗標。ai_evaluated_at=最新一次評審執行時間
+    # (全棧 UTC+8),NULL=尚未評審;不論成敗皆由寫入端(task-104/105)更新。
+    # ai_evaluated_status=最新一次評審結果:NULL=尚未評審、0=失敗、1=成功。
+    # dispatcher(task-106)以 ai_evaluated_at IS NULL 掃待評審筆。
+    ai_evaluated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ai_evaluated_status: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True
     )

@@ -1,7 +1,63 @@
-from functools import lru_cache
+from __future__ import annotations
 
-from pydantic import model_validator
+import logging
+import sys
+from functools import lru_cache
+from typing import Any, NoReturn
+
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def fatal_config_exit(message: str) -> NoReturn:
+    """致命設定錯誤:記明確原因(stdlib logger + stderr 雙寫,確保容器 log 必可見)
+    後正常退出,**不丟 traceback**。
+
+    用於部署環境(如 Coolify)把型別化變數注入為非法值的情境:與其讓
+    int()/bool 解析以例外 crash 且無從得知原因,不如清楚說明「哪個變數、什麼壞值、
+    怎麼修」,程序乾淨結束(exit code 1,供編排器辨識為設定失敗)。
+    """
+    logging.getLogger("app.core.config").error(message)
+    sys.stderr.write(f"[FATAL] {message}\n")
+    sys.stderr.flush()
+    raise SystemExit(1)
+
+
+def coerce_int_env(name: str, raw: Any, default: int) -> int:
+    """整數型設定容錯:未設 / 空字串 → 採預設;設了但非整數 → 明確 log 後正常退出。"""
+    if raw is None:
+        return default
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        return raw
+    text = str(raw).strip()
+    if text == "":
+        return default
+    try:
+        return int(text)
+    except ValueError:
+        fatal_config_exit(
+            f"環境變數 {name} 的值 {raw!r} 不是合法整數;"
+            "請於部署環境(如 Coolify)修正後重新部署。"
+        )
+
+
+def coerce_bool_env(name: str, raw: Any, default: bool) -> bool:
+    """布林型設定容錯:未設 / 空字串 → 採預設;設了但非合法布林 → 明確 log 後正常退出。"""
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    text = str(raw).strip().lower()
+    if text == "":
+        return default
+    if text in {"1", "true", "yes", "on", "t", "y"}:
+        return True
+    if text in {"0", "false", "no", "off", "f", "n"}:
+        return False
+    fatal_config_exit(
+        f"環境變數 {name} 的值 {raw!r} 不是合法布林值(true/false);"
+        "請於部署環境(如 Coolify)修正後重新部署。"
+    )
 
 
 class Settings(BaseSettings):
@@ -71,6 +127,21 @@ class Settings(BaseSettings):
     # --- Dev Seed ---
     DEFAULT_OPENROUTER_KEY: str = ""
 
+    # --- AI 評審 / taskiq + Redis (v2.0) ---
+    # AI_EVAL_ENABLED:總開關;關閉時不啟用評審派發(beat / dispatch 不動作)。
+    AI_EVAL_ENABLED: bool = False
+    # taskiq broker / result backend / 通用 Redis 連線;本版皆走 Redis(不同 db)。
+    # ⚠ 含密碼的連線字串為機密,禁 commit 實值;由 .env / Coolify 注入。
+    TASKIQ_BROKER_URL: str = "redis://localhost:6379/0"
+    TASKIQ_RESULT_BACKEND_URL: str = "redis://localhost:6379/1"
+    REDIS_URL: str = "redis://localhost:6379/2"
+    # 評審 beat 掃描間隔(秒);每隔此秒數撈一批未評審 usage log 派發。
+    AI_EVAL_BEAT_INTERVAL_SECONDS: int = 300
+    # 單次 beat 派發的最大筆數(批量上限,避免一次灌爆 worker)。
+    AI_EVAL_DISPATCH_BATCH_SIZE: int = 100
+    # 單一評審任務失敗時的最大重試次數(配合 SimpleRetryMiddleware)。
+    AI_EVAL_TASK_MAX_RETRIES: int = 3
+
     # --- Seq Log ---
     # SEQ_INGESTION_URL 留空則只走 console(本機開發 / CI 不對外連線);
     # 正式環境由 compose 注入 http://seq。SEQ_API_KEY 可留空。
@@ -94,8 +165,30 @@ class Settings(BaseSettings):
     def is_prod(self) -> bool:
         return self.APP_ENV.lower() in ("prod", "production")
 
+    # v2.0.1 型別化評審設定:容錯部署注入(空字串 → 預設;壞值 → 明確 log 後正常退出),
+    # 避免 Coolify 等把 ${VAR} 未定義代成空字串時,pydantic 解析以例外 crash 且無從得知原因。
+    @field_validator("AI_EVAL_ENABLED", mode="before")
+    @classmethod
+    def _coerce_ai_eval_enabled(cls, v: Any) -> bool:
+        return coerce_bool_env("AI_EVAL_ENABLED", v, False)
+
+    @field_validator("AI_EVAL_BEAT_INTERVAL_SECONDS", mode="before")
+    @classmethod
+    def _coerce_ai_eval_beat(cls, v: Any) -> int:
+        return coerce_int_env("AI_EVAL_BEAT_INTERVAL_SECONDS", v, 300)
+
+    @field_validator("AI_EVAL_DISPATCH_BATCH_SIZE", mode="before")
+    @classmethod
+    def _coerce_ai_eval_batch(cls, v: Any) -> int:
+        return coerce_int_env("AI_EVAL_DISPATCH_BATCH_SIZE", v, 100)
+
+    @field_validator("AI_EVAL_TASK_MAX_RETRIES", mode="before")
+    @classmethod
+    def _coerce_ai_eval_max_retries(cls, v: Any) -> int:
+        return coerce_int_env("AI_EVAL_TASK_MAX_RETRIES", v, 3)
+
     @model_validator(mode="after")
-    def _fail_fast_in_prod(self) -> "Settings":
+    def _fail_fast_in_prod(self) -> Settings:
         """正式環境啟動把關:安全前提缺漏即 raise,避免靜默以最不安全狀態上線。"""
         if not self.is_prod:
             return self

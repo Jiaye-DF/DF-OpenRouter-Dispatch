@@ -54,6 +54,8 @@ backend/logs/
 frontend/.env.local
 # 個人本機測試腳本(放憑證明文 / 暫存實驗),禁止 commit
 local/
+# taskiq + Redis 沙盒 demo(獨立可刪,不入版控)
+examples/taskiq-demo/
 
 # --- Claude Code runtime ---
 .claude/scheduled_tasks.lock

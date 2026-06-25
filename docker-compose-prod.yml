@@ -46,6 +46,14 @@ services:
       OPENROUTER_API_BASE_URL: ${OPENROUTER_API_BASE_URL}
       OPENROUTER_API_TIMEOUT: ${OPENROUTER_API_TIMEOUT}
       DEFAULT_OPENROUTER_KEY: ${DEFAULT_OPENROUTER_KEY}
+      # AI 評審 / taskiq + Redis(v2.0);compose 內 Redis 主機名為 redis 服務
+      AI_EVAL_ENABLED: ${AI_EVAL_ENABLED}
+      TASKIQ_BROKER_URL: redis://redis:6379/0
+      TASKIQ_RESULT_BACKEND_URL: redis://redis:6379/1
+      REDIS_URL: redis://redis:6379/2
+      AI_EVAL_BEAT_INTERVAL_SECONDS: ${AI_EVAL_BEAT_INTERVAL_SECONDS}
+      AI_EVAL_DISPATCH_BATCH_SIZE: ${AI_EVAL_DISPATCH_BATCH_SIZE}
+      AI_EVAL_TASK_MAX_RETRIES: ${AI_EVAL_TASK_MAX_RETRIES}
       # M365 Mail 服務(開通完成 Email 通知,Microsoft Graph);值由 Coolify 注入
       M365_CLIENT_ID: ${M365_CLIENT_ID}
       M365_TENANT_ID: ${M365_TENANT_ID}
@@ -62,6 +70,8 @@ services:
         condition: service_completed_successfully
       seq:
         condition: service_started
+      redis:
+        condition: service_healthy
 
   postgres:
     image: postgres:17-alpine
@@ -119,8 +129,93 @@ services:
     volumes:
       - seq-data:/data
 
+  redis:
+    image: redis:8.6-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    expose:
+      - "6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  taskiq-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["taskiq", "worker", "app.tasks.broker:broker", "app.tasks.ai_model_eval"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      APP_NAME: taskiq-worker
+      LOG_LEVEL: ${LOG_LEVEL}
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: ${JWT_ALGORITHM}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      OPENROUTER_API_BASE_URL: ${OPENROUTER_API_BASE_URL}
+      OPENROUTER_API_TIMEOUT: ${OPENROUTER_API_TIMEOUT}
+      DEFAULT_OPENROUTER_KEY: ${DEFAULT_OPENROUTER_KEY}
+      AI_EVAL_ENABLED: ${AI_EVAL_ENABLED}
+      TASKIQ_BROKER_URL: redis://redis:6379/0
+      TASKIQ_RESULT_BACKEND_URL: redis://redis:6379/1
+      REDIS_URL: redis://redis:6379/2
+      AI_EVAL_BEAT_INTERVAL_SECONDS: ${AI_EVAL_BEAT_INTERVAL_SECONDS}
+      AI_EVAL_DISPATCH_BATCH_SIZE: ${AI_EVAL_DISPATCH_BATCH_SIZE}
+      AI_EVAL_TASK_MAX_RETRIES: ${AI_EVAL_TASK_MAX_RETRIES}
+      SEQ_INGESTION_URL: http://seq
+      SEQ_API_KEY: ${SEQ_API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      alembic:
+        condition: service_completed_successfully
+      seq:
+        condition: service_started
+
+  taskiq-scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["taskiq", "scheduler", "app.tasks.scheduler:scheduler"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      APP_NAME: taskiq-scheduler
+      LOG_LEVEL: ${LOG_LEVEL}
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: ${JWT_ALGORITHM}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      AI_EVAL_ENABLED: ${AI_EVAL_ENABLED}
+      TASKIQ_BROKER_URL: redis://redis:6379/0
+      TASKIQ_RESULT_BACKEND_URL: redis://redis:6379/1
+      REDIS_URL: redis://redis:6379/2
+      AI_EVAL_BEAT_INTERVAL_SECONDS: ${AI_EVAL_BEAT_INTERVAL_SECONDS}
+      AI_EVAL_DISPATCH_BATCH_SIZE: ${AI_EVAL_DISPATCH_BATCH_SIZE}
+      AI_EVAL_TASK_MAX_RETRIES: ${AI_EVAL_TASK_MAX_RETRIES}
+      SEQ_INGESTION_URL: http://seq
+      SEQ_API_KEY: ${SEQ_API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      alembic:
+        condition: service_completed_successfully
+      seq:
+        condition: service_started
+
 volumes:
   postgres-data:
     name: ${COMPOSE_PROJECT_NAME}-postgres-data
   seq-data:
     name: ${COMPOSE_PROJECT_NAME}-seq-data
+  redis-data:
+    name: ${COMPOSE_PROJECT_NAME}-redis-data

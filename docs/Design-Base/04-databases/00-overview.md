@@ -20,7 +20,19 @@
 | 建立者 | `created_by` | `UUID` |
 | 最後更新者 | `updated_by` | `UUID` |
 
-`is_active` / `sort_order` **非全表必備**,需要時加。每欄必加 `COMMENT ON COLUMN` 中英雙語。
+`is_active` / `sort_order` **非全表必備**,需要時加。
+
+## 自我說明:COMMENT(永遠遵守)
+
+**任何動到 schema 的 migration** 都**必**同步補/更新 metadata,否則不得合併:
+
+- **新建表**(`op.create_table`):`COMMENT ON TABLE` 一句說明用途 + 每欄 `COMMENT ON COLUMN`(中英雙語)。
+- **新增欄位**(`op.add_column`):該欄**必**同步 `COMMENT ON COLUMN`;**不得**只 add_column 不寫說明。
+- **異動欄位語意**(`op.alter_column` 改型別 / 用途):**必**更新該欄 COMMENT,使說明不過期。
+- **雙軌一致**:SQLAlchemy Model 欄位帶 `comment=`(與 DB `COMMENT` 同文案),讓 `Base.metadata` 與 DB 對齊、alembic autogenerate 不誤判。
+- 必備欄位(`pid` / `*_uid` / `is_*` / `created_at` / `updated_at`)用統一罐頭文案,migration 內以 helper 批次套用。
+
+> 專案另要求新表登錄「資料表名稱對照字典」(`table_catalog`),改欄位順手補登未登錄的歷史表,見 `90-project-database.md § 3.5`。
 
 ## SQLAlchemy Model(永遠遵守)
 

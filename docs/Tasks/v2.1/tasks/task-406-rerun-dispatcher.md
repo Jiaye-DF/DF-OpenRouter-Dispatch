@@ -1,7 +1,7 @@
 ---
 id: task-406
 title: taskiq task + dispatcher(dispatch_unrerun / rerun_evaluation_task)
-status: pending
+status: done
 parallel: true
 depends_on: [task-403, task-405]
 affected_files:

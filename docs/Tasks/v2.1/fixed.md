@@ -34,3 +34,14 @@
 - **修正**:於 service 內以 SQLAlchemy 2 ORM `select(AiModelEvaluation).where(ai_evaluation_uid==..., is_deleted==False)` 取單列(**非** raw SQL 字串拼接,無注入風險,對齊 `04-databases/04-sql-safety.md`);沿用 `proxy.py` 既有「service 內 ORM select」先例(`proxy.py:283` `_resolve_model` 同模式)。已於程式內註解標明此處為權宜並 cross-ref 本條。
 - **規範參照**:`03-backend/00-overview.md § 分層`(「禁 service 直寫 raw SQL」——此處為 ORM select 非 raw,屬邊界折衷)/ `04-databases/04-sql-safety.md`(已遵守,無字串拼接)
 - **後續**:reflect 候選 — (1) 為 `AiModelEvaluationRepository` 補 `find_by_uid(ai_evaluation_uid)`(對齊既有 `find_by_usage_log_uid` 命名),清債 task 完成後把 service 改回走 repository;(2) 任務切分時應把「消費 service 所需的 repository 讀取方法」一併納入上游 repo task 範圍,避免下游 service 被迫在範圍鎖檔下繞道。
+
+## §4 — `mypy app/tasks/ai_model_eval.py` 因連帶分析 repository / seqlog 既有型別債殘留 10 個錯誤(task-406 acceptance 第四條)
+
+- **時間**:2026-06-26T15:30+08:00
+- **commit / PR**:`<pending>`(task-406,orchestrator 統一提交)
+- **影響檔案**:`backend/app/repositories/usage_log.py`(6 錯)、`backend/app/repositories/model.py`(3 錯)、`backend/app/core/logging.py`(1 錯)——**皆非** task-406 範圍檔
+- **問題**:task-406 acceptance 第四條 `mypy app/tasks/ai_model_eval.py` 要求全綠。實跑回報 10 個錯誤,**全數**落在範圍外檔:`usage_log.py` 的 `UsageLogRepository.list` 方法名與 mypy 型別解析衝突(`valid-type`,5 處)+ `Row[Any]` dict comprehension(`misc`)、`model.py` 的 SQLAlchemy 2.x `Result` 無 `rowcount`(`attr-defined`,3 處)、`logging.py` 的 `seqlog` 缺 stub(`import-untyped`)。mypy 結尾明示 `checked 1 source file`,本 task 自身檔 `app/tasks/ai_model_eval.py` **零錯誤**(以 `grep -c "ai_model_eval.py:"` 驗為 0)。
+- **根因**:與 §1 / §2 / §3 同類——既有 repository / 共用模組的型別債在新 task 驗收上「連坐」。task-406 為呼叫 task-405 service 新增 `from app.services.ai_model_eval_rerun import rerun_evaluation`,該 service 透傳 `UsageLogRepository` / `ModelRepository` / `app.core.logging`,把既有債拉進 mypy 分析圖;同檔既有的 `evaluate_usage_log_task` / `dispatch_unevaluated` 本就 import 同一批 repository,屬倉庫既有環境債,非本 task 引入。
+- **修正**:task-406 範圍只動兩檔(task + test),**不**擅改範圍外 repository / `logging.py` / `pyproject.toml`(遵守「禁止碰其他檔案」)。以「自身檔 mypy 零錯 + 錯誤檔皆為既有債(§1/§2/§3 已記同源)」佐證本 task 未引入新型別錯誤。
+- **規範參照**:`03-backend/07-testing.md`(acceptance 全綠要求)/ `04-databases/04-sql-safety.md`(本 task 範圍內無 raw 拼接,worker 短路以 ORM `select` 直取,對齊 §3)
+- **後續**:reflect 候選 — 此為跨 v2.1 task(§1/§3/§4)連續第 3 次出現「既有 repository 型別債(`list` 方法名 / `Result.rowcount`)+ `seqlog` 缺 stub 連坐」,已達同類條目升規門檻;建議(1)開獨立清債 task:`UsageLogRepository.list` 改名、`model.py` 改用 `Result.rowcount` 替代寫法、`pyproject.toml` 加 `[[tool.mypy.overrides]] module="seqlog.*" ignore_missing_imports=true`;(2)對「禁碰其他檔案」的 task 把 mypy acceptance 範圍收斂為「僅本 task 變更檔」或建立 mypy baseline。

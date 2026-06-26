@@ -52,6 +52,13 @@ class RerunRecommendation(BaseModel):
     - `compare_reason`:裁決理由。
     - `compare_judge_model`:擔任裁決的模型 key(推薦該模型的評審本人)。
 
+    推薦來源:
+    - `recommended_by`:這個推薦模型是「哪個評審模型推薦的」(評審模型 key)。
+      讀取層由 candidate 反查 derive 得來(對該筆評審查候選清單,以本列的
+      `ai_candidate_uid` 對映回推薦它的評審模型),**不是** `compare_judge_model`
+      ——後者只有實際跑過裁決才有值(失敗 / 未裁決時為 None,不可靠)。
+      查不到對應候選(候選已軟刪 / 無 `ai_candidate_uid`)→ `None`。
+
     `triggered_at`:重跑執行時間。
     """
 
@@ -70,6 +77,7 @@ class RerunRecommendation(BaseModel):
     compare_score: str | None
     compare_reason: str | None
     compare_judge_model: str | None
+    recommended_by: str | None
     triggered_at: datetime
 
 
@@ -83,6 +91,8 @@ class RerunGroup(BaseModel):
     - `original_model`:原模型 key(denormalize,並排顯示)。
     - `original_output_text`:原模型**真實輸出原文**(取自 `usage_logs.response_summary.output_text`;
       歷史 log 未存快照 → `None`,前端顯示「無原始輸出快照」)。
+    - `original_input_text`:該筆呼叫的「任務輸入」原文(取自 `usage_logs.request_content.text`;
+      與 usage-log 明細頁慣例同)。request_content 為 NULL / 無 text / 非字串 → `None`。
     - `original_cost_usd`:原呼叫成本(USD);**Decimal → 字串**(`str | None`)。
     - `evaluated_at`:該組最新一筆推薦模型的重跑執行時間(供排序 / 顯示;無列 → `None`)。
     - `recommendations`:去重後的 AI 推薦模型列(最新優先)。
@@ -91,6 +101,7 @@ class RerunGroup(BaseModel):
     usage_log_uid: UUID
     original_model: str
     original_output_text: str | None
+    original_input_text: str | None
     original_cost_usd: str | None
     evaluated_at: datetime | None
     recommendations: list[RerunRecommendation]

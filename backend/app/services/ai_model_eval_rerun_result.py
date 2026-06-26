@@ -5,13 +5,21 @@
 (task-408)直接回前端「AI 判決總覽」並排比較頁。
 
 職責邊界(對齊既有 `ai_model_eval_result.py`):
-- **純讀、無副作用**:只查重跑列(分組分頁)+ 反查 `usage_logs.response_summary`
-  補原模型輸出原文;**不**打 OpenRouter、**不**寫 DB / audit、**不**開 transaction、**不** commit。
+- **純讀、無副作用**:只查重跑列(分組分頁)+ 反查 `usage_logs`
+  補原模型輸出原文 / 任務輸入原文 + 反查各評審候選補「推薦來源」;**不**打 OpenRouter、
+  **不**寫 DB / audit、**不**開 transaction、**不** commit。
 - **Decimal → 字串**:金額(`cost_usd` / `original_cost_usd` / `cost_delta_usd`,
   `Numeric(12,6)`)與信心分數(`compare_score`,`Numeric(4,3)`)一律轉 `str`
   (對齊既有「Decimal → string」慣例,避免 JS 浮點誤差);schema 只宣告型別,轉換在本層。
 - **輸出原文**:推薦模型取 `ai_model_eval_reruns.response_summary.output_text`;原模型反查
   `usage_logs.response_summary.output_text`(歷史 log 未存快照 → None)。
+- **任務輸入原文**:原模型反查 `usage_logs.request_content.text`(同一 row 順手取;
+  無 request_content / 無 text / 非字串 → None)。
+- **推薦來源(`recommended_by`)**:每筆重跑列帶 `ai_evaluation_uid` + `ai_candidate_uid`;
+  對該評審查候選清單(`list_candidates_with_judge`),以候選的 `judge_model_key` 對映回
+  「推薦這個模型的評審本人」。**避免 N+1**:同一評審的候選清單只查一次後快取共用
+  (本頁分組、組內 rows 同評審,故組內共用一次查詢);查不到 → None。
+  不用 `compare_judge_model`(那只有實際跑過裁決才有值,失敗 / 未裁決時 NULL 不可靠)。
 - **無資料**:回 `items=[]`、`total=0`、`stats` 全 0(非 None / 非 404)。
 
 `stats` 計數定義(對齊 propose §6.1):
@@ -25,12 +33,14 @@ from __future__ import annotations
 from collections import defaultdict
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.models.ai_model_eval_rerun import AiModelEvalRerun
 from app.repositories.ai_model_eval_rerun import AiModelEvalRerunRepository
+from app.repositories.ai_model_evaluation import AiModelEvaluationRepository
 from app.repositories.usage_log import UsageLogRepository
 from app.schemas.ai_model_eval_rerun_result import (
     RerunGroup,
@@ -70,8 +80,26 @@ def _output_text_of(response_summary: dict[str, Any] | None) -> str | None:
     return None
 
 
-def _to_recommendation(row: AiModelEvalRerun) -> RerunRecommendation:
-    """`AiModelEvalRerun`(ORM 列)→ `RerunRecommendation`(對外);金額 / 分數 Decimal→str。"""
+def _input_text_of(request_content: dict[str, Any] | None) -> str | None:
+    """從 `request_content` 取任務輸入原文(`text` 欄;對齊 usage-log 明細 / rerun service 慣例)。
+
+    request_content 為 NULL / 缺 `text` / 非字串 / 空字串 → None。
+    """
+    if not request_content:
+        return None
+    text = request_content.get("text")
+    if isinstance(text, str) and text:
+        return text
+    return None
+
+
+def _to_recommendation(
+    row: AiModelEvalRerun, recommended_by: str | None
+) -> RerunRecommendation:
+    """`AiModelEvalRerun`(ORM 列)→ `RerunRecommendation`(對外);金額 / 分數 Decimal→str。
+
+    `recommended_by` 由 caller 從 candidate 反查 derive 後傳入(推薦此模型的評審 key;查不到 None)。
+    """
     return RerunRecommendation(
         rerun_model=row.rerun_model,
         model_uid=row.model_uid,
@@ -88,6 +116,7 @@ def _to_recommendation(row: AiModelEvalRerun) -> RerunRecommendation:
         compare_score=_decimal_to_str(row.compare_score, _SCORE_QUANT),
         compare_reason=row.compare_reason,
         compare_judge_model=row.compare_judge_model,
+        recommended_by=recommended_by,
         triggered_at=row.triggered_at,
     )
 
@@ -124,10 +153,13 @@ async def build_rerun_overview(
     流程(對齊 propose §5.4 / §6.1):
     1. repo `list_grouped_by_usage_log`:取當頁分組鍵(distinct usage_log,組最新時戳優先)
        + 這些 usage_log 底下全部未軟刪重跑列。
-    2. 反查 `usage_logs.response_summary.output_text` 補各組 `original_output_text`(純讀)。
-    3. 逐組組 `RerunGroup`(原模型輸出 + recommendations[],Decimal→str)。
-    4. 彙總當頁 `stats`(裁決分布)。
-    5. repo `count_distinct_usage_logs` 取 `total`(分組組數)。
+    2. 反查 `usage_logs`(同一 row)補各組 `original_output_text`
+       (response_summary.output_text)與 `original_input_text`(request_content.text)(純讀)。
+    3. 反查各評審候選補每筆推薦的 `recommended_by`(推薦此模型的評審本人);同評審只查一次後快取
+       (避免 N+1)。
+    4. 逐組組 `RerunGroup`(原模型輸出 / 輸入 + recommendations[],Decimal→str)。
+    5. 彙總當頁 `stats`(裁決分布)。
+    6. repo `count_distinct_usage_logs` 取 `total`(分組組數)。
 
     Args:
         db: AsyncSession(由 endpoint 提供;本函式不開 transaction / 不 commit)。
@@ -139,6 +171,7 @@ async def build_rerun_overview(
     """
     repo = AiModelEvalRerunRepository(db)
     usage_log_repo = UsageLogRepository(db)
+    eval_repo = AiModelEvaluationRepository(db)
 
     ordered_uids, rows = await repo.list_grouped_by_usage_log(
         limit=size, offset=(page - 1) * size
@@ -150,24 +183,50 @@ async def build_rerun_overview(
     for row in rows:
         rows_by_log[row.usage_log_uid].append(row)
 
+    # 推薦來源反查快取:{ai_evaluation_uid: {ai_candidate_uid: judge_model_key}}。
+    # 同評審只查一次候選清單後快取(避免 N+1);本頁分組、組內 rows 同評審,組內共用。
+    judge_by_eval: dict[UUID, dict[UUID, str | None]] = {}
+
+    async def _recommended_by(row: AiModelEvalRerun) -> str | None:
+        """以本列 ai_candidate_uid 對映回「推薦此模型的評審 key」;查不到 / 無候選 → None。"""
+        if row.ai_candidate_uid is None:
+            return None
+        cand_map = judge_by_eval.get(row.ai_evaluation_uid)
+        if cand_map is None:
+            candidates = await eval_repo.list_candidates_with_judge(
+                row.ai_evaluation_uid
+            )
+            cand_map = {
+                cand.ai_candidate_uid: cand.judge_model_key for cand in candidates
+            }
+            judge_by_eval[row.ai_evaluation_uid] = cand_map
+        return cand_map.get(row.ai_candidate_uid)
+
     items: list[RerunGroup] = []
     for log_uid in ordered_uids:
         group_rows = rows_by_log.get(log_uid, [])
         # 組代表列:取最新一筆(repo 已 DESC,group_rows[0]),供原模型 / 原成本 denormalize。
         head = group_rows[0]
-        # 原模型輸出原文反查 usage_logs(歷史未存快照 / log 不存在 → None)。
+        # 原模型輸出 / 輸入原文反查 usage_logs(同一 row;歷史未存 / log 不存在 → None)。
         usage_log = await usage_log_repo.get_by_uid(log_uid)
         original_output_text = (
             _output_text_of(usage_log.response_summary) if usage_log is not None else None
         )
+        original_input_text = (
+            _input_text_of(usage_log.request_content) if usage_log is not None else None
+        )
+        recommendations = [
+            _to_recommendation(r, await _recommended_by(r)) for r in group_rows
+        ]
         items.append(
             RerunGroup(
                 usage_log_uid=log_uid,
                 original_model=head.original_model,
                 original_output_text=original_output_text,
+                original_input_text=original_input_text,
                 original_cost_usd=_decimal_to_str(head.original_cost_usd, _COST_QUANT),
                 evaluated_at=head.triggered_at,
-                recommendations=[_to_recommendation(r) for r in group_rows],
+                recommendations=recommendations,
             )
         )
 

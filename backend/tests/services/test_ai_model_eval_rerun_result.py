@@ -3,11 +3,13 @@
 兩層:
 1. **純函式單測**(無需 DB):`_decimal_to_str`(None 保留 / 補零位數)、
    `_output_text_of`(取 response_summary.output_text;缺 / 空 / 非字串 → None)、
+   `_input_text_of`(取 request_content.text;缺 / 空 / 非字串 → None)、
    `_compute_stats`(裁決分布計數)。
 2. **DB 整合測**(真 DB + 外層 transaction rollback;DB 不可用 skip):
    (a) 無重跑 → items=[] / total=0 / stats 全 0;
-   (b) 同 usage_log 多推薦 → 併入同一 RerunGroup;金額 / 分數為字串;補原模型輸出原文;
-   (c) compare_* / 金額 NULL 列 → 對應欄 None 不爆;
+   (b) 同 usage_log 多推薦 → 併入同一 RerunGroup;金額 / 分數為字串;補原模型輸出 / 輸入原文;
+       且各推薦 `recommended_by` 正確對映回推薦它的評審模型(含查不到 → None);
+   (c) compare_* / 金額 NULL 列 → 對應欄 None 不爆;原 log 無 request_content → input None;
    (d) stats 計數正確;
    (e) 分頁以「組」為單位、total = 分組組數。
 """
@@ -26,7 +28,9 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from uuid_utils import uuid7
 
+from app.models.ai_model_eval_candidate import AiModelEvalCandidate
 from app.models.ai_model_eval_rerun import AiModelEvalRerun
+from app.models.model import Model
 from app.models.usage_log import UsageLog
 from app.repositories.ai_model_eval_rerun import (
     AiModelEvalRerunRepository,
@@ -35,6 +39,7 @@ from app.repositories.ai_model_eval_rerun import (
 from app.services.ai_model_eval_rerun_result import (
     _compute_stats,
     _decimal_to_str,
+    _input_text_of,
     _output_text_of,
     build_rerun_overview,
 )
@@ -85,6 +90,22 @@ def test_output_text_of_none_or_missing_or_empty() -> None:
     assert _output_text_of({}) is None
     assert _output_text_of({"output_text": ""}) is None  # 空字串 → None
     assert _output_text_of({"output_text": 123}) is None  # 非字串 → None
+
+
+# ---------------------------------------------------------------------------
+# _input_text_of:取 request_content.text
+# ---------------------------------------------------------------------------
+
+
+def test_input_text_of_returns_text() -> None:
+    assert _input_text_of({"text": "幫我整理"}) == "幫我整理"
+
+
+def test_input_text_of_none_or_missing_or_empty() -> None:
+    assert _input_text_of(None) is None
+    assert _input_text_of({}) is None
+    assert _input_text_of({"text": ""}) is None  # 空字串 → None
+    assert _input_text_of({"text": 123}) is None  # 非字串 → None
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +177,10 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 
 
 async def _insert_usage_log(
-    session: AsyncSession, *, response_summary: dict | None = None
+    session: AsyncSession,
+    *,
+    response_summary: dict | None = None,
+    request_content: dict | None = None,
 ) -> UUID:
     uid = _new_uid()
     session.add(
@@ -165,10 +189,55 @@ async def _insert_usage_log(
             model="openai/gpt-4o",
             status="success",
             response_summary=response_summary,
+            request_content=request_content,
         )
     )
     await session.flush()
     return uid
+
+
+async def _insert_model(session: AsyncSession, *, model_key: str) -> UUID:
+    """建一筆 models 列(供 candidate join 反查 judge_model_key);key 帶 uuid 後綴避免撞全域 UNIQUE。"""
+    uid = _new_uid()
+    session.add(
+        Model(
+            model_uid=uid,
+            provider="openrouter",
+            model_key=model_key,
+            name=model_key,
+            is_active=True,
+            last_synced_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+    return uid
+
+
+async def _insert_candidate(
+    session: AsyncSession,
+    *,
+    eval_uid: UUID,
+    judge_model_uid: UUID,
+    recommend_model: str,
+) -> UUID:
+    """建一筆評審候選(某裁判 judge_model_uid 推薦 recommend_model);回 ai_candidate_uid。"""
+    uid = _new_uid()
+    session.add(
+        AiModelEvalCandidate(
+            ai_candidate_uid=uid,
+            ai_evaluation_uid=eval_uid,
+            model_uid=judge_model_uid,
+            ai_recommend_model=recommend_model,
+            ai_fit_score=Decimal("0.8"),
+        )
+    )
+    await session.flush()
+    return uid
+
+
+def _uniq(prefix: str) -> str:
+    """model_key 帶 uuid 後綴避免撞 dev DB 全域 UNIQUE。"""
+    return f"{prefix}-{uuid7()}"
 
 
 def _now() -> datetime:
@@ -199,13 +268,35 @@ async def test_overview_empty_when_no_reruns(db_session: AsyncSession) -> None:
 async def test_overview_groups_multiple_recommendations_same_log(
     db_session: AsyncSession,
 ) -> None:
-    """同一 usage_log 的多個推薦模型 → 併入同一個 RerunGroup;金額 / 分數為字串;補原輸出。"""
+    """同一 usage_log 的多個推薦模型 → 併入同一個 RerunGroup;金額 / 分數為字串;補原輸出 / 輸入。
+
+    並驗 `recommended_by`:由 candidate 反查得「推薦此模型的評審 key」;
+    - rec/a 有候選(judge_a 推薦) → recommended_by = judge_a key;
+    - rec/b 有候選(judge_b 推薦) → recommended_by = judge_b key;
+    - rec/c 該列無 ai_candidate_uid → recommended_by = None(代表「查不到」)。
+    """
     repo = AiModelEvalRerunRepository(db_session)
-    # 原模型輸出原文存於 usage_logs.response_summary.output_text
+    # 原模型輸出原文存於 response_summary;任務輸入原文存於 request_content.text
     log_uid = await _insert_usage_log(
-        db_session, response_summary={"output_text": "原模型輸出"}
+        db_session,
+        response_summary={"output_text": "原模型輸出"},
+        request_content={"text": "幫我整理會議記錄"},
     )
     eval_uid = _new_uid()
+
+    # 兩個裁判模型(建入 models 供 join 反查 key)+ 各自推薦 rec/a、rec/b 的候選。
+    judge_a_key = _uniq("anthropic/judge-a")
+    judge_b_key = _uniq("openai/judge-b")
+    judge_a_uid = await _insert_model(db_session, model_key=judge_a_key)
+    judge_b_uid = await _insert_model(db_session, model_key=judge_b_key)
+    cand_a = await _insert_candidate(
+        db_session, eval_uid=eval_uid, judge_model_uid=judge_a_uid, recommend_model="rec/a"
+    )
+    cand_b = await _insert_candidate(
+        db_session, eval_uid=eval_uid, judge_model_uid=judge_b_uid, recommend_model="rec/b"
+    )
+    # rec/c 故意不帶候選 → recommended_by 應為 None
+    cand_by_model = {"rec/a": cand_a, "rec/b": cand_b, "rec/c": None}
 
     base = datetime(2099, 1, 1, 12, 0, 0, tzinfo=UTC)
     for i, model in enumerate(("rec/a", "rec/b", "rec/c")):
@@ -217,6 +308,7 @@ async def test_overview_groups_multiple_recommendations_same_log(
                 rerun_model=model,
                 triggered_at=base.replace(minute=i),
                 status="success",
+                ai_candidate_uid=cand_by_model[model],
                 response_summary={"output_text": f"推薦輸出-{model}"},
                 cost_usd=Decimal("0.001000"),
                 original_cost_usd=Decimal("0.002000"),
@@ -236,8 +328,9 @@ async def test_overview_groups_multiple_recommendations_same_log(
     # 三個推薦模型併入同一組
     assert len(group.recommendations) == 3
     assert {r.rerun_model for r in group.recommendations} == {"rec/a", "rec/b", "rec/c"}
-    # 原模型輸出原文反查補上
+    # 原模型輸出 / 輸入原文反查補上
     assert group.original_output_text == "原模型輸出"
+    assert group.original_input_text == "幫我整理會議記錄"
     # 推薦模型各自帶真實輸出原文
     rec = next(r for r in group.recommendations if r.rerun_model == "rec/a")
     assert rec.output_text == "推薦輸出-rec/a"
@@ -249,6 +342,11 @@ async def test_overview_groups_multiple_recommendations_same_log(
     assert rec.compare_score == "0.900"
     assert isinstance(group.original_cost_usd, str)
     assert group.original_cost_usd == "0.002000"
+    # recommended_by:由 candidate 反查回推薦它的評審 key(rec/c 無候選 → None)
+    by_model = {r.rerun_model: r.recommended_by for r in group.recommendations}
+    assert by_model["rec/a"] == judge_a_key
+    assert by_model["rec/b"] == judge_b_key
+    assert by_model["rec/c"] is None
 
 
 async def test_overview_handles_null_compare_cost_and_output(
@@ -275,6 +373,7 @@ async def test_overview_handles_null_compare_cost_and_output(
     page = await build_rerun_overview(db=db_session, page=1, size=20)
     group = next(g for g in page.items if g.usage_log_uid == log_uid)
     assert group.original_output_text is None  # 原 log 無 response_summary
+    assert group.original_input_text is None  # 原 log 無 request_content
     assert group.original_cost_usd is None
     assert len(group.recommendations) == 1
     rec = group.recommendations[0]
@@ -285,6 +384,7 @@ async def test_overview_handles_null_compare_cost_and_output(
     assert rec.cost_delta_usd is None
     assert rec.compare_winner is None
     assert rec.compare_score is None
+    assert rec.recommended_by is None  # 失敗列無 ai_candidate_uid → None
 
 
 async def test_overview_stats_counts(db_session: AsyncSession) -> None:

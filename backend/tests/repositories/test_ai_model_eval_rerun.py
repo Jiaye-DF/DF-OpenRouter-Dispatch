@@ -413,3 +413,161 @@ async def test_list_by_evaluation_uid_filters_soft_deleted(
     uids = {r.ai_eval_rerun_uid for r in rows}
     assert live.ai_eval_rerun_uid in uids
     assert gone.ai_eval_rerun_uid not in uids
+
+
+# ── (e) list_grouped_by_usage_log / count_distinct_usage_logs ──────────
+# 注意:全表查詢,transaction 內可見 dev DB 既有 committed 列;以遠未來時戳(2099)
+# 保證自插組排最前,total/len 用相對(>=)斷言。
+
+
+def _rerun_at(
+    *,
+    ai_evaluation_uid: UUID,
+    usage_log_uid: UUID,
+    rerun_model: str,
+    triggered_at: datetime,
+) -> RerunInput:
+    return RerunInput(
+        ai_evaluation_uid=ai_evaluation_uid,
+        usage_log_uid=usage_log_uid,
+        original_model="openai/gpt-4o",
+        rerun_model=rerun_model,
+        triggered_at=triggered_at,
+        status="success",
+    )
+
+
+async def test_list_grouped_by_usage_log_groups_and_orders(
+    db_session: AsyncSession,
+) -> None:
+    """distinct usage_log 以「組最新 triggered_at」排序;回傳該頁分組鍵 + 底下全部列。"""
+    repo = AiModelEvalRerunRepository(db_session)
+    base = datetime(2099, 1, 1, 10, 0, 0, tzinfo=_TPE)
+
+    # log_a:組最新 = 10:05;log_b:組最新 = 10:30(較新 → 排在 log_a 前)
+    eval_a, log_a = await _insert_evaluation(db_session)
+    eval_b, log_b = await _insert_evaluation(db_session)
+    await repo.create_rerun(
+        _rerun_at(
+            ai_evaluation_uid=eval_a,
+            usage_log_uid=log_a,
+            rerun_model="a/1",
+            triggered_at=base.replace(minute=1),
+        )
+    )
+    await repo.create_rerun(
+        _rerun_at(
+            ai_evaluation_uid=eval_a,
+            usage_log_uid=log_a,
+            rerun_model="a/2",
+            triggered_at=base.replace(minute=5),
+        )
+    )
+    await repo.create_rerun(
+        _rerun_at(
+            ai_evaluation_uid=eval_b,
+            usage_log_uid=log_b,
+            rerun_model="b/1",
+            triggered_at=base.replace(minute=30),
+        )
+    )
+
+    uids, rows = await repo.list_grouped_by_usage_log(limit=100, offset=0)
+    # log_b(10:30)應排在 log_a(10:05)之前
+    pos = {uid: i for i, uid in enumerate(uids)}
+    assert pos[log_b] < pos[log_a]
+    # 回傳列含這兩組底下全部(a/1, a/2, b/1)
+    models_by_log = {log_a: set(), log_b: set()}
+    for r in rows:
+        if r.usage_log_uid in models_by_log:
+            models_by_log[r.usage_log_uid].add(r.rerun_model)
+    assert models_by_log[log_a] == {"a/1", "a/2"}
+    assert models_by_log[log_b] == {"b/1"}
+
+
+async def test_list_grouped_by_usage_log_paginates_by_group(
+    db_session: AsyncSession,
+) -> None:
+    """分頁以「組」為單位:limit=1 → 只回最新 1 組的鍵(及其列)。"""
+    repo = AiModelEvalRerunRepository(db_session)
+    base = datetime(2099, 1, 1, 11, 0, 0, tzinfo=_TPE)
+    eval_a, log_a = await _insert_evaluation(db_session)
+    eval_b, log_b = await _insert_evaluation(db_session)
+    await repo.create_rerun(
+        _rerun_at(
+            ai_evaluation_uid=eval_a,
+            usage_log_uid=log_a,
+            rerun_model="a/1",
+            triggered_at=base.replace(minute=10),
+        )
+    )
+    await repo.create_rerun(
+        _rerun_at(
+            ai_evaluation_uid=eval_b,
+            usage_log_uid=log_b,
+            rerun_model="b/1",
+            triggered_at=base.replace(minute=40),
+        )
+    )
+
+    uids, _rows = await repo.list_grouped_by_usage_log(limit=1, offset=0)
+    assert len(uids) == 1
+    assert uids[0] == log_b  # 最新組
+
+
+async def test_list_grouped_excludes_soft_deleted(
+    db_session: AsyncSession,
+) -> None:
+    """軟刪列不參與分組:某組全列軟刪 → 該組不出現、不計入。"""
+    repo = AiModelEvalRerunRepository(db_session)
+    base = datetime(2099, 1, 1, 12, 0, 0, tzinfo=_TPE)
+    eval_uid, log_uid = await _insert_evaluation(db_session)
+    gone = await repo.create_rerun(
+        _rerun_at(
+            ai_evaluation_uid=eval_uid,
+            usage_log_uid=log_uid,
+            rerun_model="gone/1",
+            triggered_at=base.replace(minute=50),
+        )
+    )
+    await db_session.execute(
+        update(AiModelEvalRerun)
+        .where(AiModelEvalRerun.ai_eval_rerun_uid == gone.ai_eval_rerun_uid)
+        .values(is_deleted=True)
+    )
+    await db_session.flush()
+
+    uids, rows = await repo.list_grouped_by_usage_log(limit=100, offset=0)
+    assert log_uid not in uids
+    assert all(r.usage_log_uid != log_uid for r in rows)
+
+
+async def test_count_distinct_usage_logs_counts_groups(
+    db_session: AsyncSession,
+) -> None:
+    """count = distinct usage_log 組數(過濾軟刪);同組多列只算一組。"""
+    repo = AiModelEvalRerunRepository(db_session)
+    before = await repo.count_distinct_usage_logs()
+
+    base = datetime(2099, 1, 1, 13, 0, 0, tzinfo=_TPE)
+    eval_uid, log_uid = await _insert_evaluation(db_session)
+    # 同一 usage_log 兩列 → 仍只算一組
+    await repo.create_rerun(
+        _rerun_at(
+            ai_evaluation_uid=eval_uid,
+            usage_log_uid=log_uid,
+            rerun_model="x/1",
+            triggered_at=base.replace(minute=1),
+        )
+    )
+    await repo.create_rerun(
+        _rerun_at(
+            ai_evaluation_uid=eval_uid,
+            usage_log_uid=log_uid,
+            rerun_model="x/2",
+            triggered_at=base.replace(minute=2),
+        )
+    )
+
+    after = await repo.count_distinct_usage_logs()
+    assert after == before + 1

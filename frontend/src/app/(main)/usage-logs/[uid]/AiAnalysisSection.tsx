@@ -18,7 +18,6 @@ import type {
   EvaluationResultResponse,
   EvaluationSummary,
 } from "@/types/api";
-import { AiRerunSection } from "./AiRerunSection";
 
 // v2.0.3(task-306):usage-log 明細頁內嵌「AI 分析」基礎摘要區塊。
 // 獨立 fetch 評審結果(評審缺漏不影響 log 本體),自有 loading / error / 四狀態機。
@@ -249,10 +248,6 @@ export function AiAnalysisSection({ uid }: { uid: string }) {
             // 狀態機 4:已評審 → 基礎摘要卡
             <EvaluatedSummary evaluation={evaluation} />
           )}
-
-          {/* v2.1.0(task-410):challenger 真實重跑對比裁決(同卡內,獨立 fetch / 狀態機;
-              重跑缺漏不影響上方評審本體) */}
-          <AiRerunSection uid={uid} />
         </CardContent>
       </Card>
     </section>

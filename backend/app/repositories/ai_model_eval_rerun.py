@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
@@ -142,3 +142,60 @@ class AiModelEvalRerunRepository:
             AiModelEvalRerun.is_deleted.is_(False),
         )
         return list((await self.db.execute(stmt)).scalars().all())
+
+    async def list_grouped_by_usage_log(
+        self, *, limit: int, offset: int
+    ) -> tuple[list[UUID], list[AiModelEvalRerun]]:
+        """依用量紀錄分組分頁(供 AI 判決總覽頁,預設過濾軟刪)。
+
+        分組策略(對齊 propose §5.4「依用量紀錄分組」):
+        1. 取 distinct `usage_log_uid`,以該組**最新 `triggered_at`** 排序(最新組優先),
+           `limit`/`offset` 以**組**為單位分頁。
+        2. 撈這些 usage_log 底下全部(未軟刪)重跑列(`triggered_at DESC`),供 service
+           併入各組 `recommendations[]`。
+
+        每列已自帶 `usage_log_uid` / `original_model`,無需 join 父表 / usage_logs。
+
+        Returns:
+            `(ordered_usage_log_uids, rows)`:
+            - `ordered_usage_log_uids`:當頁分組鍵(已按組最新時戳排序,供 service 保序組裝)。
+            - `rows`:這些 usage_log 底下的全部重跑列(未軟刪,`triggered_at DESC`)。
+        """
+        # 1) 以 usage_log 為單位取「組最新時戳」,排序分頁取當頁分組鍵。
+        group_stmt = (
+            select(
+                AiModelEvalRerun.usage_log_uid,
+                func.max(AiModelEvalRerun.triggered_at).label("latest"),
+            )
+            .where(AiModelEvalRerun.is_deleted.is_(False))
+            .group_by(AiModelEvalRerun.usage_log_uid)
+            .order_by(func.max(AiModelEvalRerun.triggered_at).desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        ordered_uids = [
+            row[0] for row in (await self.db.execute(group_stmt)).all()
+        ]
+        if not ordered_uids:
+            return [], []
+
+        # 2) 撈這些 usage_log 底下全部未軟刪重跑列(service 再 group 進各組)。
+        rows_stmt = (
+            select(AiModelEvalRerun)
+            .where(
+                AiModelEvalRerun.is_deleted.is_(False),
+                AiModelEvalRerun.usage_log_uid.in_(ordered_uids),
+            )
+            .order_by(AiModelEvalRerun.triggered_at.desc())
+        )
+        rows = list((await self.db.execute(rows_stmt)).scalars().all())
+        return ordered_uids, rows
+
+    async def count_distinct_usage_logs(self) -> int:
+        """跨 log 分組組數(distinct usage_log,過濾軟刪),供分頁 total。"""
+        stmt = (
+            select(func.count(func.distinct(AiModelEvalRerun.usage_log_uid)))
+            .select_from(AiModelEvalRerun)
+            .where(AiModelEvalRerun.is_deleted.is_(False))
+        )
+        return int((await self.db.execute(stmt)).scalar_one())

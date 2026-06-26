@@ -1,55 +1,63 @@
-# Tasks v2.1.0 · 推薦模型「真實重跑 + 對比裁決」(champion / challenger,GAN 閉環)
+# Tasks v2.1.0 · AI 推薦模型「真實重跑 + 對比裁決」
 
-> 狀態:全數完成(已完成 10/10;待 /scan-project 收口)
+> 狀態:全數完成(401–406 初版 + 407–411 為 2026-06-26 redo,皆 done;待 /scan-project 收口)
 > 來源:[propose-v2.1.0.md](./propose-v2.1.0.md);母本鏈 [v2.0.0 地基](../v2.0/propose-v2.0.0.md) → [v2.0.1 判別管線](../v2.0/propose-v2.0.1.md) → [v2.0.3 評審結果顯示](../v2.0/propose-v2.0.3.md)
-> 並行:5 / 序列:5 / 預估總時數:27 hr / 阻塞點:0(propose §10 已全數拍板,worker 可直接開工)
+> 並行:redo 批 5 個 task 中 3 可並行 / 序列 2 / 預估 redo 總時數:12 hr / 阻塞點:0(propose 已全數拍板,視覺形式 §6.2 已定案)
+
+## 重做說明(2026-06-26)
+
+初版 v2.1.0(下表 401–410)實作後,user 評估**前端展示過於陽春、術語難懂**,且詳細比較應集中於專屬 admin 頁。經調整 propose-v2.1.0(移除黑話、前端改獨立「AI 判決總覽」頁、依用量紀錄分組並排真實輸出、禁連回用量紀錄、usage-log 明細頁回退 v2.0.3):
+
+- **不動**:401–406(env + 新表 + migration + repository + 對比裁決 prompt + rerun service + dispatcher)。**DB 一行不改**(真實輸出原文已存於 `response_summary.output_text`)。
+- **重做**:407(讀取 schema/service 改分組 + 吐輸出原文)、408(API 收斂單一分組端點 + 移除 by-usage-log)、409(前端分組型別 + 端點收斂)。
+- **新拆**:410 改為「usage-log 明細頁回退(移除 AiRerunSection)」、411「AI 判決總覽頁重做」。
+
+## 任務清單
 
 | # | 標題 | 狀態 | 並行 | 依賴 | 影響檔案 |
 | --- | --- | --- | --- | --- | --- |
 | 401 | env 兩顆開關 + Settings 欄位 | done | ✓ | — | `backend/app/core/config.py`、`.env.example` |
 | 402 | 新表 model + 父表游標欄 + migration | done | ✓ | — | `backend/app/models/ai_model_eval_rerun.py`、`backend/app/models/ai_model_evaluation.py`、`backend/app/models/__init__.py`、`backend/alembic/versions/0026_ai_eval_reruns.py` |
 | 403 | rerun repository + 父表重跑游標查詢 | done | ✓ | 402 | `backend/app/repositories/ai_model_eval_rerun.py`、`backend/app/repositories/ai_model_evaluation.py`、`backend/tests/repositories/test_ai_model_eval_rerun.py` |
-| 404 | AI discriminator 盲化對比 prompt + 解析 schema | done | ✓ | — | `backend/app/services/ai_model_eval_rerun_prompt.py`、`backend/app/schemas/ai_model_eval.py`、`backend/tests/services/test_ai_model_eval_rerun_prompt.py` |
-| 405 | rerun service(challenger 串行 → discriminator → 寫一筆) | done | ✓ | 401, 403, 404 | `backend/app/services/ai_model_eval_rerun.py`、`backend/tests/services/test_ai_model_eval_rerun.py` |
+| 404 | AI 對比裁決盲化 prompt + 解析 schema | done | ✓ | — | `backend/app/services/ai_model_eval_rerun_prompt.py`、`backend/app/schemas/ai_model_eval.py`、`backend/tests/services/test_ai_model_eval_rerun_prompt.py` |
+| 405 | rerun service(推薦模型串行 → 對比裁決 → 寫一筆) | done | ✓ | 401, 403, 404 | `backend/app/services/ai_model_eval_rerun.py`、`backend/tests/services/test_ai_model_eval_rerun.py` |
 | 406 | taskiq task + dispatcher(`dispatch_unrerun` / `rerun_evaluation_task`) | done | ✓ | 403, 405 | `backend/app/tasks/ai_model_eval.py`、`backend/tests/tasks/test_ai_model_eval_rerun_dispatch.py` |
-| 407 | 重跑結果 Response schema + 讀取 service | done | ✓ | 403 | `backend/app/schemas/ai_model_eval_rerun_result.py`、`backend/app/services/ai_model_eval_rerun_result.py`、`backend/tests/services/test_ai_model_eval_rerun_result.py` |
-| 408 | 查詢 API endpoint + router 註冊 | done | ✗ | 407 | `backend/app/api/v1/ai_eval_reruns.py`、`backend/app/api/v1/__init__.py`、`backend/tests/api/test_ai_eval_reruns.py` |
-| 409 | 前端型別 + 端點常數 + 裁決 label/util | done | ✓ | 407 | `frontend/src/types/api.ts`、`frontend/src/lib/api/endpoints.ts`、`frontend/src/lib/ai-eval-labels.ts` |
-| 410 | 摘要層「AI 判決結果」+ 詳細層 inline 對比(AI 分析卡) | done | ✗ | 408, 409 | `frontend/src/app/(main)/usage-logs/[uid]/AiAnalysisSection.tsx`、`frontend/src/app/(main)/usage-logs/[uid]/AiRerunSection.tsx` |
+| 407 | 重跑結果「依用量紀錄分組」讀取 schema + service(+ 分組分頁 repo 查詢) | done | ✓ | — | `backend/app/schemas/ai_model_eval_rerun_result.py`、`backend/app/services/ai_model_eval_rerun_result.py`、`backend/app/repositories/ai_model_eval_rerun.py`、`backend/tests/services/test_ai_model_eval_rerun_result.py`、`backend/tests/repositories/test_ai_model_eval_rerun.py` |
+| 408 | 查詢 API 收斂為單一分組總覽端點 + 移除 by-usage-log | done | ✗ | 407 | `backend/app/api/v1/ai_eval_reruns.py`、`backend/tests/api/test_ai_eval_reruns.py` |
+| 409 | 前端「分組」型別 + 端點常數收斂 + 裁決 label/util | done | ✓ | 407 | `frontend/src/types/api.ts`、`frontend/src/lib/api/endpoints.ts`、`frontend/src/lib/ai-eval-labels.ts` |
+| 410 | usage-log 明細頁回退 v2.0.3(移除 AiRerunSection) | done | ✓ | — | `frontend/src/app/(main)/usage-logs/[uid]/page.tsx`、`frontend/src/app/(main)/usage-logs/[uid]/AiRerunSection.tsx`(刪) |
+| 411 | AI 判決總覽頁重做(分組 + 原 vs 推薦1/2/3 真實輸出並排 + 統計) | done | ✗ | 408, 409 | `frontend/src/app/(main)/ai-analysis/verdicts/page.tsx` |
 
-## 並行批次
+## 並行批次(redo)
 
-- **批次 1(可同時認領,零依賴)**:401、402、404(三者 `affected_files` 互不重疊)
-- **批次 2**:403(待 402;repo 需 model)
-- **批次 3**:405(待 401+403+404)、407(待 403)— 檔案不重疊,可並行
-- **批次 4**:406(待 403+405)、408(待 407)、409(待 407)— 三者檔案不重疊,可並行
-- **批次 5**:410(待 408+409)— 前端串接 + e2e 視覺驗證(折入本 task,見下)
+- **批次 A(可同時認領,零依賴)**:407(後端讀取層)、410(前端回退,獨立)。
+- **批次 B**:408(待 407)、409(待 407)— 後端 API 與前端型別檔不重疊,可並行。
+- **批次 C**:411(待 408+409)— 前端總覽頁串接 + 視覺驗證。
 
-> 跨 area 依賴鏈:**後端管線(401/402→403→404→405→406)→ 後端讀取 API(407→408)→ 前端串接(409→410)→ e2e**。
-> e2e:本專案 Playwright 預設停用、查詢端點為 admin 認證(已由 408 pytest API 測涵蓋),視覺 e2e 折入 410 手動驗證,不另立 no-op task。
+> 跨 area 依賴鏈:**後端讀取(407)→ 後端 API(408)/ 前端型別(409)→ 前端總覽頁(411)**;410 與全鏈獨立可隨時做。
+> e2e:Playwright 預設停用,查詢端點為 admin 認證(408 pytest 涵蓋);總覽頁視覺驗證折入 411 手動驗證。
 
-## 已決議(2026-06-26,user 拍板;propose §10「全數拍板,無待確認項」)
+## 檔案零重疊驗證(redo 批)
 
-對齊 propose §10 決議表,worker 不必再問 user:
+- 407(backend schema/service/repo/tests)、408(backend api + api test)、409(frontend types/endpoints/labels)、410(frontend usage-logs page + AiRerunSection)、411(frontend verdicts page)——`affected_files` **互不重疊**,序列化純由 `depends_on` 驅動。
+- 407 與 403 共用 `repositories/ai_model_eval_rerun.py` 與 `tests/repositories/test_ai_model_eval_rerun.py`:403 已 done(非活躍),407 加分組分頁查詢方法不互鎖。
 
-1. **不導入每日成本閘**(`AI_RERUN_DAILY_BUDGET_USD` 取消);控管靠總開關預設關 + 去重 + 維持原模型跳過。影響 401、405。
-2. discriminator = **推薦該 challenger 的評審模型本人**(自我裁決,非固定單一裁判);去重取代表者。影響 404、405。
-3. **不加**抽樣門檻 / 吻合度門檻(初版,先靠總開關控成本)。影響 406。
-4. 去重:三裁判推薦同 challenger → 合併一筆,`ai_candidate_uid` 取代表者。影響 402、405。
-5. PII 再送:**沿用 v2.0.1 不遮罩**現況(保留 mask hook)。影響 404、405。
-6. 前端落點:**不依賴未建的 v2.0.4**;摘要 + 詳細(inline)都落在現有 `/usage-logs/[uid]` AI 分析卡;原 v2.0.4 slot 取消。影響 409、410。
-7. discriminator **盲化**:不揭露兩側模型名,只比輸出 A/B(避免自我偏好偏差)。影響 404。
-8. **不新增** batch / interval env;`dispatch_unrerun` 沿用 `dispatch_unevaluated` 排程與批量常數。影響 401、406。
-9. 版號定案 **v2.1.0**(新表+新 endpoint=minor,規則強制);原 v2.0.4 細看專頁併入本版 §6。
+## 已決議(2026-06-26,user 拍板;對齊 propose §「設計取捨 / 已決議」#1–#14)
+
+worker 不必再問 user,重點摘錄影響 redo 批者:
+
+- **移除黑話**(#9):challenger→AI 推薦模型、discriminator/GAN→對比裁決、champion→原模型。影響 407/408/409 docstring 與註解。
+- **前端落點改獨立 admin 頁**(#10):`/ai-analysis/verdicts`「AI 判決總覽」即詳細頁;移除 usage-log 明細卡內 `AiRerunSection`,該頁回退 v2.0.3。影響 410/411。
+- **總覽頁依用量紀錄分組**(#11):並排原模型 vs 推薦模型1/2/3 **真實輸出原文**。影響 407/409/411。
+- **禁連回用量紀錄**(#12):總覽頁不得有跳轉 `/usage-logs/*` 連結。影響 411。
+- **DB 不動**(#13):輸出原文已存 `response_summary.output_text`,只改 schema 對外吐欄 + API + 前端。影響 407。
+- **API 收斂**(#14):移除 by-usage-log 端點與舊扁平 schema,讀取全走分組總覽端點(帶輸出原文 + stats)。影響 407/408/409。
+- **視覺形式定案**(propose §6.2,user 授權 agent 決策):頁頂統計列 + 分組可展開 Card + 並排欄位(原模型欄 + 推薦模型欄)+ RWD 堆疊。影響 411。
 
 ## 拆解註記(orchestrator)
 
-- **scope 守門**:全 10 task 皆映自 propose `In Scope` 七條目,無 orphan、無超出 scope 的偷渡功能。
-- **檔案零重疊可並行**:10 個 task 的 `affected_files` 互不重疊,序列化純由 `depends_on` 驅動。共享檔(`models/__init__.py`、`api/v1/__init__.py`)各只由單一 task(402 / 408)觸碰,不互鎖。
-- **discriminator schema 落點**:對比裁決解析模型 `DiscriminatorOutput` 與既有 `JudgeOutput` 同屬「判別模型回覆解析」語意,故併入 `backend/app/schemas/ai_model_eval.py`(task-404);唯讀對外展示 schema 另開 `ai_model_eval_rerun_result.py`(task-407),讀寫分檔對齊 v2.0.3。
-- **taskiq 落點**:`dispatch_unrerun` / `rerun_evaluation_task` 加進既有 `backend/app/tasks/ai_model_eval.py`(沿用 beat 排程與批量常數,決議 #8);`scheduler.py` 已 import 該模組,新 schedule label 自動被 `LabelScheduleSource` 撈到,**無需動 scheduler.py**。
-- **cost 算法**:challenger `cost_usd` 沿用 proxy 既有計費(取回應 `usage.cost`/`total_cost`,對齊 `services/proxy.py`);無原成本時 `cost_delta` 留 NULL(propose §9 風險)。
-- **migration 編號**:現有最新 `0025`,本版新 migration 為 `0026_ai_eval_reruns`(新表 + 父表兩欄游標,單一 migration)。
-- **e2e 折入 410**:理由見「並行批次」註。
-</content>
-</invoke>
+- **scope 守門**:redo 批 5 task 皆映自 propose `In Scope`(唯讀查詢 API / 前端展示 / usage-log 回退),無 orphan、無超出 scope 偷渡。
+- **407 取原模型輸出**:`original_output_text` 取自 `usage_logs.response_summary.output_text`,read service 以既有 usage_log repository 純讀補上(rerun 列僅 denormalize `original_model`/`original_cost_usd`,未存原輸出原文)。
+- **407 分組分頁**:以 distinct `usage_log_uid`(最新 `triggered_at` 優先)為分頁單位,`total`=分組組數;同 usage_log 的多推薦模型併同組。
+- **411 視覺**:形式已於 propose §6.2 定案,worker 直接實作,不需再問 user。
+- **舊 task 檔**:初版 407(rerun-result-schema-service)、410(frontend-verdict-ui)slug 檔已刪除,以新 slug 取代,保持「一號一檔」。

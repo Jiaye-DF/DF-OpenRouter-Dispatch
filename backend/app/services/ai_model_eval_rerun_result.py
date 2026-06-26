@@ -1,33 +1,42 @@
-"""challenger 重跑結果讀取服務(v2.1.0;對齊 docs/Tasks/v2.1/propose-v2.1.0.md §5.4)。
+"""AI 推薦模型「真實重跑 + 對比裁決」唯讀讀取服務(v2.1.0 重做;對齊 propose §5.4 / §6.1)。
 
-把 task-405/406 已落地、目前只存在 DB 裡的 challenger 真實重跑 + 對比裁決列
-(`ai_model_eval_reruns`)組成對外讀取視圖 `RerunResult[]`,供 task-408 endpoint
-包上頂層 wrapper(`RerunListResponse.reruns`)回前端。
+把已落地、目前只存在 DB 裡的推薦模型真實重跑 + 對比裁決列(`ai_model_eval_reruns`)
+組成**依用量紀錄(usage_log)分組**的對外讀取視圖 `RerunOverviewPage`,供查詢 API
+(task-408)直接回前端「AI 判決總覽」並排比較頁。
 
 職責邊界(對齊既有 `ai_model_eval_result.py`):
-- **純讀、無副作用**:只用 task-403 `list_by_usage_log_uid` 查重跑列(預設過濾軟刪),
-  不打 OpenRouter、不寫 DB / audit、不開 transaction、不 commit。
+- **純讀、無副作用**:只查重跑列(分組分頁)+ 反查 `usage_logs.response_summary`
+  補原模型輸出原文;**不**打 OpenRouter、**不**寫 DB / audit、**不**開 transaction、**不** commit。
 - **Decimal → 字串**:金額(`cost_usd` / `original_cost_usd` / `cost_delta_usd`,
   `Numeric(12,6)`)與信心分數(`compare_score`,`Numeric(4,3)`)一律轉 `str`
-  (對齊既有「Decimal → string」慣例,避免 JS 浮點誤差);schema 只宣告型別,
-  轉換在本層。
-- **無重跑列**:回空 list `[]`(非 None / 非 404),與 task-408 的
-  `200 + data.reruns=[]` 對齊。`compare_*` 為 NULL 的列(子開關停用)→ 對應欄 None。
+  (對齊既有「Decimal → string」慣例,避免 JS 浮點誤差);schema 只宣告型別,轉換在本層。
+- **輸出原文**:推薦模型取 `ai_model_eval_reruns.response_summary.output_text`;原模型反查
+  `usage_logs.response_summary.output_text`(歷史 log 未存快照 → None)。
+- **無資料**:回 `items=[]`、`total=0`、`stats` 全 0(非 None / 非 404)。
+
+`stats` 計數定義(對齊 propose §6.1):
+- `keep_count` = `compare_winner='original'`;`swap_count` = `'challenger'`;`tie_count` = `'tie'`;
+- `unjudged_count` = `status='success'` 但 `compare_winner IS NULL`(子開關停用);
+- `failed_count` = `status != 'success'`(重跑失敗)。
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from decimal import Decimal
-from uuid import UUID
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.models.ai_model_eval_rerun import AiModelEvalRerun
 from app.repositories.ai_model_eval_rerun import AiModelEvalRerunRepository
+from app.repositories.usage_log import UsageLogRepository
 from app.schemas.ai_model_eval_rerun_result import (
-    RerunOverviewItem,
-    RerunResult,
+    RerunGroup,
+    RerunOverviewPage,
+    RerunRecommendation,
+    RerunStats,
 )
 
 logger = get_logger(__name__)
@@ -48,16 +57,29 @@ def _decimal_to_str(value: Decimal | None, quant: Decimal) -> str | None:
     return str(value.quantize(quant))
 
 
-def _to_rerun_result(row: AiModelEvalRerun) -> RerunResult:
-    """`AiModelEvalRerun`(ORM 列)→ `RerunResult`(對外);金額 / 分數 Decimal→str。"""
-    return RerunResult(
+def _output_text_of(response_summary: dict[str, Any] | None) -> str | None:
+    """從 `response_summary`({output_text, usage?})取輸出原文(對齊 proxy / eval_prompt 慣例)。
+
+    response_summary 為 NULL / 缺 `output_text` / 非字串 / 空字串 → None。
+    """
+    if not response_summary:
+        return None
+    output_text = response_summary.get("output_text")
+    if isinstance(output_text, str) and output_text:
+        return output_text
+    return None
+
+
+def _to_recommendation(row: AiModelEvalRerun) -> RerunRecommendation:
+    """`AiModelEvalRerun`(ORM 列)→ `RerunRecommendation`(對外);金額 / 分數 Decimal→str。"""
+    return RerunRecommendation(
         rerun_model=row.rerun_model,
         model_uid=row.model_uid,
+        output_text=_output_text_of(row.response_summary),
         prompt_tokens=row.prompt_tokens,
         completion_tokens=row.completion_tokens,
         total_tokens=row.total_tokens,
         cost_usd=_decimal_to_str(row.cost_usd, _COST_QUANT),
-        original_cost_usd=_decimal_to_str(row.original_cost_usd, _COST_QUANT),
         cost_delta_usd=_decimal_to_str(row.cost_delta_usd, _COST_QUANT),
         latency_ms=row.latency_ms,
         status=row.status,
@@ -70,72 +92,96 @@ def _to_rerun_result(row: AiModelEvalRerun) -> RerunResult:
     )
 
 
-async def build_rerun_results(
-    usage_log_uid: UUID, *, db: AsyncSession
-) -> list[RerunResult]:
-    """取單筆 usage_log 對應評審的所有 challenger 重跑並組成對外讀取視圖(純讀,無副作用)。
-
-    流程(對齊 propose §5.4):
-    1. 以 task-403 `list_by_usage_log_uid` 取重跑列(預設過濾軟刪)。
-    2. 逐列 Decimal→str(金額 6 位 / 信心分數 3 位)→ 組 `RerunResult[]`。
-
-    回傳 `list[RerunResult]`(內層);**無重跑列 → 回空 list `[]`**(非 None)。
-    頂層 wrapper 由 task-408 endpoint 組:`RerunListResponse(reruns=<本函式回傳>)`。
-
-    Args:
-        usage_log_uid: 來源 usage_logs.usage_log_uid(明細頁手上只有此鍵)。
-        db: AsyncSession(由 caller / endpoint 提供;本函式不開 transaction / 不 commit)。
-
-    Returns:
-        challenger 重跑對外視圖列;無列 → `[]`。
-    """
-    repo = AiModelEvalRerunRepository(db)
-    rows = await repo.list_by_usage_log_uid(usage_log_uid)
-
-    logger.debug(
-        "組裝 challenger 重跑結果 usage_log_uid=%s count=%d",
-        usage_log_uid,
-        len(rows),
-    )
-
-    return [_to_rerun_result(row) for row in rows]
-
-
-def _to_overview_item(row: AiModelEvalRerun) -> RerunOverviewItem:
-    """`AiModelEvalRerun` → `RerunOverviewItem`(跨 log 總覽列;金額 / 分數 Decimal→str)。"""
-    return RerunOverviewItem(
-        usage_log_uid=row.usage_log_uid,
-        original_model=row.original_model,
-        rerun_model=row.rerun_model,
-        status=row.status,
-        error_code=row.error_code,
-        cost_usd=_decimal_to_str(row.cost_usd, _COST_QUANT),
-        cost_delta_usd=_decimal_to_str(row.cost_delta_usd, _COST_QUANT),
-        latency_ms=row.latency_ms,
-        compare_winner=row.compare_winner,
-        compare_score=_decimal_to_str(row.compare_score, _SCORE_QUANT),
-        compare_judge_model=row.compare_judge_model,
-        triggered_at=row.triggered_at,
+def _compute_stats(rows: list[AiModelEvalRerun]) -> RerunStats:
+    """當頁分組內全部推薦模型列 → 裁決分布彙總(純函式;對齊 propose §6.1)。"""
+    keep = swap = tie = unjudged = failed = 0
+    for row in rows:
+        if row.status != "success":
+            failed += 1
+        elif row.compare_winner is None:
+            unjudged += 1
+        elif row.compare_winner == "original":
+            keep += 1
+        elif row.compare_winner == "challenger":
+            swap += 1
+        elif row.compare_winner == "tie":
+            tie += 1
+    return RerunStats(
+        total_recommendations=len(rows),
+        keep_count=keep,
+        swap_count=swap,
+        tie_count=tie,
+        unjudged_count=unjudged,
+        failed_count=failed,
     )
 
 
 async def build_rerun_overview(
     *, db: AsyncSession, page: int, size: int
-) -> tuple[list[RerunOverviewItem], int]:
-    """跨 log 取最新 challenger 重跑 + 對比裁決,組成 AI 判決總覽分頁(純讀,無副作用)。
+) -> RerunOverviewPage:
+    """跨 log 取最新推薦模型重跑 + 對比裁決,組成**依用量紀錄分組**的 AI 判決總覽分頁(純讀)。
+
+    流程(對齊 propose §5.4 / §6.1):
+    1. repo `list_grouped_by_usage_log`:取當頁分組鍵(distinct usage_log,組最新時戳優先)
+       + 這些 usage_log 底下全部未軟刪重跑列。
+    2. 反查 `usage_logs.response_summary.output_text` 補各組 `original_output_text`(純讀)。
+    3. 逐組組 `RerunGroup`(原模型輸出 + recommendations[],Decimal→str)。
+    4. 彙總當頁 `stats`(裁決分布)。
+    5. repo `count_distinct_usage_logs` 取 `total`(分組組數)。
 
     Args:
         db: AsyncSession(由 endpoint 提供;本函式不開 transaction / 不 commit)。
         page: 1-based 頁碼。
-        size: 每頁筆數。
+        size: 每頁組數。
 
     Returns:
-        `(items, total)`:當頁 `RerunOverviewItem[]` 與全體(過濾軟刪)總筆數。
+        `RerunOverviewPage`(items 依用量紀錄分組,最新優先;無資料 → items=[] / total=0 / stats 全 0)。
     """
     repo = AiModelEvalRerunRepository(db)
-    rows = await repo.list_recent(limit=size, offset=(page - 1) * size)
-    total = await repo.count_active()
+    usage_log_repo = UsageLogRepository(db)
 
-    logger.debug("組裝 AI 判決總覽 page=%d size=%d total=%d", page, size, total)
+    ordered_uids, rows = await repo.list_grouped_by_usage_log(
+        limit=size, offset=(page - 1) * size
+    )
+    total = await repo.count_distinct_usage_logs()
 
-    return [_to_overview_item(row) for row in rows], total
+    # 同一 usage_log 的多筆重跑併入同組(保 repo 的 triggered_at DESC 順序)。
+    rows_by_log: dict[Any, list[AiModelEvalRerun]] = defaultdict(list)
+    for row in rows:
+        rows_by_log[row.usage_log_uid].append(row)
+
+    items: list[RerunGroup] = []
+    for log_uid in ordered_uids:
+        group_rows = rows_by_log.get(log_uid, [])
+        # 組代表列:取最新一筆(repo 已 DESC,group_rows[0]),供原模型 / 原成本 denormalize。
+        head = group_rows[0]
+        # 原模型輸出原文反查 usage_logs(歷史未存快照 / log 不存在 → None)。
+        usage_log = await usage_log_repo.get_by_uid(log_uid)
+        original_output_text = (
+            _output_text_of(usage_log.response_summary) if usage_log is not None else None
+        )
+        items.append(
+            RerunGroup(
+                usage_log_uid=log_uid,
+                original_model=head.original_model,
+                original_output_text=original_output_text,
+                original_cost_usd=_decimal_to_str(head.original_cost_usd, _COST_QUANT),
+                evaluated_at=head.triggered_at,
+                recommendations=[_to_recommendation(r) for r in group_rows],
+            )
+        )
+
+    stats = _compute_stats(rows)
+
+    logger.debug(
+        "組裝 AI 判決總覽 page=%d size=%d groups=%d total=%d recommendations=%d",
+        page,
+        size,
+        len(items),
+        total,
+        stats.total_recommendations,
+    )
+
+    return RerunOverviewPage(
+        items=items, total=total, page=page, size=size, stats=stats
+    )

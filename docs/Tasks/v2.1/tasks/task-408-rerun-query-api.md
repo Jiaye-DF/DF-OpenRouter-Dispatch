@@ -1,48 +1,46 @@
 ---
 id: task-408
-title: 查詢 API endpoint + router 註冊
+title: 查詢 API 收斂為單一分組總覽端點 + 移除 by-usage-log 端點
 status: done
 parallel: false
 depends_on: [task-407]
 affected_files:
   - backend/app/api/v1/ai_eval_reruns.py
-  - backend/app/api/v1/__init__.py
   - backend/tests/api/test_ai_eval_reruns.py
 estimated_hours: 2
 ---
 
 ## 目標
 
-開唯讀查詢 API:依 `usage_log_uid` 取該筆所有 challenger 重跑 + 對比,admin 限定;落新檔對齊 v2.0.3 `ai_eval_results.py`(propose §5.4、對外承諾)。
+把唯讀查詢收斂為**單一**分組總覽端點 `GET /api/v1/ai-eval/reruns`,回傳 task-407 的 `RerunOverviewPage`(依用量紀錄分組 + 輸出原文 + stats);**移除** `GET /api/v1/ai-eval/reruns/by-usage-log/{usage_log_uid}` 端點(usage-log 明細頁不再內嵌重跑,無消費者)。對齊 propose 對外承諾 / §5.4。
 
-## 範圍(propose 對外承諾 / §5.4)
+## 範圍與要點
 
-- 新檔 `api/v1/ai_eval_reruns.py`:`router = APIRouter(prefix="/ai-eval", tags=["ai-eval"])`。
-  - `GET /reruns/by-usage-log/{usage_log_uid}`(`AdminDep`):呼叫 task-407 `build_rerun_results` → `RerunListResponse` → `success_response`(ApiResponse 外殼)。
-  - 無資料 → `200 + data.reruns=[]`(非 404,對齊 propose 對外承諾)。
-- `api/v1/__init__.py`:`from app.api.v1 import (... ai_eval_reruns ...)` + `api_v1_router.include_router(ai_eval_reruns.router)`(置於 `ai_eval_results` 後)。
-- **純讀**:不寫 audit、不開 transaction(對齊 `ai_eval_results.py` 職責邊界)。
-
-## 實作要點
-
-- 權限以 `AdminDep` 保護(非 admin → 403、未認證 → 401,由既有 deps 自然產生)。
-- OpenAPI summary 中文,確保 `/api/docs` 可查(對齊 `00-overview/04-api-docs.md`)。
-- 測試對齊 `tests/api/test_ai_eval_results.py`:admin 取得、非 admin 403、無資料 200+空陣列。
+- `app/api/v1/ai_eval_reruns.py`:
+  - `list_reruns_overview` 改回傳 `RerunOverviewPage`(含 `stats`);`success_response` 外殼不變。
+  - **刪除** `by-usage-log/{usage_log_uid}` route 與其 import(`RerunListResponse`、`build_rerun_results`)。
+  - 維持 `AdminDep`(非 admin → 403、未認證 → 401)、`/api/docs` 可查。
+  - docstring 移除 challenger / GAN 黑話,改白話(原模型 / AI 推薦模型 / 對比裁決)。
+- `app/api/v1/__init__.py`:router 仍為單一 router,**預期不需改動**(grep 確認註冊無殘留即可,不在 affected_files)。
+- 測試 `tests/api/test_ai_eval_reruns.py` 重寫:
+  - admin 取 `/reruns` → 200,`data.items` 為分組結構、含 `original_output_text` 與每組 `recommendations[].output_text`、含 `data.stats`。
+  - 無資料 → `200 + items=[]`。
+  - 非 admin → 403。
+  - by-usage-log 端點 → 404(route 已移除)。
 
 ## Acceptance
 
-- [ ] `cd backend && uv run pytest tests/api/test_ai_eval_reruns.py` 全綠
-- [ ] 測試涵蓋:(a) admin `GET /api/v1/ai-eval/reruns/by-usage-log/{uid}` → 200 + `data.reruns` 為陣列;(b) 非 admin → 403;(c) 無重跑 → `200 + data.reruns == []`
-- [ ] `cd backend && uv run python -c "from app.main import app; assert any('/ai-eval/reruns/by-usage-log' in r.path for r in app.routes); print('ok')"` 印 `ok`(端點已註冊、`/api/docs` 可查)
-- [ ] `cd backend && uv run ruff check app/api/v1/ai_eval_reruns.py app/api/v1/__init__.py && uv run mypy app/api/v1/ai_eval_reruns.py` 全綠
+- [ ] `uv run pytest backend/tests/api/test_ai_eval_reruns.py` 全綠
+- [ ] `grep -n "by-usage-log" backend/app/api/v1/ai_eval_reruns.py` **零命中**
+- [ ] `grep -nE "RerunListResponse|build_rerun_results" backend/app/api/v1/ai_eval_reruns.py` **零命中**(舊 by-usage-log 依賴已清)
+- [ ] pytest 對 OpenAPI 斷言:`/api/v1/ai-eval/reruns` GET 存在;`/api/v1/ai-eval/reruns/by-usage-log/{usage_log_uid}` 不存在
+- [ ] `uv run mypy app/` 與 `uv run ruff check .`(於 backend/)零錯誤零 warning
 
 ## 必讀檔(Just-in-time)
 
 - `docs/Design-Base/03-backend/00-overview.md`
 - `docs/Design-Base/03-backend/01-routing.md`
 - `docs/Design-Base/03-backend/02-auth.md`
-- `docs/Design-Base/03-backend/90-project-backend.md`
-- `docs/Design-Base/03-backend/92-project-permission.md`
 - `docs/Design-Base/03-backend/07-testing.md`
 - `docs/Design-Base/00-overview/04-api-docs.md`
-</content>
+- `docs/Design-Base/03-backend/90-project-backend.md`

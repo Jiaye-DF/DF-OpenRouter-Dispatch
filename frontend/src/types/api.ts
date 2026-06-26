@@ -471,24 +471,28 @@ export interface EvaluationResultResponse {
   evaluation: EvaluationResult | null;
 }
 
-// ─── v2.1.0 challenger 重跑 + 對比裁決(唯讀展示)──────────────────
-// 對齊 propose-v2.1.0.md §5.4,後端 schema 來源:
+// ─── v2.1.0 AI 推薦模型「真實重跑 + 對比裁決」總覽(依用量紀錄分組;唯讀展示)──
+// 對齊 propose-v2.1.0.md §5.4 / §6.1,後端 schema 來源:
 // backend/app/schemas/ai_model_eval_rerun_result.py。
+// 名詞(去黑話,對齊後端):
+// - 原模型 = 使用者實際呼叫、寫進 usage_logs 的模型。
+// - AI 推薦模型 = 評審推薦、且 ≠ 原模型的模型(DB 欄位仍叫 rerun_model)。
+// - 對比裁決 = AI 比對「原模型輸出 vs 推薦模型輸出」何者較佳(compare_*)。
 // 慣例:金額(cost_usd / original_cost_usd / cost_delta_usd)與信心分數(compare_score)
 // 一律以字串傳輸(`string | null`)避免 JS 浮點誤差(沿用既有 Model / EvalCandidate)。
 
-// 單一 challenger 重跑 + 對比裁決結果(對應一筆 ai_model_eval_reruns;對齊 propose §5.4)
-export interface RerunResult {
-  rerun_model: string; // challenger 模型 key(實際重跑)
-  model_uid: string | null; // challenger models.model_uid(軟引用;取不到 null)
-  // 真實用量 / 成本(challenger 真實 API 結果;失敗列可能為 null)
+// 單一 AI 推薦模型的真實重跑 + 對比裁決(對應一筆 ai_model_eval_reruns;對齊 propose §5.4)
+export interface RerunRecommendation {
+  rerun_model: string; // AI 推薦模型 key(實際重跑)
+  model_uid: string | null; // 推薦模型 models.model_uid(軟引用;取不到 null)
+  output_text: string | null; // 推薦模型真實輸出原文(歷史未存 / 失敗列 → null)
+  // 真實用量 / 成本(推薦模型真實 API 結果;失敗列可能為 null)
   prompt_tokens: number | null;
   completion_tokens: number | null;
   total_tokens: number | null;
-  cost_usd: string | null; // challenger 真實成本(USD);Decimal→string
-  original_cost_usd: string | null; // 原呼叫成本(對比);Decimal→string
-  cost_delta_usd: string | null; // 成本差 challenger − original;Decimal→string
-  latency_ms: number | null; // challenger 延遲(毫秒)
+  cost_usd: string | null; // 推薦模型真實成本(USD);Decimal→string
+  cost_delta_usd: string | null; // 成本差 推薦模型 − 原;Decimal→string
+  latency_ms: number | null; // 推薦模型延遲(毫秒)
   // 狀態
   status: string; // success / error
   error_code: string | null; // 錯誤碼;無錯誤為 null
@@ -496,28 +500,37 @@ export interface RerunResult {
   compare_winner: string | null; // original / challenger / tie;中文對照見 lib/ai-eval-labels.ts
   compare_score: string | null; // 信心分數 0–1;Decimal→string
   compare_reason: string | null; // 裁決理由
-  compare_judge_model: string | null; // 擔任裁決的模型 key
+  compare_judge_model: string | null; // 擔任裁決的模型 key(推薦該模型的評審本人)
   triggered_at: string; // 重跑執行時間(ISO)
 }
 
-// 頂層 wrapper(對齊 propose §5.4)
-// 無重跑列時 reruns 為空陣列 [](對應 200 + data.reruns=[],非 404)
-export interface RerunListResponse {
-  reruns: RerunResult[];
+// 一組 = 一筆用量紀錄(原模型 + 原模型真實輸出原文 + 原成本)+ 其下去重後的
+// 1–N 個 AI 推薦模型(對齊 propose §5.4 / §6.1)
+export interface RerunGroup {
+  usage_log_uid: string; // 分組鍵(來源 usage_logs.usage_log_uid;連到明細頁)
+  original_model: string; // 原模型 key(並排顯示)
+  original_output_text: string | null; // 原模型真實輸出原文(歷史未存快照 → null)
+  original_cost_usd: string | null; // 原呼叫成本(USD);Decimal→string
+  evaluated_at: string | null; // 該組最新一筆推薦模型的重跑執行時間(ISO;無列 → null)
+  recommendations: RerunRecommendation[]; // 去重後的 AI 推薦模型列(最新優先)
 }
 
-// AI 判決總覽頁(跨 log)單列:一筆 challenger 重跑 + 對比裁決 + 來源 log 連結資訊
-export interface RerunOverviewItem {
-  usage_log_uid: string; // 來源 usage_logs.usage_log_uid(連到明細頁)
-  original_model: string; // 原模型(原 → challenger 並列顯示)
-  rerun_model: string; // challenger 模型 key
-  status: string; // success / error
-  error_code: string | null;
-  cost_usd: string | null; // Decimal→string
-  cost_delta_usd: string | null; // Decimal→string
-  latency_ms: number | null;
-  compare_winner: string | null; // original / challenger / tie
-  compare_score: string | null; // 信心分數 0–1;Decimal→string
-  compare_judge_model: string | null;
-  triggered_at: string; // ISO
+// 跨 log 裁決分布(頁頂輕量彙總;對齊 propose §6.1;計數針對當頁分組內所有推薦模型)
+export interface RerunStats {
+  total_recommendations: number; // 推薦模型總筆數
+  keep_count: number; // compare_winner='original'(建議維持原模型)
+  swap_count: number; // compare_winner='challenger'(建議改用推薦模型)
+  tie_count: number; // compare_winner='tie'(平手)
+  unjudged_count: number; // status='success' 但 compare_winner IS NULL(已重跑·未裁決)
+  failed_count: number; // status != 'success'(重跑失敗)
+}
+
+// AI 判決總覽分頁 wrapper(對齊後端 RerunOverviewPage:items/total/page/size + stats)
+// 無資料時 items 為空陣列 [](對應 200 + items=[],非 null / 非 404)
+export interface RerunOverviewPage {
+  items: RerunGroup[]; // 當頁分組(依用量紀錄,最新優先)
+  total: number; // 分組後的總組數(distinct usage_log,非重跑列數)
+  page: number; // 分頁參數回放
+  size: number; // 分頁參數回放
+  stats: RerunStats; // 當頁分組內推薦模型的裁決分布彙總
 }

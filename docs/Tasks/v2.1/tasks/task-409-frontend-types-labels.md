@@ -1,6 +1,6 @@
 ---
 id: task-409
-title: 前端型別 + 端點常數 + 裁決 label/util
+title: 前端「分組」型別 + 端點常數收斂 + 裁決 label/util
 status: done
 parallel: true
 depends_on: [task-407]
@@ -13,32 +13,32 @@ estimated_hours: 2
 
 ## 目標
 
-對映後端重跑結果 schema(task-407)的前端型別、端點常數,與裁決 Badge / 信心分數的中文 label 與格式 util,集中以利 reuse(propose §6.2、決議 #6)。
+前端型別與端點對齊 task-407/408 改版:新增**依用量紀錄分組**型別(含輸出原文 + stats)、移除舊扁平型別與 by-usage-log 端點常數;裁決 label/util 補齊總覽頁所需。供 task-411 總覽頁消費。
 
-## 範圍(propose §6,對齊 v2.0.3 task-305 慣例)
+## 範圍與要點
 
-- `types/api.ts`:新增 `RerunResult` / `RerunListResponse`,逐欄對應 task-407 schema(金額 / 分數欄為 `string | null`,對齊既有 `EvalCandidate` 的 `ai_fit_score: string | null`)。
-- `lib/api/endpoints.ts`:在 `aiEvaluationByUsageLog` 後加 `aiRerunsByUsageLog: (uid: string) => `/api/v1/ai-eval/reruns/by-usage-log/${uid}``。
-- `lib/ai-eval-labels.ts`(集中既有 AI 分析 label,**reuse 不另開檔**):
-  - `WINNER_LABELS`:`compare_winner`(original / challenger / tie)→ 中文 Badge label(維持原模型 / 建議改用 / 平手)+ `winnerLabel(v)` fallback 不爆。
-  - `formatConfidencePercent(score: string | null)`:信心分數 0–1 → 百分比字串(對齊既有 `formatFitPercent`;null/解析失敗 → `"—"`)。
-  - 可選 `winnerTone(v)`:供 410 決定 Badge 顏色。
-
-## 實作要點
-
-- 全檔純函式、TS strict、無副作用(對齊 `ai-eval-labels.ts` 現況)。
-- 枚舉與後端同步(後端傳原始字串,中文對照前端維護);fallback 回原值不爆。
+- `frontend/src/types/api.ts`:
+  - 新增 `RerunRecommendation`(對應後端,含 `output_text: string | null`)、`RerunGroup`(含 `original_output_text: string | null`、`recommendations: RerunRecommendation[]`)、`RerunStats`、`RerunOverviewPage`(`items: RerunGroup[]` + `total/page/size` + `stats`)。
+  - **移除** `RerunResult`、`RerunListResponse`、`RerunOverviewItem`(舊扁平、無輸出原文)。
+  - 金額 / 信心維持 `string | null`(Decimal→string 慣例);註解去黑話(challenger→AI 推薦模型)。
+- `frontend/src/lib/api/endpoints.ts`:
+  - **移除** `aiRerunsByUsageLog`(端點已下線);保留 `aiRerunsOverview`(`/api/v1/ai-eval/reruns`)。
+- `frontend/src/lib/ai-eval-labels.ts`:
+  - 保留既有 `winnerLabel` / `winnerTone` / `formatConfidencePercent`;若總覽頁需要,集中新增「裁決分布」中文 label(維持單一來源,禁前端各頁硬編)。
 
 ## Acceptance
 
-- [ ] `cd frontend && npm run type-check`(或 `tsc --noEmit`)全綠
-- [ ] `cd frontend && npm run lint` 全綠(零 warning)
-- [ ] `grep -q "aiRerunsByUsageLog" frontend/src/lib/api/endpoints.ts && grep -q "RerunResult" frontend/src/types/api.ts && grep -q "winnerLabel" frontend/src/lib/ai-eval-labels.ts`(三檔皆落地)
+- [ ] `npm run typecheck`(於 frontend/)零錯誤
+- [ ] `npm run lint`(於 frontend/)零錯誤零 warning
+- [ ] `grep -nE "RerunResult|RerunListResponse|RerunOverviewItem" frontend/src/types/api.ts` **零命中**
+- [ ] `grep -nE "interface (RerunGroup|RerunRecommendation|RerunStats|RerunOverviewPage)" frontend/src/types/api.ts` 四者皆命中
+- [ ] `grep -n "aiRerunsByUsageLog" frontend/src/lib/api/endpoints.ts` **零命中**;`grep -n "aiRerunsOverview" frontend/src/lib/api/endpoints.ts` 命中
+- [ ] `grep -nE "original_output_text|output_text" frontend/src/types/api.ts` 皆命中
 
 ## 必讀檔(Just-in-time)
 
 - `docs/Design-Base/02-frontend/00-overview.md`
 - `docs/Design-Base/02-frontend/02-api-and-state.md`
+- `docs/Design-Base/02-frontend/04-datetime.md`
 - `docs/Design-Base/02-frontend/05-components.md`
 - `docs/Design-Base/02-frontend/90-project-frontend.md`
-</content>

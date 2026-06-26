@@ -61,7 +61,7 @@ export function fitTone(score: string | null): "high" | "mid" | "low" | "none" {
   return "low";
 }
 
-// ─── v2.1.0 對比裁決(RerunResult.compare_winner / compare_score)──────
+// ─── v2.1.0 對比裁決(RerunRecommendation.compare_winner / compare_score)──
 // 來源為後端 discriminator 裁決原始字串(original / challenger / tie),
 // 中文對照由前端維護(對齊 INTENT_LABELS 慣例;新增枚舉時兩邊同步)。
 
@@ -93,4 +93,21 @@ export function formatConfidencePercent(score: string | null): string {
   const n = Number(score);
   if (!Number.isFinite(n)) return "—";
   return `${Math.round(n * 100)}%`;
+}
+
+// ─── v2.1.0 裁決分布(RerunStats 各計數)總覽頁中文 label ──────────────
+// 單一來源,供 task-411 總覽頁頁頂彙總顯示;禁前端各頁硬編。
+// key 對齊後端 RerunStats 欄位名(去掉 _count;total 為 total_recommendations)。
+export const VERDICT_DISTRIBUTION_LABELS: Record<string, string> = {
+  total: "推薦模型總數",
+  keep: "維持原模型",
+  swap: "建議改用",
+  tie: "平手",
+  unjudged: "未裁決",
+  failed: "重跑失敗",
+};
+
+// 裁決分布中文 label;查不到回原值(fallback 不爆)。
+export function verdictDistributionLabel(key: string): string {
+  return VERDICT_DISTRIBUTION_LABELS[key] ?? key;
 }

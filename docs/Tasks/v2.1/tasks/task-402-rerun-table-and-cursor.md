@@ -1,7 +1,7 @@
 ---
 id: task-402
 title: 新表 model + 父表游標欄 + migration
-status: pending
+status: done
 parallel: true
 depends_on: []
 affected_files:

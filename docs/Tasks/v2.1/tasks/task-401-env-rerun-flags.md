@@ -1,7 +1,7 @@
 ---
 id: task-401
 title: env 兩顆開關 + Settings 欄位
-status: pending
+status: done
 parallel: true
 depends_on: []
 affected_files:

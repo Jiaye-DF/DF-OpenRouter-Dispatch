@@ -142,6 +142,15 @@ class Settings(BaseSettings):
     # 單一評審任務失敗時的最大重試次數(配合 SimpleRetryMiddleware)。
     AI_EVAL_TASK_MAX_RETRIES: int = 3
 
+    # --- AI 真實重跑 + 對比裁決 (v2.1) ---
+    # AI_RERUN_ENABLED:重跑總開關;false → 完全不觸發真實重跑與對比裁決(零成本)。
+    # 對齊 AI_EVAL_ENABLED。重跑沿用既有 AI_EVAL_DISPATCH_BATCH_SIZE /
+    # AI_EVAL_BEAT_INTERVAL_SECONDS,不另設 batch / interval / 每日預算 env。
+    AI_RERUN_ENABLED: bool = False
+    # AI_RERUN_DISCRIMINATOR_ENABLED:(B) 對比裁決子開關(須 AI_RERUN_ENABLED=true 才生效);
+    # false → 只做 (A) 真實重跑取客觀指標,跳過 AI 裁決。
+    AI_RERUN_DISCRIMINATOR_ENABLED: bool = True
+
     # --- Seq Log ---
     # SEQ_INGESTION_URL 留空則只走 console(本機開發 / CI 不對外連線);
     # 正式環境由 compose 注入 http://seq。SEQ_API_KEY 可留空。
@@ -186,6 +195,16 @@ class Settings(BaseSettings):
     @classmethod
     def _coerce_ai_eval_max_retries(cls, v: Any) -> int:
         return coerce_int_env("AI_EVAL_TASK_MAX_RETRIES", v, 3)
+
+    @field_validator("AI_RERUN_ENABLED", mode="before")
+    @classmethod
+    def _coerce_ai_rerun_enabled(cls, v: Any) -> bool:
+        return coerce_bool_env("AI_RERUN_ENABLED", v, False)
+
+    @field_validator("AI_RERUN_DISCRIMINATOR_ENABLED", mode="before")
+    @classmethod
+    def _coerce_ai_rerun_discriminator_enabled(cls, v: Any) -> bool:
+        return coerce_bool_env("AI_RERUN_DISCRIMINATOR_ENABLED", v, True)
 
     @model_validator(mode="after")
     def _fail_fast_in_prod(self) -> Settings:

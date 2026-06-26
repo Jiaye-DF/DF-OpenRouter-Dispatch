@@ -27,6 +27,7 @@ from uuid_utils import uuid7
 
 from app.models.ai_model_eval_candidate import AiModelEvalCandidate
 from app.models.ai_model_evaluation import AiModelEvaluation
+from app.models.model import Model
 from app.models.usage_log import UsageLog
 
 
@@ -40,6 +41,32 @@ class CandidateInput:
     ai_recommend_reason: str | None = None
     ai_fit_score: Decimal | None = None
     ai_self_vote: bool | None = None
+
+
+@dataclass(frozen=True)
+class CandidateWithJudge:
+    """單一評審候選(dim3/4)+ 其判別模型的 `model_key` / `name`(供顯示)。
+
+    對齊 `propose-v2.0.3.md §4.2`:子表只有 `model_uid`,前端只看到 UUID 不友善,
+    故 repository 一次 join `models` 補出判別模型的 `key` 與顯示名。
+    判別模型若查不到(已被軟刪或根本不存在)→ `judge_model_key` / `judge_model_name`
+    為 `None`(outer join 不掉列),前端再 fallback 顯示 UUID 尾碼。
+
+    `model_uid` 即「判別模型 UID」(schema 對外稱 `judge_model_uid`);
+    service(task-303)消費時取此 dataclass 組 response 的 `candidates[]`:
+    `judge_model_uid <- model_uid`、`judge_model_key <- judge_model_key`、
+    `judge_model_name <- judge_model_name`,其餘 AI 欄位直接對應。
+    """
+
+    ai_candidate_uid: UUID
+    model_uid: UUID
+    ai_recommend_model: str | None
+    ai_recommend_tier: str | None
+    ai_recommend_reason: str | None
+    ai_fit_score: Decimal | None
+    ai_self_vote: bool | None
+    judge_model_key: str | None
+    judge_model_name: str | None
 
 
 class AiModelEvaluationRepository:
@@ -155,6 +182,57 @@ class AiModelEvaluationRepository:
             AiModelEvalCandidate.is_deleted.is_(False),
         )
         return list((await self.db.execute(stmt)).scalars().all())
+
+    async def list_candidates_with_judge(
+        self, ai_evaluation_uid: UUID
+    ) -> list[CandidateWithJudge]:
+        """取某評審父列下的候選,並一次 join `models` 補判別模型 `key` / `name`。
+
+        對齊 `propose-v2.0.3.md §4.3`:在 `list_candidates` 基礎上 join `models`
+        (`AiModelEvalCandidate.model_uid == Model.model_uid`),單一 query 一併查回
+        候選 + 判別模型的 `model_key` 與顯示名,**避免 N+1**(不先撈候選再逐筆查 model)。
+
+        **LEFT OUTER JOIN**:判別模型可能已被軟刪或查不到(對齊 §4.2 註),此情況下
+        候選本身仍須回傳、僅 `judge_model_key` / `judge_model_name` 留 `None`
+        供前端 fallback 顯示 UUID 尾碼;若用 INNER JOIN 則整列會被掉,違反「盡量補名」。
+
+        **不**在 join 條件加 `Model.is_deleted == False`:propose 要求「判別模型若已被軟刪,
+        仍盡量以 model_uid 取既有 models 列補名」,故軟刪的 model 列仍要 join 進來補名;
+        只對候選本身過濾軟刪(`AiModelEvalCandidate.is_deleted.is_(False)`,對齊 `list_candidates`)。
+
+        service(task-303)消費:每筆 `CandidateWithJudge` 直接映射為 response 的
+        `candidates[]`(`model_uid` 即 `judge_model_uid`)。
+        """
+        stmt = (
+            select(
+                AiModelEvalCandidate,
+                Model.model_key,
+                Model.name,
+            )
+            .outerjoin(
+                Model,
+                AiModelEvalCandidate.model_uid == Model.model_uid,
+            )
+            .where(
+                AiModelEvalCandidate.ai_evaluation_uid == ai_evaluation_uid,
+                AiModelEvalCandidate.is_deleted.is_(False),
+            )
+        )
+        rows = (await self.db.execute(stmt)).all()
+        return [
+            CandidateWithJudge(
+                ai_candidate_uid=cand.ai_candidate_uid,
+                model_uid=cand.model_uid,
+                ai_recommend_model=cand.ai_recommend_model,
+                ai_recommend_tier=cand.ai_recommend_tier,
+                ai_recommend_reason=cand.ai_recommend_reason,
+                ai_fit_score=cand.ai_fit_score,
+                ai_self_vote=cand.ai_self_vote,
+                judge_model_key=model_key,
+                judge_model_name=model_name,
+            )
+            for cand, model_key, model_name in rows
+        ]
 
     async def mark_usage_log_evaluated(
         self, usage_log_uid: UUID, *, success: bool

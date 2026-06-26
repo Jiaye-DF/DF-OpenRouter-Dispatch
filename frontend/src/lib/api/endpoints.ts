@@ -76,4 +76,7 @@ export const API_ENDPOINTS = {
 
   // AI 分析 — 判別模型設定(v2.0)
   aiEvalJudgeSettings: "/api/v1/ai-eval/judge-settings",
+  // AI 分析 — 依 usage_log 取評審結果(v2.0.3,對齊 propose §4.1;admin 限定)
+  aiEvaluationByUsageLog: (uid: string) =>
+    `/api/v1/ai-eval/evaluations/by-usage-log/${uid}`,
 } as const;

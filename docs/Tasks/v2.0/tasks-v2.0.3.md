@@ -1,17 +1,17 @@
 # Tasks v2.0.3 · 評審結果顯示(usage-log 明細頁內嵌「AI 分析」區塊)
 
-> 狀態:未開始(已完成 0/6)
+> 狀態:已完成(6/6;批次1–4 全數完成,後端 35 測通過、前端 type-check/lint/build 全綠)
 > 來源:[propose-v2.0.3.md](./propose-v2.0.3.md);母本 [v2.0.1 判別管線](./propose-v2.0.1.md)(評審管線已落地,結果僅存 DB)
 > 並行:2 / 序列:4 / 預估總時數:13 hr
 
 | # | 標題 | 狀態 | 並行 | 依賴 | 影響檔案 |
 | --- | --- | --- | --- | --- | --- |
-| 301 | 評審結果 Response schema | pending | ✓ | — | `backend/app/schemas/ai_model_eval_result.py` |
-| 302 | repository — 取候選並 join 判別模型(key/name) | pending | ✓ | — | `backend/app/repositories/ai_model_evaluation.py`、`backend/tests/repositories/test_ai_model_evaluation.py` |
-| 303 | 彙總 service(三評審 → 單一判決) | pending | ✗ | 301, 302 | `backend/app/services/ai_model_eval_result.py`、`backend/tests/services/test_ai_model_eval_result.py` |
-| 304 | 評審結果 API endpoint + router 註冊 | pending | ✗ | 303 | `backend/app/api/v1/ai_eval_results.py`、`backend/app/api/v1/__init__.py`、`backend/tests/api/test_ai_eval_results.py` |
-| 305 | 前端型別 + 端點常數 + 中文對照/格式 util | pending | ✗ | 301 | `frontend/src/types/api.ts`、`frontend/src/lib/api/endpoints.ts`、`frontend/src/lib/ai-eval-labels.ts` |
-| 306 | AI 分析基礎摘要區塊 + usage-log 明細頁內嵌 | pending | ✗ | 304, 305 | `frontend/src/app/(main)/usage-logs/[uid]/AiAnalysisSection.tsx`、`frontend/src/app/(main)/usage-logs/[uid]/page.tsx` |
+| 301 | 評審結果 Response schema | done | ✓ | — | `backend/app/schemas/ai_model_eval_result.py` |
+| 302 | repository — 取候選並 join 判別模型(key/name) | done | ✓ | — | `backend/app/repositories/ai_model_evaluation.py`、`backend/tests/repositories/test_ai_model_evaluation.py` |
+| 303 | 彙總 service(三評審 → 單一判決) | done | ✗ | 301, 302 | `backend/app/services/ai_model_eval_result.py`、`backend/tests/services/test_ai_model_eval_result.py` |
+| 304 | 評審結果 API endpoint + router 註冊 | done | ✗ | 303 | `backend/app/api/v1/ai_eval_results.py`、`backend/app/api/v1/__init__.py`、`backend/tests/api/test_ai_eval_results.py` |
+| 305 | 前端型別 + 端點常數 + 中文對照/格式 util | done | ✗ | 301 | `frontend/src/types/api.ts`、`frontend/src/lib/api/endpoints.ts`、`frontend/src/lib/ai-eval-labels.ts` |
+| 306 | AI 分析基礎摘要區塊 + usage-log 明細頁內嵌 | done | ✗ | 304, 305 | `frontend/src/app/(main)/usage-logs/[uid]/AiAnalysisSection.tsx`、`frontend/src/app/(main)/usage-logs/[uid]/page.tsx` |
 
 ## 並行批次
 

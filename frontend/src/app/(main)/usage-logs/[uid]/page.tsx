@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/EmptyState";
+import { AiAnalysisSection } from "./AiAnalysisSection";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
 import { formatUSD } from "@/lib/utils/format";
@@ -228,6 +229,9 @@ export default function UsageLogDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* AI 分析(v2.0.3,task-306):掛在 metadata Card 下方,獨立 fetch 評審結果 */}
+          {uid && <AiAnalysisSection uid={uid} />}
 
           {/* Input */}
           <section>

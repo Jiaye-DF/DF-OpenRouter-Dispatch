@@ -45,3 +45,14 @@
 - **修正**:task-406 範圍只動兩檔(task + test),**不**擅改範圍外 repository / `logging.py` / `pyproject.toml`(遵守「禁止碰其他檔案」)。以「自身檔 mypy 零錯 + 錯誤檔皆為既有債(§1/§2/§3 已記同源)」佐證本 task 未引入新型別錯誤。
 - **規範參照**:`03-backend/07-testing.md`(acceptance 全綠要求)/ `04-databases/04-sql-safety.md`(本 task 範圍內無 raw 拼接,worker 短路以 ORM `select` 直取,對齊 §3)
 - **後續**:reflect 候選 — 此為跨 v2.1 task(§1/§3/§4)連續第 3 次出現「既有 repository 型別債(`list` 方法名 / `Result.rowcount`)+ `seqlog` 缺 stub 連坐」,已達同類條目升規門檻;建議(1)開獨立清債 task:`UsageLogRepository.list` 改名、`model.py` 改用 `Result.rowcount` 替代寫法、`pyproject.toml` 加 `[[tool.mypy.overrides]] module="seqlog.*" ignore_missing_imports=true`;(2)對「禁碰其他檔案」的 task 把 mypy acceptance 範圍收斂為「僅本 task 變更檔」或建立 mypy baseline。
+
+## §5 — `04-datetime.md` 規定的共用 `utils/datetime.ts`(`formatDateTime`)尚未建立,task-410 範圍鎖檔下只能於元件內就地實作
+
+- **時間**:2026-06-26T16:30+08:00
+- **commit / PR**:`<pending>`(task-410,orchestrator 統一提交)
+- **影響檔案**:`frontend/src/lib/utils/datetime.ts`(**不存在**,應為共用日期 util 落點);`frontend/src/app/(main)/usage-logs/[uid]/AiRerunSection.tsx`(task-410 範圍檔,就地實作 `formatDateTime`);旁證既有違規 `frontend/src/app/(main)/usage-logs/[uid]/page.tsx:195`(用被禁的 `new Date(...).toLocaleString()`)
+- **問題**:`02-frontend/04-datetime.md` 與 `05-components.md` 明訂日期格式化**必**走共用 `utils/datetime.ts` 的 `formatDateTime`,**禁**各頁自寫、**禁** `new Date(...).toLocaleString()`。但專案內 `frontend/src/lib/utils/` 僅有 `cn.ts` / `format.ts`,**無** `datetime.ts`(`grep formatDateTime` 全倉零命中)。task-410 需顯示 `RerunResult.triggered_at`,範圍鎖死兩檔(`AiRerunSection.tsx` + `AiAnalysisSection.tsx`),不可新建 `utils/datetime.ts`。
+- **根因**:Design-Base 規定的共用日期 util 從未被任何前一版 task 落地建立(基建缺口);v2.1 任務切分時未把「建立 `utils/datetime.ts`」納入任一 task,使首個需要日期顯示的前端 task(410)在範圍鎖檔下無共用可用。另現網 `usage-logs/[uid]/page.tsx` 早已以被禁的 `toLocaleString()` 顯示時間,屬既有未稽出的違規。
+- **修正**:於 `AiRerunSection.tsx` 內就地實作與 `04-datetime.md` 範例**逐字一致**的正規表示式版 `formatDateTime`(切 ISO 字串、**不**用 `new Date` / `toLocaleString` / `timeZone`),符合時區策略地板;已於程式註解標明此為權宜並 cross-ref 本條,待後續抽出共用 util。
+- **規範參照**:`02-frontend/04-datetime.md`(共用入口 + 禁 `toLocaleString`)/ `02-frontend/05-components.md § 必抽`(日期格式化必走 `formatDateTime`)
+- **後續**:reflect 候選 — (1) 開基建 task 建立 `frontend/src/lib/utils/datetime.ts` 匯出 `formatDateTime`,再把 `AiRerunSection.tsx` 就地版與 `usage-logs/[uid]/page.tsx:195` 的 `toLocaleString()` 一併改走共用;(2) 任務切分時,凡涉日期顯示的前端 task 應先確認共用 util 已存在,否則把建立 util 納入上游範圍。

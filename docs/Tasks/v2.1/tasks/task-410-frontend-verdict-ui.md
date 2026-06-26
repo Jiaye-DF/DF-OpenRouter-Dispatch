@@ -1,7 +1,7 @@
 ---
 id: task-410
 title: 摘要層「AI 判決結果」+ 詳細層 inline 對比(AI 分析卡)
-status: pending
+status: done
 parallel: false
 depends_on: [task-408, task-409]
 affected_files:

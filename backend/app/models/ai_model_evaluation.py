@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 import sqlalchemy as sa
-from sqlalchemy import BigInteger, DateTime, String, Text
+from sqlalchemy import BigInteger, DateTime, SmallInteger, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -94,4 +94,16 @@ class AiModelEvaluation(Base, TimestampMixin):
         DateTime(timezone=True),
         nullable=True,
         comment="評審完成時間(UTC+8,v2.0.1 寫入) | evaluated at",
+    )
+    # 重跑游標(v2.1.0):最新一次重跑執行時間;NULL=待重跑(派發掃描鍵)
+    ai_reran_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="最新一次重跑執行時間(UTC+8;NULL=待重跑,派發掃描鍵) | reran at",
+    )
+    # 重跑狀態(v2.1.0):NULL=未重跑 / 0=失敗 / 1=成功(成敗皆標,終局不重派)
+    ai_rerun_status: Mapped[int | None] = mapped_column(
+        SmallInteger,
+        nullable=True,
+        comment="重跑狀態:NULL=未重跑/0=失敗/1=成功(終局不重派) | rerun status",
     )

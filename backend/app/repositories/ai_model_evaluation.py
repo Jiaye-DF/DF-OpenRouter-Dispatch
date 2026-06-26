@@ -269,3 +269,38 @@ class AiModelEvaluationRepository:
             .limit(limit)
         )
         return list((await self.db.execute(stmt)).scalars().all())
+
+    async def fetch_unreran_evaluation_uids(self, limit: int) -> list[UUID]:
+        """撈尚未重跑(`ai_reran_at IS NULL`)且已評審成功的父評審 uid 供重跑 dispatcher 派發。
+
+        條件:`ai_reran_at IS NULL`(待重跑)且 `status='evaluated'`(僅對成功評審重跑)
+        且 `is_deleted=false`。**最舊優先(FIFO,`created_at ASC`)**,對齊
+        `fetch_unevaluated_log_uids` 的反餓死設計:inflow > 每輪吞吐時 desc 會讓最舊
+        那批永遠輪不到,asc 確保歷史 backlog 公平處理。
+        """
+        stmt = (
+            select(AiModelEvaluation.ai_evaluation_uid)
+            .where(
+                AiModelEvaluation.ai_reran_at.is_(None),
+                AiModelEvaluation.status == "evaluated",
+                AiModelEvaluation.is_deleted.is_(False),
+            )
+            .order_by(AiModelEvaluation.created_at.asc())
+            .limit(limit)
+        )
+        return list((await self.db.execute(stmt)).scalars().all())
+
+    async def mark_reran(self, ai_evaluation_uid: UUID, *, status: int) -> None:
+        """標父評審最新一次重跑執行(`ai_reran_at = now()`,全棧 UTC+8)。
+
+        `ai_rerun_status` 1=成功 / 0=失敗;成敗皆寫(終局,不重派)。
+        """
+        stmt = (
+            update(AiModelEvaluation)
+            .where(
+                AiModelEvaluation.ai_evaluation_uid == ai_evaluation_uid,
+                AiModelEvaluation.is_deleted.is_(False),
+            )
+            .values(ai_reran_at=func.now(), ai_rerun_status=status)
+        )
+        await self.db.execute(stmt)

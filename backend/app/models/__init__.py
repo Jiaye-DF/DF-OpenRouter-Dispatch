@@ -1,5 +1,6 @@
 from app.models.ai_eval_judge_setting import AiEvalJudgeSetting
 from app.models.ai_model_eval_candidate import AiModelEvalCandidate
+from app.models.ai_model_eval_rerun import AiModelEvalRerun
 from app.models.ai_model_evaluation import AiModelEvaluation
 from app.models.allowed_model import AllowedModel
 from app.models.api_key_request import ApiKeyRequest
@@ -22,6 +23,7 @@ from app.models.user_token_revocation import UserTokenRevocation
 __all__ = [
     "AiEvalJudgeSetting",
     "AiModelEvalCandidate",
+    "AiModelEvalRerun",
     "AiModelEvaluation",
     "AllowedModel",
     "ApiKeyRequest",

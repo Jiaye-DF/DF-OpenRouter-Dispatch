@@ -79,4 +79,7 @@ export const API_ENDPOINTS = {
   // AI 分析 — 依 usage_log 取評審結果(v2.0.3,對齊 propose §4.1;admin 限定)
   aiEvaluationByUsageLog: (uid: string) =>
     `/api/v1/ai-eval/evaluations/by-usage-log/${uid}`,
+  // AI 分析 — 依 usage_log 取 challenger 重跑 + 對比裁決(v2.1.0,對齊 propose §5.4;admin 限定)
+  aiRerunsByUsageLog: (uid: string) =>
+    `/api/v1/ai-eval/reruns/by-usage-log/${uid}`,
 } as const;

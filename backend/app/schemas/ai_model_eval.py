@@ -97,3 +97,37 @@ class JudgeOutput(BaseModel):
                 return normalized
             return TaskIntent.OTHER.value
         return TaskIntent.OTHER.value
+
+
+class DiscriminatorWinner(StrEnum):
+    """對比裁決勝方固定枚舉(盲化:只有 A / B,不揭露來源模型)。"""
+
+    A = "A"
+    B = "B"
+
+
+class DiscriminatorOutput(BaseModel):
+    """對比裁決(discriminator)結構化輸出(對齊 propose-v2.1.0 §5.3、決議 #7 盲化)。
+
+    裁判盲選「輸出 A / 輸出 B」何者較適合任務:
+    - `winner`(A/B 枚舉):較適合任務的一側;非 A/B raise ValidationError(唯一硬約束)。
+    - `reason`:擇優理由。
+    - `score`(0–1,寬鬆):對「原 AI 推薦該換成 challenger 是否合理」的信心分數
+      (propose §4.1 `compare_score` 語意);超界 raise ValidationError(可觀察錨點,不容失真)。
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    winner: DiscriminatorWinner
+    reason: str = ""
+    score: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("winner", mode="before")
+    @classmethod
+    def _coerce_winner(cls, value: object) -> object:
+        """寬鬆正規化勝方:容忍大小寫 / 前後空白(如 ' a ' → 'A');非 A/B 交 pydantic raise。"""
+        if isinstance(value, DiscriminatorWinner):
+            return value
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value

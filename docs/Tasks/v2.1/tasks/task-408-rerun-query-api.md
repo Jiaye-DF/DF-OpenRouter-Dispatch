@@ -1,7 +1,7 @@
 ---
 id: task-408
 title: 查詢 API endpoint + router 註冊
-status: pending
+status: done
 parallel: false
 depends_on: [task-407]
 affected_files:

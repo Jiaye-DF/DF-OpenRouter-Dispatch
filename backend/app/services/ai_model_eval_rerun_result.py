@@ -31,9 +31,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,6 +59,20 @@ logger = get_logger(__name__)
 _COST_QUANT = Decimal("0.000001")
 # Numeric(4,3):信心分數 0–1 對外字串統一保 3 位小數。
 _SCORE_QUANT = Decimal("0.001")
+
+# 全棧顯示時區(對齊 00-overview/05-timezone.md:UTC+8 / Asia/Taipei)。
+_TW_TZ = ZoneInfo("Asia/Taipei")
+
+
+def _to_tw(dt: datetime) -> datetime:
+    """把 DB TIMESTAMPTZ(讀回為 UTC tz-aware)轉成 UTC+8,使序列化 ISO 帶 +08:00。
+
+    前端依 04-datetime.md 以正規表示式切 ISO「壁鐘」字串(不轉時區);若這裡不先轉 TW,
+    切到的會是 UTC 壁鐘(慢 8 小時)。naive(無 tzinfo)視為 UTC 後轉,容錯既有資料。
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(_TW_TZ)
 
 
 def _decimal_to_str(value: Decimal | None, quant: Decimal) -> str | None:
@@ -104,7 +120,7 @@ def _to_usage_log_info(usage_log: UsageLog | None) -> RerunUsageLogInfo | None:
         return None
     return RerunUsageLogInfo(
         pid=usage_log.pid,
-        created_at=usage_log.created_at,
+        created_at=_to_tw(usage_log.created_at),
         model=usage_log.model,
         status=usage_log.status,
         prompt_tokens=usage_log.prompt_tokens,
@@ -142,7 +158,7 @@ def _to_recommendation(
         compare_reason=row.compare_reason,
         compare_judge_model=row.compare_judge_model,
         recommended_by=recommended_by,
-        triggered_at=row.triggered_at,
+        triggered_at=_to_tw(row.triggered_at),
     )
 
 
@@ -253,7 +269,7 @@ async def build_rerun_overview(
                 original_output_text=original_output_text,
                 original_input_text=original_input_text,
                 original_cost_usd=_decimal_to_str(head.original_cost_usd, _COST_QUANT),
-                evaluated_at=head.triggered_at,
+                evaluated_at=_to_tw(head.triggered_at),
                 usage_log_info=usage_log_info,
                 recommendations=recommendations,
             )

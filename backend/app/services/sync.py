@@ -33,7 +33,6 @@ from app.core.logging import get_logger
 from app.models.model import Model
 from app.models.model_tier import ModelTier
 from app.models.openrouter_key import OpenRouterKey
-from app.repositories.allowed_model import AllowedModelRepository
 from app.repositories.model import ModelRepository
 from app.repositories.model_tier import ModelTierRepository
 from app.schemas.model import ModelSyncResult
@@ -214,9 +213,13 @@ async def _sync_models(
     db: AsyncSession,
     or_models: list[dict[str, Any]],
     tiers: list[ModelTier],
-    whitelist: set[str],
 ) -> tuple[int, int, int, int]:
-    """UPSERT models;回傳 (added, updated, deactivated, total)。"""
+    """UPSERT models;回傳 (added, updated, deactivated, total)。
+
+    同步策略(2026-06-26 起):**不再套白名單**——OpenRouter 回傳的模型即代表可用,
+    一律 `is_active=True`;DB 有但這次 OR 沒回的模型才停用(= 與 OpenRouter 可用狀態對齊)。
+    白名單(allowed_models)改由「僅保留預設模型」按鈕(bulk-activate mode=defaults)事後手動收斂。
+    """
     repo = ModelRepository(db)
     now = datetime.now(tz=UTC)
     added = 0
@@ -229,8 +232,8 @@ async def _sync_models(
         if not mid:
             continue
         seen_ids.add(mid)
-        # 白名單規則:每次 sync 強制套用,覆寫 admin 手動改過的 is_active。
-        desired_active = mid in whitelist
+        # OpenRouter 回傳即代表可用 → 一律啟用(不再套白名單,對齊 OpenRouter 可用狀態)。
+        desired_active = True
         existing = await repo.find_by_key(mid)
         if existing is None:
             tier_key = match_tier(parsed["price_prompt_per_token"], tiers)
@@ -260,7 +263,7 @@ async def _sync_models(
             repo.add(row)
             added += 1
         else:
-            # UPDATE 既有元資料 + 強制以白名單覆寫 is_active(不動 tier_key)
+            # UPDATE 既有元資料 + 啟用(同步回來即代表可用;不動 tier_key)
             existing.name = parsed["name"]
             existing.description = parsed["description"]
             existing.context_length = parsed["context_length"]
@@ -375,14 +378,13 @@ async def sync_models_and_credits(
         raise AppError("openrouter_unavailable", code=502)
     or_models = await _fetch_models_with_failover(client, or_keys)
 
-    # 載入 tiers(自動匹配用)+ 載入白名單(每次 sync 強制套用)
+    # 載入 tiers(自動匹配用);同步不再套白名單——改為啟用 OpenRouter 回傳的全部模型
     tiers_repo = ModelTierRepository(db)
     tiers = await tiers_repo.list_active()
-    allowed_repo = AllowedModelRepository(db)
-    whitelist = await allowed_repo.list_active_keys()
 
-    # 4. UPSERT models
-    added, updated, deactivated, total = await _sync_models(db, or_models, tiers, whitelist)
+    # 4. UPSERT models(同步回來的模型一律 is_active=True;
+    #    白名單收斂改由「僅保留預設模型」按鈕事後手動套用 bulk-activate mode=defaults)
+    added, updated, deactivated, total = await _sync_models(db, or_models, tiers)
 
     # 5. 同步餘額(best-effort)
     credits_synced, credits_failed = await _sync_credits(db, client, or_keys)

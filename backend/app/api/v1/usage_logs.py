@@ -26,6 +26,8 @@ async def list_usage_logs(
     to_time: datetime | None = Query(default=None, alias="to"),
     status: str | None = None,
     used_tools: bool | None = None,
+    pid: int | None = Query(default=None, ge=1),
+    order: str = Query(default="desc", pattern="^(asc|desc)$"),
 ):
     repo = UsageLogRepository(db)
     items, total = await repo.list(
@@ -38,6 +40,8 @@ async def list_usage_logs(
         to_time=to_time,
         status=status,
         used_tools=used_tools,
+        pid=pid,
+        order=order,
     )
     data = Page[UsageLogListItem](
         items=[UsageLogListItem.model_validate(x) for x in items],

@@ -505,6 +505,20 @@ export interface RerunRecommendation {
   triggered_at: string; // 重跑執行時間(ISO)
 }
 
+// 對應那筆用量紀錄的基礎資訊(供前端 Dialog 顯示,非只給 uid;全取自同一筆 usage_log row)
+export interface RerunUsageLogInfo {
+  created_at: string; // 該筆呼叫時間(ISO)
+  model: string; // 呼叫的模型 key
+  status: string; // 呼叫狀態(success / error 等)
+  prompt_tokens: number; // 該筆呼叫 prompt token 數
+  completion_tokens: number; // 該筆呼叫 completion token 數
+  total_tokens: number; // 該筆呼叫總 token 數
+  cost_usd: string; // 該筆呼叫成本(USD);Decimal→string
+  latency_ms: number; // 該筆呼叫延遲(毫秒)
+  used_tools: boolean; // 該筆呼叫是否帶 tools(如 web search)
+  error_code: string | null; // 錯誤碼;無錯誤為 null
+}
+
 // 一組 = 一筆用量紀錄(原模型 + 原模型真實輸出原文 + 原成本)+ 其下去重後的
 // 1–N 個 AI 推薦模型(對齊 propose §5.4 / §6.1)
 export interface RerunGroup {
@@ -514,6 +528,7 @@ export interface RerunGroup {
   original_input_text: string | null; // 任務輸入原文(usage_logs.request_content.text;無則 null)
   original_cost_usd: string | null; // 原呼叫成本(USD);Decimal→string
   evaluated_at: string | null; // 該組最新一筆推薦模型的重跑執行時間(ISO;無列 → null)
+  usage_log_info: RerunUsageLogInfo | null; // 對應那筆用量紀錄基礎資訊(usage_log 不存在 → null)
   recommendations: RerunRecommendation[]; // 去重後的 AI 推薦模型列(最新優先)
 }
 

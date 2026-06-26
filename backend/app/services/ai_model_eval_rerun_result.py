@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.models.ai_model_eval_rerun import AiModelEvalRerun
+from app.models.usage_log import UsageLog
 from app.repositories.ai_model_eval_rerun import AiModelEvalRerunRepository
 from app.repositories.ai_model_evaluation import AiModelEvaluationRepository
 from app.repositories.usage_log import UsageLogRepository
@@ -47,6 +48,7 @@ from app.schemas.ai_model_eval_rerun_result import (
     RerunOverviewPage,
     RerunRecommendation,
     RerunStats,
+    RerunUsageLogInfo,
 )
 
 logger = get_logger(__name__)
@@ -91,6 +93,28 @@ def _input_text_of(request_content: dict[str, Any] | None) -> str | None:
     if isinstance(text, str) and text:
         return text
     return None
+
+
+def _to_usage_log_info(usage_log: UsageLog | None) -> RerunUsageLogInfo | None:
+    """同一筆已反查的 `usage_logs` row → `RerunUsageLogInfo`(供 Dialog 顯示);row 為 None → None。
+
+    不另查 DB(沿用 caller 已取的 row);成本 Decimal→str(沿用 _COST_QUANT 慣例)。
+    """
+    if usage_log is None:
+        return None
+    return RerunUsageLogInfo(
+        created_at=usage_log.created_at,
+        model=usage_log.model,
+        status=usage_log.status,
+        prompt_tokens=usage_log.prompt_tokens,
+        completion_tokens=usage_log.completion_tokens,
+        total_tokens=usage_log.total_tokens,
+        # cost_usd 為 NOT NULL Decimal,quantize 後必為字串(非 None)。
+        cost_usd=str(usage_log.cost_usd.quantize(_COST_QUANT)),
+        latency_ms=usage_log.latency_ms,
+        used_tools=usage_log.used_tools,
+        error_code=usage_log.error_code,
+    )
 
 
 def _to_recommendation(
@@ -154,7 +178,8 @@ async def build_rerun_overview(
     1. repo `list_grouped_by_usage_log`:取當頁分組鍵(distinct usage_log,組最新時戳優先)
        + 這些 usage_log 底下全部未軟刪重跑列。
     2. 反查 `usage_logs`(同一 row)補各組 `original_output_text`
-       (response_summary.output_text)與 `original_input_text`(request_content.text)(純讀)。
+       (response_summary.output_text)、`original_input_text`(request_content.text)
+       與 `usage_log_info`(該筆呼叫基礎 metadata)(純讀;不另查 DB)。
     3. 反查各評審候選補每筆推薦的 `recommended_by`(推薦此模型的評審本人);同評審只查一次後快取
        (避免 N+1)。
     4. 逐組組 `RerunGroup`(原模型輸出 / 輸入 + recommendations[],Decimal→str)。
@@ -215,6 +240,8 @@ async def build_rerun_overview(
         original_input_text = (
             _input_text_of(usage_log.request_content) if usage_log is not None else None
         )
+        # 同一 row 順手組 usage_log 基礎資訊(供 Dialog 顯示;row 為 None → None)。
+        usage_log_info = _to_usage_log_info(usage_log)
         recommendations = [
             _to_recommendation(r, await _recommended_by(r)) for r in group_rows
         ]
@@ -226,6 +253,7 @@ async def build_rerun_overview(
                 original_input_text=original_input_text,
                 original_cost_usd=_decimal_to_str(head.original_cost_usd, _COST_QUANT),
                 evaluated_at=head.triggered_at,
+                usage_log_info=usage_log_info,
                 recommendations=recommendations,
             )
         )

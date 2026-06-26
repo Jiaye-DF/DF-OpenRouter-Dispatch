@@ -31,6 +31,7 @@ import type {
   RerunGroup,
   RerunRecommendation,
   RerunStats,
+  RerunUsageLogInfo,
 } from "@/types/api";
 
 // AI 判決總覽頁(/ai-analysis/verdicts,admin):分層顯示。
@@ -169,33 +170,63 @@ function OutputText({
   );
 }
 
-// usage_log uid 顯示 + 複製小鈕(純文字;嚴禁做成連結 / 導頁)。
-function UsageLogUid({ uid }: { uid: string }) {
-  const [copied, setCopied] = React.useState(false);
-  const copy = React.useCallback(() => {
-    navigator.clipboard?.writeText(uid).then(
-      () => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1500);
-      },
-      () => {
-        /* 剪貼簿不可用時靜默,uid 仍以文字呈現 */
-      },
+// Dialog 內:用量紀錄基礎資訊精簡 label/value 網格(「這是哪一筆」識別資訊;非連結)。
+// 純顯示,嚴禁任何連回用量紀錄頁 / 導頁。null → 佔位文案。
+function UsageLogInfoGrid({ info }: { info: RerunUsageLogInfo | null }) {
+  if (!info) {
+    return (
+      <p className="text-sm italic text-muted-foreground">
+        無用量紀錄基礎資訊(歷史紀錄)
+      </p>
     );
-  }, [uid]);
+  }
+  const cells: { label: string; node: React.ReactNode }[] = [
+    { label: "呼叫時間", node: formatDateTime(info.created_at) },
+    {
+      label: "模型",
+      node: <span className="break-all font-mono">{info.model}</span>,
+    },
+    {
+      label: "狀態",
+      node: (
+        <Badge variant={info.status === "success" ? "success" : "destructive"}>
+          {info.status === "success" ? "成功" : "失敗"}
+        </Badge>
+      ),
+    },
+    {
+      label: "Token(輸入/回覆/合計)",
+      node: (
+        <span className="font-mono">
+          {info.prompt_tokens} / {info.completion_tokens} / {info.total_tokens}
+        </span>
+      ),
+    },
+    {
+      label: "成本",
+      node: <span className="font-mono">{formatUSD(info.cost_usd)}</span>,
+    },
+    {
+      label: "延遲",
+      node: <span className="font-mono">{info.latency_ms} ms</span>,
+    },
+    { label: "工具", node: info.used_tools ? "有用工具" : "未用工具" },
+  ];
+  if (info.error_code) {
+    cells.push({
+      label: "錯誤碼",
+      node: <span className="break-all font-mono">{info.error_code}</span>,
+    });
+  }
   return (
-    <span className="inline-flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-      <span>對應 usage_log:</span>
-      <span className="break-all font-mono">{uid}</span>
-      <button
-        type="button"
-        onClick={copy}
-        className="inline-flex min-h-[24px] items-center rounded-md border border-border px-2 py-0.5 text-xs hover:bg-muted hover:cursor-pointer"
-        aria-label="複製 usage_log uid"
-      >
-        {copied ? "已複製" : "複製"}
-      </button>
-    </span>
+    <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+      {cells.map((c) => (
+        <div key={c.label} className="flex flex-col gap-0.5">
+          <dt className="text-xs text-muted-foreground">{c.label}</dt>
+          <dd className="text-sm">{c.node}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -265,12 +296,9 @@ function GroupRow({
           onClick={() => setOpen((v) => !v)}
           className="flex min-h-[44px] w-full flex-col gap-2 p-4 text-left hover:bg-muted/40 md:flex-row md:items-center md:justify-between"
         >
-          <span className="flex flex-col gap-1">
-            <span className="flex flex-wrap items-center gap-2 font-mono text-sm">
-              <span className="font-medium">{group.original_model}</span>
-              <span className="text-muted-foreground">→ 推薦 {recCount} 個</span>
-            </span>
-            <UsageLogUid uid={group.usage_log_uid} />
+          <span className="flex flex-wrap items-center gap-2 font-mono text-sm">
+            <span className="font-medium">{group.original_model}</span>
+            <span className="text-muted-foreground">→ 推薦 {recCount} 個</span>
           </span>
           <span className="flex flex-wrap items-center gap-3 text-sm">
             {summary && <Badge variant={summary.variant}>{summary.text}</Badge>}
@@ -341,7 +369,6 @@ function VerdictDialog({
         <DialogHeader>
           <DialogTitle>輸出對照</DialogTitle>
           <div className="flex flex-col gap-2 pt-1 text-sm">
-            <UsageLogUid uid={group.usage_log_uid} />
             <div className="flex flex-wrap items-center gap-2 font-mono">
               <span className="font-medium">{group.original_model}</span>
               <span aria-hidden className="text-muted-foreground">
@@ -365,6 +392,12 @@ function VerdictDialog({
         </DialogHeader>
 
         <div className="mt-4 flex flex-col gap-4">
+          {/* 用量紀錄基礎資訊(這是哪一筆) */}
+          <section className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 p-3">
+            <h3 className="text-sm font-semibold">用量紀錄基礎資訊</h3>
+            <UsageLogInfoGrid info={group.usage_log_info} />
+          </section>
+
           {/* 任務輸入 */}
           <section className="flex flex-col gap-1.5">
             <h3 className="text-sm font-semibold">任務輸入</h3>

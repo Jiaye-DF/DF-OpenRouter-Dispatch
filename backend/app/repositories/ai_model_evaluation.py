@@ -192,13 +192,14 @@ class AiModelEvaluationRepository:
         (`AiModelEvalCandidate.model_uid == Model.model_uid`),單一 query 一併查回
         候選 + 判別模型的 `model_key` 與顯示名,**避免 N+1**(不先撈候選再逐筆查 model)。
 
-        **LEFT OUTER JOIN**:判別模型可能已被軟刪或查不到(對齊 §4.2 註),此情況下
-        候選本身仍須回傳、僅 `judge_model_key` / `judge_model_name` 留 `None`
-        供前端 fallback 顯示 UUID 尾碼;若用 INNER JOIN 則整列會被掉,違反「盡量補名」。
+        **LEFT OUTER JOIN**:判別模型整列若已硬刪(models 無對應列),候選本身仍須回傳、
+        僅 `judge_model_key` / `judge_model_name` 留 `None`,由前端以文字 label 取代
+        (依 02-frontend §32 識別碼隱藏,**不**顯示 UID);若用 INNER JOIN 則整列會被掉,違反「盡量補名」。
 
         **不**在 join 條件加 `Model.is_deleted == False`:propose 要求「判別模型若已被軟刪,
-        仍盡量以 model_uid 取既有 models 列補名」,故軟刪的 model 列仍要 join 進來補名;
-        只對候選本身過濾軟刪(`AiModelEvalCandidate.is_deleted.is_(False)`,對齊 `list_candidates`)。
+        仍盡量以 model_uid 取既有 models 列補名」,故**軟刪的 model 列仍照常 join 進來補名**
+        (name/key 不為 null);只對候選本身過濾軟刪
+        (`AiModelEvalCandidate.is_deleted.is_(False)`,對齊 `list_candidates`)。
 
         service(task-303)消費:每筆 `CandidateWithJudge` 直接映射為 response 的
         `candidates[]`(`model_uid` 即 `judge_model_uid`)。

@@ -183,6 +183,7 @@ export interface SdkKey {
 
 // 用量紀錄(列表精簡視圖 — 不含 request_content / response_summary)
 export interface UsageLog {
+  pid: number; // 顯示編號(#pid);與 AI 判決總覽同一編號,供 admin 互相對應
   usage_log_uid: string;
   user_uid: string | null;
   department_uid: string;
@@ -507,6 +508,7 @@ export interface RerunRecommendation {
 
 // 對應那筆用量紀錄的基礎資訊(供前端 Dialog 顯示,非只給 uid;全取自同一筆 usage_log row)
 export interface RerunUsageLogInfo {
+  pid: number; // 顯示編號(#pid);與用量紀錄頁同一編號,供 admin 互相對應
   created_at: string; // 該筆呼叫時間(ISO)
   model: string; // 呼叫的模型 key
   status: string; // 呼叫狀態(success / error 等)

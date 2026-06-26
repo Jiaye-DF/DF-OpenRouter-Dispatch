@@ -190,6 +190,7 @@ export default function UsageLogDetailPage() {
           {/* Metadata */}
           <Card>
             <CardContent className="grid grid-cols-2 gap-4 pt-6 md:grid-cols-4">
+              <Field label="編號" value={<span className="font-mono">#{log.pid}</span>} />
               <Field
                 label="時間"
                 value={new Date(log.created_at).toLocaleString()}

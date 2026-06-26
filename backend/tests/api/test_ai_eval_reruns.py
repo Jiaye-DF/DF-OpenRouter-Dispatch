@@ -29,6 +29,7 @@ from app.schemas.ai_model_eval_rerun_result import (
     RerunOverviewPage,
     RerunRecommendation,
     RerunStats,
+    RerunUsageLogInfo,
 )
 
 
@@ -92,14 +93,29 @@ def _full_page(*, page: int = 1, size: int = 20) -> RerunOverviewPage:
         compare_score="0.850",
         compare_reason="推薦模型輸出更貼合任務",
         compare_judge_model="anthropic/claude-3.5",
+        recommended_by="anthropic/claude-3.5",
         triggered_at=datetime(2026, 6, 26, tzinfo=UTC),
     )
     group = RerunGroup(
         usage_log_uid=uuid4(),
         original_model="openai/gpt-4o",
         original_output_text="原模型的真實輸出原文",
+        original_input_text="使用者原始輸入內容",
         original_cost_usd="0.002000",
         evaluated_at=datetime(2026, 6, 26, tzinfo=UTC),
+        usage_log_info=RerunUsageLogInfo(
+            pid=12345,
+            created_at=datetime(2026, 6, 26, tzinfo=UTC),
+            model="openai/gpt-4o",
+            status="success",
+            prompt_tokens=120,
+            completion_tokens=80,
+            total_tokens=200,
+            cost_usd="0.002000",
+            latency_ms=900,
+            used_tools=False,
+            error_code=None,
+        ),
         recommendations=[recommendation],
     )
     return RerunOverviewPage(

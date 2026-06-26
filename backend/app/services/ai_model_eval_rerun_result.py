@@ -103,6 +103,7 @@ def _to_usage_log_info(usage_log: UsageLog | None) -> RerunUsageLogInfo | None:
     if usage_log is None:
         return None
     return RerunUsageLogInfo(
+        pid=usage_log.pid,
         created_at=usage_log.created_at,
         model=usage_log.model,
         status=usage_log.status,

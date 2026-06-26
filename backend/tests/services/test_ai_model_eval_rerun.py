@@ -568,6 +568,70 @@ async def test_one_challenger_fails_others_written(
 
 
 @respx.mock(base_url=_OR_BASE_URL)
+async def test_challenger_429_retried_then_succeeds(
+    respx_mock, db_session: AsyncSession, monkeypatch
+) -> None:
+    # 429 退避重試:首次 429,退避(delay patch 0)後重試成功 → 寫一筆 success。
+    _patch_settings(monkeypatch, discriminator=False)
+    monkeypatch.setattr(svc, "_RATE_LIMIT_BASE_DELAY_S", 0)
+    ch = _uniq("anthropic/claude-haiku")
+    seed = await _seed(db_session, recommends=[ch, None, None], extra_models=[ch])
+
+    calls = {"n": 0}
+
+    def _handler(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(429, text="rate limited")
+        return _challenger_response("重試成功輸出", cost=0.001, total_tokens=30)
+
+    respx_mock.post("/chat/completions").mock(side_effect=_handler)
+
+    client = _make_client()
+    await svc.rerun_evaluation(seed.eval_uid, db=db_session, client=client)
+    await client._client.aclose()
+
+    reruns = await _list_reruns(db_session, seed.eval_uid)
+    assert len(reruns) == 1
+    assert reruns[0].status == "success"  # 429 重試後成功
+    assert calls["n"] == 2  # 首次 429 + 重試成功
+    parent = await _get_parent(db_session, seed.eval_uid)
+    assert parent.ai_rerun_status == 1
+
+
+@respx.mock(base_url=_OR_BASE_URL)
+async def test_challenger_429_exhausts_retries_marks_failed(
+    respx_mock, db_session: AsyncSession, monkeypatch
+) -> None:
+    # 持續 429:退避重試耗盡仍 429 → status='error'、error_code='challenger_failed'。
+    _patch_settings(monkeypatch, discriminator=False)
+    monkeypatch.setattr(svc, "_RATE_LIMIT_BASE_DELAY_S", 0)
+    monkeypatch.setattr(svc, "_RATE_LIMIT_MAX_RETRIES", 2)
+    ch = _uniq("anthropic/claude-haiku")
+    seed = await _seed(db_session, recommends=[ch, None, None], extra_models=[ch])
+
+    calls = {"n": 0}
+
+    def _handler(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(429, text="rate limited")
+
+    respx_mock.post("/chat/completions").mock(side_effect=_handler)
+
+    client = _make_client()
+    await svc.rerun_evaluation(seed.eval_uid, db=db_session, client=client)
+    await client._client.aclose()
+
+    reruns = await _list_reruns(db_session, seed.eval_uid)
+    assert len(reruns) == 1
+    assert reruns[0].status == "error"
+    assert reruns[0].error_code == "challenger_failed"
+    assert calls["n"] == 3  # 首次 + 2 次重試後放棄
+    parent = await _get_parent(db_session, seed.eval_uid)
+    assert parent.ai_rerun_status == 0
+
+
+@respx.mock(base_url=_OR_BASE_URL)
 async def test_all_challengers_fail_marks_status_zero(
     respx_mock, db_session: AsyncSession, monkeypatch
 ) -> None:

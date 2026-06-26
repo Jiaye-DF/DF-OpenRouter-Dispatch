@@ -56,3 +56,14 @@
 - **修正**:於 `AiRerunSection.tsx` 內就地實作與 `04-datetime.md` 範例**逐字一致**的正規表示式版 `formatDateTime`(切 ISO 字串、**不**用 `new Date` / `toLocaleString` / `timeZone`),符合時區策略地板;已於程式註解標明此為權宜並 cross-ref 本條,待後續抽出共用 util。
 - **規範參照**:`02-frontend/04-datetime.md`(共用入口 + 禁 `toLocaleString`)/ `02-frontend/05-components.md § 必抽`(日期格式化必走 `formatDateTime`)
 - **後續**:reflect 候選 — (1) 開基建 task 建立 `frontend/src/lib/utils/datetime.ts` 匯出 `formatDateTime`,再把 `AiRerunSection.tsx` 就地版與 `usage-logs/[uid]/page.tsx:195` 的 `toLocaleString()` 一併改走共用;(2) 任務切分時,凡涉日期顯示的前端 task 應先確認共用 util 已存在,否則把建立 util 納入上游範圍。
+
+## §6 — pid 對 admin 外露當「顯示編號(#pid)」,破「ID 隱藏 / pid 內部」慣例(user 拍板)
+
+- **時間**:2026-06-26T18:30+08:00
+- **commit / PR**:`<pending>`(v2.1 redo 增補,統一提交)
+- **影響檔案**:`backend/app/schemas/usage_log.py`(`UsageLogListItem.pid`)、`backend/app/schemas/ai_model_eval_rerun_result.py`(`RerunUsageLogInfo.pid`)、`frontend/src/types/api.ts`、`frontend/src/app/(main)/usage-logs/page.tsx`(列表「編號」欄)、`frontend/src/app/(main)/usage-logs/[uid]/page.tsx`(明細「編號」)、`frontend/src/app/(main)/ai-analysis/verdicts/page.tsx`(收合列 + Dialog 基礎資訊)
+- **問題**:user 要「用量紀錄」與「AI 判決總覽」兩頁能以同一編號互相對應。判決總覽明訂**禁連回用量紀錄**(決議 #12),且 user 反對顯示 `usage_log_uid`(UUID 串難讀)。需要一個跨兩頁穩定、唯一、人類可讀的對應號。
+- **根因**:既有識別策略(`04-databases/01-identifiers.md`:pid 內部 / uid 對外;`02-frontend/00-overview.md`:ID 隱藏)沒有「admin 端人類可讀參考號」這一類;uid 對外但不可讀,pid 可讀但屬內部。無第三種號可用且不想開 migration 加流水號欄。
+- **修正**:**刻意破例**——把既有 `pid`(穩定、唯一、遞增)對 **admin-only** 外露為「顯示編號 #pid」,兩頁共用。僅唯讀顯示,不作為連結 / 不可導頁(守判決總覽紅線);非 admin 端不暴露。schema 與型別均加註此為刻意破例並指向本條。**不動 DB**(pid 既有)。
+- **規範參照**:`04-databases/01-identifiers.md`(pid 內部 / uid 對外)、`02-frontend/00-overview.md`(ID 隱藏)
+- **後續**:reflect 候選 — 於 Design-Base `01-identifiers.md` / `02-frontend/00-overview.md` 補「admin 端可用 pid 作唯讀人類可讀參考號(非連結、非對外公開端點)」的明文例外,把本次破例升為正式規則;否則日後 review 易誤判為違規。

@@ -34,6 +34,7 @@ log 中**不**輸出 API key 等機密(對齊 `03-backend/05-exceptions-and-logg
 
 from __future__ import annotations
 
+import asyncio
 import random
 from dataclasses import dataclass
 from datetime import datetime
@@ -46,6 +47,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.openrouter.client import OpenRouterClient
+from app.clients.openrouter.errors import OpenRouterRateLimitError
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
@@ -171,6 +173,48 @@ def _build_challengers(
     return out
 
 
+# OpenRouter 429 rate limit 退避重試(重跑管線專用,不改全域 client 行為)。
+# 背景串行管線,以退避吸收偶發 rate limit;非 429 錯誤不重試(直接上拋,由呼叫端標記失敗)。
+_RATE_LIMIT_MAX_RETRIES = 3
+_RATE_LIMIT_BASE_DELAY_S = 2.0
+
+
+async def _chat_with_retry(
+    client: OpenRouterClient,
+    payload: dict[str, Any],
+    *,
+    api_key: str,
+    what: str,
+    model: str,
+) -> tuple[dict[str, Any], int]:
+    """呼叫 chat_completion;遇 429 退避重試(2s→4s→8s,最多 `_RATE_LIMIT_MAX_RETRIES` 次)。
+
+    回 (resp, latency_ms);`latency_ms` 為「成功該次」的延遲(不含退避 sleep)。
+    僅對 429(`OpenRouterRateLimitError`)重試;其餘錯誤直接上拋,由呼叫端收斂為失敗。
+    """
+    delay = _RATE_LIMIT_BASE_DELAY_S
+    for attempt in range(_RATE_LIMIT_MAX_RETRIES + 1):
+        started = _now_tw()
+        try:
+            resp = await client.chat_completion(payload, api_key=api_key)
+            return resp, int((_now_tw() - started).total_seconds() * 1000)
+        except OpenRouterRateLimitError:
+            if attempt >= _RATE_LIMIT_MAX_RETRIES:
+                raise
+            logger.warning(
+                "評審重跑:%s 遇 429 rate limit,%.1fs 後重試(%d/%d)model=%s",
+                what,
+                delay,
+                attempt + 1,
+                _RATE_LIMIT_MAX_RETRIES,
+                model,
+            )
+            await asyncio.sleep(delay)
+            delay *= 2
+    # 迴圈內非 return 即 raise,理論上不會到此;保險上拋滿足型別。
+    raise OpenRouterRateLimitError(429, "retry exhausted")
+
+
 async def _run_challenger(
     client: OpenRouterClient,
     *,
@@ -188,9 +232,9 @@ async def _run_challenger(
     ]
     payload: dict[str, Any] = {"model": rerun_model, "messages": messages}
 
-    started = _now_tw()
-    resp = await client.chat_completion(payload, api_key=api_key)
-    latency_ms = int((_now_tw() - started).total_seconds() * 1000)
+    resp, latency_ms = await _chat_with_retry(
+        client, payload, api_key=api_key, what="challenger 呼叫", model=rerun_model
+    )
 
     output_text = _extract_content(resp)
     usage = resp.get("usage") or {}
@@ -242,7 +286,9 @@ async def _run_discriminator(
         task_context=task_context,
     )
     payload["model"] = judge_model_key
-    resp = await client.chat_completion(payload, api_key=api_key)
+    resp, _ = await _chat_with_retry(
+        client, payload, api_key=api_key, what="discriminator 裁決", model=judge_model_key
+    )
     content = _extract_content(resp)
     verdict = _parse_discriminator_content(content)
 

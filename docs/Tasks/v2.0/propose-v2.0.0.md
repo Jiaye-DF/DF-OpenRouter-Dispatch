@@ -93,7 +93,7 @@ migration `0018_ai_model_eval_foundation`。**不動既有表結構**(`usage_log
 | `ai_recommend_tier` | VARCHAR(32), null | 由 model 反查 |
 | `ai_recommend_reason` | TEXT, null | 推薦理由 |
 | `ai_fit_score` | NUMERIC(4,3), null | dim3 吻合度 0–1 |
-| `ai_self_vote` | BOOLEAN, null | 推薦是否與原模型同廠商(偏差監控) |
+| `ai_self_vote` | BOOLEAN, null | 推薦是否與**判別模型自己**同廠商(自我偏好偏差監控;v2.0 更正:原誤寫為「與原模型」,比對對象應為裁判 vs 推薦) |
 | `created_at` | TIMESTAMPTZ | 自動 |
 
 ## 5. 設定 CRUD API(新增)

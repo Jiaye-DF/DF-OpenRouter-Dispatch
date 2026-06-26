@@ -80,9 +80,9 @@ class AiModelEvalCandidate(Base, TimestampMixin):
         nullable=True,
         comment="輸出吻合度 0–1(評審產出) | fit score 0–1 (judge output)",
     )
-    # 推薦是否與原模型同廠商(偏差監控)
+    # 推薦是否與判別模型自己同廠商(自我偏好偏差監控)
     ai_self_vote: Mapped[bool | None] = mapped_column(
         Boolean,
         nullable=True,
-        comment="推薦是否與原模型同廠商(偏差監控) | self-vote flag (bias monitoring)",
+        comment="推薦是否與判別模型同廠商(自我偏好偏差監控) | self-vote flag (judge self-preference bias)",
     )

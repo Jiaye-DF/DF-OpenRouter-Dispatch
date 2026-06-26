@@ -25,8 +25,9 @@ log 中**不**輸出 API key 等機密(對齊 `03-backend/05-exceptions-and-logg
 - PII:本版不遮罩(`build_judge_prompt` 用預設 text_masker)。
 - dim4 `tier`:由所選 recommend model 反查 `models.tier_key`(prompt 不要求模型回 tier),
   保證一致;推薦不在白名單時該欄留 None。
-- `ai_self_vote`:推薦模型是否與原模型同廠商,以 `model_key` 的廠商前綴(`provider/model`
-  的 `/` 前段)判定;任一側無法判定廠商前綴時留 None。
+- `ai_self_vote`:該判別模型推薦的模型是否與**判別模型自己**同廠商(自我偏好偏差
+  監控),以 `model_key` 的廠商前綴(`provider/model` 的 `/` 前段)判定;任一側無法
+  判定廠商前綴時留 None。注意比對對象是「裁判 vs 推薦」,非「原模型 vs 推薦」。
 """
 
 from __future__ import annotations
@@ -76,13 +77,13 @@ def _vendor_prefix(model_key: str | None) -> str | None:
     return prefix or None
 
 
-def _compute_self_vote(recommend_model: str | None, original_model: str) -> bool | None:
-    """推薦是否與原模型同廠商(以 model_key 廠商前綴判定);資訊不足回 None。"""
+def _compute_self_vote(recommend_model: str | None, judge_model: str | None) -> bool | None:
+    """推薦是否與判別模型自己同廠商(自我偏好偏差;以 model_key 廠商前綴判定);資訊不足回 None。"""
     rec = _vendor_prefix(recommend_model)
-    orig = _vendor_prefix(original_model)
-    if rec is None or orig is None:
+    judge = _vendor_prefix(judge_model)
+    if rec is None or judge is None:
         return None
-    return rec == orig
+    return rec == judge
 
 
 def _extract_content(resp: dict[str, Any]) -> str:
@@ -143,7 +144,6 @@ async def _run_one_judge(
 def _build_candidate(
     result: _JudgeResult,
     *,
-    original_model: str,
     tier_by_model_key: dict[str, str | None],
 ) -> CandidateInput:
     """把單一評審結果轉成子表輸入;失敗評審 → 各 AI 欄位留 None(標記該子列未取得判斷)。"""
@@ -162,7 +162,8 @@ def _build_candidate(
         ai_recommend_tier=recommend_tier,
         ai_recommend_reason=out.recommend.reason or None,
         ai_fit_score=Decimal(str(out.output_fit.score)),
-        ai_self_vote=_compute_self_vote(recommend_model, original_model),
+        # 自我偏好偏差:推薦是否與「該裁判自己」(result.model_key)同廠商,非原模型。
+        ai_self_vote=_compute_self_vote(recommend_model, result.model_key),
     )
 
 
@@ -262,9 +263,7 @@ async def evaluate_usage_log(
     all_failed = success_count == 0
 
     candidates = [
-        _build_candidate(
-            r, original_model=original_model, tier_by_model_key=tier_by_model_key
-        )
+        _build_candidate(r, tier_by_model_key=tier_by_model_key)
         for r in results
     ]
 

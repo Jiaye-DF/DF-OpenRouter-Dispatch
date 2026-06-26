@@ -1,7 +1,7 @@
 ---
 id: task-409
 title: 前端型別 + 端點常數 + 裁決 label/util
-status: pending
+status: done
 parallel: true
 depends_on: [task-407]
 affected_files:

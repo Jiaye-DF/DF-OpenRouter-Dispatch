@@ -470,3 +470,38 @@ export interface EvaluationResult {
 export interface EvaluationResultResponse {
   evaluation: EvaluationResult | null;
 }
+
+// ─── v2.1.0 challenger 重跑 + 對比裁決(唯讀展示)──────────────────
+// 對齊 propose-v2.1.0.md §5.4,後端 schema 來源:
+// backend/app/schemas/ai_model_eval_rerun_result.py。
+// 慣例:金額(cost_usd / original_cost_usd / cost_delta_usd)與信心分數(compare_score)
+// 一律以字串傳輸(`string | null`)避免 JS 浮點誤差(沿用既有 Model / EvalCandidate)。
+
+// 單一 challenger 重跑 + 對比裁決結果(對應一筆 ai_model_eval_reruns;對齊 propose §5.4)
+export interface RerunResult {
+  rerun_model: string; // challenger 模型 key(實際重跑)
+  model_uid: string | null; // challenger models.model_uid(軟引用;取不到 null)
+  // 真實用量 / 成本(challenger 真實 API 結果;失敗列可能為 null)
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  cost_usd: string | null; // challenger 真實成本(USD);Decimal→string
+  original_cost_usd: string | null; // 原呼叫成本(對比);Decimal→string
+  cost_delta_usd: string | null; // 成本差 challenger − original;Decimal→string
+  latency_ms: number | null; // challenger 延遲(毫秒)
+  // 狀態
+  status: string; // success / error
+  error_code: string | null; // 錯誤碼;無錯誤為 null
+  // 對比裁決(discriminator;子開關停用時整組為 null)
+  compare_winner: string | null; // original / challenger / tie;中文對照見 lib/ai-eval-labels.ts
+  compare_score: string | null; // 信心分數 0–1;Decimal→string
+  compare_reason: string | null; // 裁決理由
+  compare_judge_model: string | null; // 擔任裁決的模型 key
+  triggered_at: string; // 重跑執行時間(ISO)
+}
+
+// 頂層 wrapper(對齊 propose §5.4)
+// 無重跑列時 reruns 為空陣列 [](對應 200 + data.reruns=[],非 404)
+export interface RerunListResponse {
+  reruns: RerunResult[];
+}

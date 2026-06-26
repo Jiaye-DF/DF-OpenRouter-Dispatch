@@ -60,3 +60,37 @@ export function fitTone(score: string | null): "high" | "mid" | "low" | "none" {
   if (n >= FIT_MID_THRESHOLD) return "mid";
   return "low";
 }
+
+// ─── v2.1.0 對比裁決(RerunResult.compare_winner / compare_score)──────
+// 來源為後端 discriminator 裁決原始字串(original / challenger / tie),
+// 中文對照由前端維護(對齊 INTENT_LABELS 慣例;新增枚舉時兩邊同步)。
+
+// 裁決枚舉 → 中文 Badge label(來源:後端 compare_winner)
+export const WINNER_LABELS: Record<string, string> = {
+  original: "維持原模型",
+  challenger: "建議改用",
+  tie: "平手",
+};
+
+// 裁決中文 label;查不到回原值(fallback 不爆,容忍後端未來新增枚舉)
+export function winnerLabel(v: string): string {
+  return WINNER_LABELS[v] ?? v;
+}
+
+// 裁決色調:original / challenger / tie / none(查不到 → none)。
+// 供 task-410 決定 Badge 顏色,集中以利一處改。
+export function winnerTone(
+  v: string,
+): "original" | "challenger" | "tie" | "none" {
+  if (v === "original" || v === "challenger" || v === "tie") return v;
+  return "none";
+}
+
+// 後端 Decimal→string 的信心分數(如 "0.82",0–1)→ 整數百分比字串(如 "82%")。
+// 解析失敗 / null → 安全字串 "—"(em dash),不爆(對齊 formatFitPercent)。
+export function formatConfidencePercent(score: string | null): string {
+  if (score === null) return "—";
+  const n = Number(score);
+  if (!Number.isFinite(n)) return "—";
+  return `${Math.round(n * 100)}%`;
+}

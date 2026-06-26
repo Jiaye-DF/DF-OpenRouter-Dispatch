@@ -385,7 +385,8 @@ async def test_no_judge_settings_raises_app_error(
 
 
 async def test_self_vote_same_vendor() -> None:
-    # 推薦與原模型同廠商前綴 → True;不同 → False;無前綴 → None。
+    # 推薦與「判別模型自己」同廠商前綴 → True(自我偏好);不同 → False;無前綴 → None。
+    # 第二參數為裁判 model_key(非原模型)。
     assert svc._compute_self_vote("openai/gpt-4o-mini", "openai/gpt-4o") is True
     assert svc._compute_self_vote("anthropic/claude-3.5", "openai/gpt-4o") is False
     assert svc._compute_self_vote(None, "openai/gpt-4o") is None

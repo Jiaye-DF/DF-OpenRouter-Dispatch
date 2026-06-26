@@ -81,7 +81,7 @@ ai_model_eval_candidates(子 ×3:dim3 fit_score / dim4 推薦模型+理由)
 | 4 | 更適合的模型 | **推薦**(先驗) | `ai_recommend_model` + `ai_recommend_tier` + `ai_recommend_reason`(子) |
 
 **約束**:
-- **盲化**:prompt 不揭露「原 output 出自哪個模型」,降自我偏好偏差;`ai_self_vote` 事後判定。
+- **盲化**:prompt 不揭露「原 output 出自哪個模型」,降自我偏好偏差;`ai_self_vote` 事後判定(比對「該判別模型自己 vs 其推薦模型」是否同廠商,非「原模型 vs 推薦」)。
 - **候選限白名單**:dim4 推薦只能從 `models` active 清單選(prompt 餵入 model_key + tier),`ai_recommend_tier` 由所選 model 反查,保證一致。
 - **內部呼叫**:`chat_completion(payload, api_key=DEFAULT_OPENROUTER_KEY)`,要求 JSON 結構化輸出;某評審失敗該筆標記、不阻斷其他評審,三方全失敗 → 父 `status='error'`。
 

@@ -87,6 +87,7 @@ class RerunUsageLogInfo(BaseModel):
     全取自讀取層已反查的同一筆 `usage_logs` row(不另查 DB);供前端展示「這組重跑
     源自哪一次呼叫」的人類可讀 metadata。
 
+    - `pid`:該筆用量紀錄的顯示編號(#pid);與用量紀錄頁同一編號,供 admin 互相對應。
     - `created_at`:該筆呼叫時間。
     - `model`:呼叫的模型 key。
     - `status`:呼叫狀態(success / error 等)。
@@ -97,6 +98,7 @@ class RerunUsageLogInfo(BaseModel):
     - `error_code`:錯誤碼;無錯誤為 `None`。
     """
 
+    pid: int
     created_at: datetime
     model: str
     status: str

@@ -97,17 +97,14 @@ function recState(
   return "judged";
 }
 
-// 推薦模型列裁決 Badge:失敗→重跑失敗(error_code);未裁決→已重跑·未裁決;已裁決→winnerLabel/winnerTone。
+// 推薦模型列裁決 Badge:失敗→重跑失敗(不外顯 error_code);未裁決→已重跑·未裁決;已裁決→winnerLabel/winnerTone。
 function recVerdictBadge(rec: RerunRecommendation): {
   text: string;
   variant: React.ComponentProps<typeof Badge>["variant"];
 } {
   const st = recState(rec);
   if (st === "failed") {
-    return {
-      text: rec.error_code ? `重跑失敗(${rec.error_code})` : "重跑失敗",
-      variant: "destructive",
-    };
+    return { text: "重跑失敗", variant: "destructive" };
   }
   if (st === "unjudged") {
     return { text: "已重跑·未裁決", variant: "secondary" };
@@ -181,6 +178,7 @@ function UsageLogInfoGrid({ info }: { info: RerunUsageLogInfo | null }) {
     );
   }
   const cells: { label: string; node: React.ReactNode }[] = [
+    { label: "編號", node: <span className="font-mono">#{info.pid}</span> },
     { label: "呼叫時間", node: formatDateTime(info.created_at) },
     {
       label: "模型",
@@ -297,6 +295,11 @@ function GroupRow({
           className="flex min-h-[44px] w-full flex-col gap-2 p-4 text-left hover:bg-muted/40 md:flex-row md:items-center md:justify-between"
         >
           <span className="flex flex-wrap items-center gap-2 font-mono text-sm">
+            {group.usage_log_info && (
+              <span className="text-muted-foreground">
+                #{group.usage_log_info.pid}
+              </span>
+            )}
             <span className="font-medium">{group.original_model}</span>
             <span className="text-muted-foreground">→ 推薦 {recCount} 個</span>
           </span>
@@ -444,9 +447,7 @@ function VerdictDialog({
             <h3 className="text-sm font-semibold">裁決理由</h3>
             {recState(rec) === "failed" ? (
               <p className="text-sm text-muted-foreground">
-                此推薦模型重跑失敗
-                {rec.error_code ? `(error_code:${rec.error_code})` : ""},
-                未進行裁決。上方保留原模型輸出供對照。
+                此推薦模型重跑失敗,未進行裁決。上方保留原模型輸出供對照。
               </p>
             ) : (
               <>

@@ -299,6 +299,7 @@ export default function UsageLogsPage() {
             <Table>
               <THead>
                 <TR>
+                  <TH>編號</TH>
                   <TH>時間</TH>
                   <TH>部門</TH>
                   <TH>模型</TH>
@@ -320,6 +321,9 @@ export default function UsageLogsPage() {
                       router.push(`/usage-logs/${log.usage_log_uid}`)
                     }
                   >
+                    <TD className="font-mono text-sm text-muted-foreground whitespace-nowrap">
+                      #{log.pid}
+                    </TD>
                     <TD className="text-sm text-muted-foreground whitespace-nowrap">
                       {new Date(log.created_at).toLocaleString()}
                     </TD>

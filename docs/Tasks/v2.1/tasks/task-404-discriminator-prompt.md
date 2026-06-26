@@ -1,7 +1,7 @@
 ---
 id: task-404
 title: AI discriminator 盲化對比 prompt + 解析 schema
-status: pending
+status: done
 parallel: true
 depends_on: []
 affected_files:

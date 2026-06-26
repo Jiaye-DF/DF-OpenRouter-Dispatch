@@ -128,6 +128,12 @@ def test_prompt_requests_json_output():
     assert payload["messages"][0]["role"] == "system"
 
 
+def test_prompt_pins_temperature_zero():
+    """評分/分類任務:temperature=0,壓低取樣隨機性以提升可重現性。"""
+    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES)
+    assert payload["temperature"] == 0
+
+
 def test_mask_hook_applied_to_input_text():
     """遮罩 hook 介面:傳入的 masker 應作用於使用者文字。"""
 

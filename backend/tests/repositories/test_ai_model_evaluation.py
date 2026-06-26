@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -67,15 +68,22 @@ async def db_session() -> AsyncIterator[AsyncSession]:
         await engine.dispose()
 
 
-async def _insert_usage_log(session: AsyncSession, *, model: str = "openai/gpt-4o") -> UUID:
+async def _insert_usage_log(
+    session: AsyncSession,
+    *,
+    model: str = "openai/gpt-4o",
+    created_at: datetime | None = None,
+) -> UUID:
     uid = _new_uid()
-    session.add(
-        UsageLog(
-            usage_log_uid=uid,
-            model=model,
-            status="success",
-        )
+    log = UsageLog(
+        usage_log_uid=uid,
+        model=model,
+        status="success",
     )
+    # created_at 僅 server_default、無 Python default → 可顯式覆寫以測派發排序
+    if created_at is not None:
+        log.created_at = created_at
+    session.add(log)
     await session.flush()
     return uid
 
@@ -320,6 +328,21 @@ async def test_fetch_unevaluated_respects_limit(db_session: AsyncSession) -> Non
 
     uids = await repo.fetch_unevaluated_log_uids(limit=2)
     assert len(uids) == 2
+
+
+async def test_fetch_unevaluated_is_oldest_first(db_session: AsyncSession) -> None:
+    """派發為最舊優先(FIFO,created_at ASC):backlog 公平處理、不被新進 log 餓死。"""
+    repo = AiModelEvaluationRepository(db_session)
+    # 顯式給遞增的 created_at(同一 transaction 內 func.now() 對所有列相同,無法分辨先後)。
+    base = datetime(2026, 1, 1, tzinfo=timezone(timedelta(hours=8)))
+    oldest = await _insert_usage_log(db_session, created_at=base)
+    middle = await _insert_usage_log(db_session, created_at=base + timedelta(hours=1))
+    newest = await _insert_usage_log(db_session, created_at=base + timedelta(hours=2))
+
+    uids = await repo.fetch_unevaluated_log_uids(limit=1000)
+    # 同 DB 可能有他人未評審資料,僅斷言三者相對順序(舊 → 新)。
+    pos = {uid: i for i, uid in enumerate(uids)}
+    assert pos[oldest] < pos[middle] < pos[newest]
 
 
 async def test_transaction_rollback_no_half_write(db_session: AsyncSession) -> None:

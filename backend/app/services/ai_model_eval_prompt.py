@@ -121,8 +121,10 @@ def build_judge_prompt(
             v2.1 可注入實際遮罩實作而不破壞介面。
 
     Returns:
-        OpenAI-compatible payload:{messages, response_format};呼叫端補上 `model` 後即可送出。
-        要求模型以 JSON 物件回應(對應 `JudgeOutput`)。
+        OpenAI-compatible payload:{messages, response_format, temperature};呼叫端補上
+        `model` 後即可送出。要求模型以 JSON 物件回應(對應 `JudgeOutput`)。
+        `temperature=0`:判別為評分/分類任務,壓低取樣隨機性以提升可重現性與裁判間一致性
+        (跨 provider / MoE 仍非位元級一致,但變異大幅降低)。
     """
     user_prompt = (
         "## 候選模型白名單(recommend.model 只能從此清單選)\n"
@@ -143,4 +145,6 @@ def build_judge_prompt(
             {"role": "user", "content": user_prompt},
         ],
         "response_format": {"type": "json_object"},
+        # 評分/分類任務:壓低取樣隨機性,提升可重現性與三裁判一致性。
+        "temperature": 0,
     }

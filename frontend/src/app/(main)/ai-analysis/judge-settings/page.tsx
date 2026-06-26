@@ -105,8 +105,8 @@ export default function JudgeSettingsPage() {
         type: "warning",
         title: "尚未完成設定",
         message: hasDuplicate
-          ? "判別模型不可重複,請改選不同的模型。"
-          : "請正好選擇 3 個判別模型。",
+          ? "判決模型不可重複,請改選不同的模型。"
+          : "請正好選擇 3 個判決模型。",
       });
       return;
     }
@@ -123,7 +123,7 @@ export default function JudgeSettingsPage() {
         if (idx >= 0 && idx < SLOT_COUNT) next[idx] = s.model_uid;
       }
       setSlots(next);
-      toast("判別模型已儲存", "success");
+      toast("判決模型已儲存", "success");
     } catch (err) {
       if (err instanceof ApiError) {
         showDialog({
@@ -140,7 +140,7 @@ export default function JudgeSettingsPage() {
   if (role !== "admin") {
     return (
       <>
-        <PageTitle title="設定判別模型" />
+        <PageTitle title="設定判決模型" />
         <Card>
           <CardContent className="pt-6">
             <EmptyState title="權限不足" description="本頁僅限 admin 存取" />
@@ -153,10 +153,10 @@ export default function JudgeSettingsPage() {
   return (
     <>
       <PageTitle
-        title="設定判別模型"
-        description="設定 AI 分析使用的判別模型(恰 3 個,不可重複)"
+        title="設定判決模型"
+        description="設定 AI 分析使用的判決模型(恰 3 個,不可重複)"
       />
-      <PageHint title="設定判別模型做什麼用的?">
+      <PageHint title="設定判決模型做什麼用的?">
         指定 3 個模型當「模型分析」的評審;系統用它們交叉評審用量紀錄,判斷原模型是否適配並推薦更合適者。從 active 模型挑 3 個,建議跨廠商以抵銷偏好偏差。
       </PageHint>
 
@@ -177,7 +177,7 @@ export default function JudgeSettingsPage() {
           ) : models.length === 0 ? (
             <EmptyState
               title="尚無可用模型"
-              description="請先到「模型管理」啟用至少 3 個模型,再回此頁設定判別模型。"
+              description="請先到「模型管理」啟用至少 3 個模型,再回此頁設定判決模型。"
             />
           ) : (
             <>
@@ -211,7 +211,7 @@ export default function JudgeSettingsPage() {
                 <div className="min-w-0">
                   {hasDuplicate && (
                     <p className="text-sm text-destructive">
-                      判別模型不可重複,請改選不同的模型。
+                      判決模型不可重複,請改選不同的模型。
                     </p>
                   )}
                 </div>

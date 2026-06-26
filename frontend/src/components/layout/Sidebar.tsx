@@ -85,7 +85,7 @@ const NAV_SECTIONS: NavSection[] = [
       },
       {
         href: "/ai-analysis/judge-settings",
-        label: "設定判別模型",
+        label: "設定判決模型",
         icon: Brain,
         adminOnly: true,
       },

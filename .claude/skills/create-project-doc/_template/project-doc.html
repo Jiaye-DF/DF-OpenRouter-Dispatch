@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title><系統名稱> — 專案說明文件</title>
+<style>
+  :root {
+    --blue: #2563eb;
+    --blue-dark: #1d4ed8;
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --border: #e5e7eb;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --code-bg: #f3f4f6;
+    --green-bg: #ecfdf5;
+    --green-border: #6ee7b7;
+    --green: #047857;
+    --amber-bg: #fffbeb;
+    --amber-border: #fcd34d;
+    --amber: #b45309;
+    --red-bg: #fef2f2;
+    --red-border: #fecaca;
+    --red: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Microsoft JhengHei", "PingFang TC", "Segoe UI", system-ui, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.7;
+    font-size: 16px;
+  }
+  code, pre, .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, Menlo, monospace; }
+
+  /* 英雄區 */
+  header.hero {
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    color: #fff;
+    padding: 52px 24px 44px;
+    text-align: center;
+  }
+  header.hero .kicker { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; opacity: .85; font-weight: 600; }
+  header.hero h1 { margin: 10px 0 10px; font-size: 32px; line-height: 1.3; }
+  header.hero p.lead { margin: 0 auto; max-width: 700px; opacity: .92; font-size: 15.5px; }
+  .badge-row { margin-top: 18px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .hbadge {
+    background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35);
+    padding: 4px 12px; border-radius: 999px; font-size: 13px; color: #fff;
+  }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* 目錄 — 兩欄卡片式導覽 */
+  nav.toc {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 24px 24px 26px; margin: 30px 0; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  nav.toc .toc-title { font-size: 13px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; font-weight: 700; margin: 0 0 16px; }
+  .toc-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 700px) { .toc-grid { grid-template-columns: 1fr 1fr; } }
+  a.toc-item {
+    display: flex; align-items: flex-start; gap: 14px; text-decoration: none; color: inherit;
+    border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+    background: var(--surface); transition: border-color .15s, box-shadow .15s, transform .15s;
+  }
+  a.toc-item:hover { border-color: var(--blue); box-shadow: 0 4px 14px rgba(37,99,235,.12); transform: translateY(-1px); }
+  a.toc-item .n {
+    flex: none; width: 32px; height: 32px; border-radius: 9px; background: #eff6ff; color: var(--blue);
+    display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px;
+  }
+  a.toc-item .tx { display: flex; flex-direction: column; }
+  a.toc-item .tx .tt { font-weight: 700; font-size: 15px; }
+  a.toc-item .tx .ds { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  .toc-section-label { font-size: 12px; color: var(--blue-dark); letter-spacing: .08em; text-transform: uppercase; font-weight: 800; margin: 18px 0 10px; }
+  .toc-section-label:first-of-type { margin-top: 4px; }
+
+  /* PART 分隔橫幅 */
+  .part-divider { margin: 36px 0 6px; padding: 16px 22px; border-radius: 16px; background: linear-gradient(135deg, #0f172a, #1e3a8a); color: #fff; }
+  .part-divider .pk { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; opacity: .8; font-weight: 600; }
+  .part-divider h2 { margin: 4px 0 2px; font-size: 22px; border: none; display: block; }
+  .part-divider p { margin: 0; font-size: 14px; opacity: .9; }
+
+  /* 有序步驟清單 */
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; margin: 6px 0 12px; }
+  ol.steps > li { counter-increment: step; position: relative; padding: 2px 0 14px 42px; }
+  ol.steps > li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 8px; background: #eff6ff; color: var(--blue); font-weight: 800; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; }
+  ol.steps > li:last-child { padding-bottom: 2px; }
+  ol.steps ul { margin: 8px 0 0; }
+
+  /* Playbook 情境標頭 */
+  .playbook-head { background: #eff6ff; border-left: 4px solid var(--blue); border-radius: 0 10px 10px 0; padding: 10px 16px; margin: 26px 0 12px; }
+  .playbook-head h3 { margin: 0; font-size: 16px; color: var(--blue-dark); }
+  .playbook-head .ctx { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+
+  /* 紅色狀態 badge */
+  .badge.red { background: var(--red-bg); color: var(--red); border-color: var(--red-border); }
+
+  /* 區塊卡片化 */
+  section {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 6px 30px 28px; margin: 22px 0; box-shadow: 0 1px 3px rgba(0,0,0,.04); scroll-margin-top: 16px;
+  }
+  h2.sec { font-size: 22px; border-bottom: 2px solid var(--border); padding-bottom: 12px; margin: 26px 0 4px; display: flex; align-items: center; gap: 12px; }
+  h2.sec .num { flex: none; width: 34px; height: 34px; border-radius: 10px; background: var(--blue); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; }
+  p.sectlead { color: var(--muted); margin: 14px 0 18px; }
+  h3 { font-size: 17px; margin: 28px 0 12px; color: #111827; }
+  p, ul { margin: 0 0 12px; }
+  p:last-child, ul:last-child { margin-bottom: 0; }
+  ul { padding-left: 22px; }
+  li { margin: 5px 0; }
+  strong { font-weight: 700; color: #0f172a; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13.5px; }
+  /* 文字重點層級 */
+  .hl { color: var(--blue-dark); font-weight: 700; }                 /* 關鍵術語 / 專有名詞 */
+  .mk { background: linear-gradient(transparent 58%, #bfdbfe 58%); font-weight: 700; padding: 0 1px; }  /* 螢光標重點 */
+  .em { font-size: 17px; font-weight: 700; color: #0f172a; }         /* 加大強調 */
+  .key { color: var(--amber); font-weight: 700; }                    /* 須注意 */
+  .rd { color: var(--red); font-weight: 700; }                       /* 重大風險 / 禁止 */
+  .lead-line { font-size: 16.5px; }
+
+  /* 成效指標卡 */
+  .metrics { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; }
+  @media (min-width: 760px) { .metrics { grid-template-columns: repeat(4, 1fr); } }
+  .metric { border: 1px solid var(--border); border-radius: 14px; padding: 18px 16px; text-align: center; background: linear-gradient(180deg, #f8fbff, #ffffff); }
+  .metric .big { font-size: 30px; font-weight: 800; color: var(--blue-dark); line-height: 1.2; }
+  .metric .big small { font-size: 15px; font-weight: 700; }
+  .metric .ml { font-weight: 700; font-size: 14px; margin-top: 6px; }
+  .metric .ms { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .metric .arw { color: var(--muted); font-size: 13px; }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: 13.5px; }
+
+  /* inline badge */
+  .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 11px; font-size: 12.5px; font-weight: 700; background: #eff6ff; color: var(--blue); border: 1px solid #bfdbfe; }
+  .badge.green { background: var(--green-bg); color: var(--green); border-color: var(--green-border); }
+  .badge.amber { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-border); }
+  .badge.gray { background: var(--code-bg); color: var(--muted); border-color: var(--border); }
+
+  /* grid + subcard */
+  .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 720px) { .grid.cols2 { grid-template-columns: repeat(2, 1fr); } .grid.cols3 { grid-template-columns: repeat(3, 1fr); } }
+  .subcard { border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: var(--surface); }
+  .subcard h4 { margin: 0 0 8px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .subcard .ico { width: 28px; height: 28px; flex: none; border-radius: 8px; background: #eff6ff; color: var(--blue); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; }
+  .subcard p { margin: 0; font-size: 14px; color: var(--muted); }
+  .subcard .label { color: var(--muted); font-size: 12.5px; margin: 8px 0 6px; font-weight: 600; }
+
+  /* 表格 */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; margin: 6px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  thead th { background: var(--code-bg); color: var(--muted); font-weight: 700; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: #fafbfc; }
+  tbody tr:last-child td { border-bottom: none; }
+  td code { background: var(--code-bg); }
+
+  /* code block */
+  .codeblock { border: 1px solid var(--border); border-radius: 12px; background: #0f172a; overflow: hidden; margin: 6px 0; }
+  .codeblock .lang { padding: 7px 14px; font-size: 12.5px; color: #94a3b8; border-bottom: 1px solid #1e293b; }
+  .codeblock pre { margin: 0; padding: 14px; overflow-x: auto; }
+  .codeblock pre code { font-size: 13px; line-height: 1.6; white-space: pre; color: #e2e8f0; background: none; border: none; padding: 0; }
+  .codeblock .k { color: #93c5fd; } .codeblock .s { color: #86efac; } .codeblock .c { color: #64748b; }
+
+  /* note 提示框 */
+  .note { border-left: 4px solid; padding: 14px 18px; border-radius: 0 10px 10px 0; margin: 16px 0; font-size: 14.5px; }
+  .note.info { background: #eff6ff; border-color: var(--blue); }
+  .note.tip { background: var(--green-bg); border-color: var(--green); }
+  .note.warn { background: var(--amber-bg); border-color: var(--amber); }
+  .note.danger { background: var(--red-bg); border-color: var(--red); }
+  .note .head { font-weight: 700; margin-bottom: 4px; }
+
+  /* 流程圖（純 CSS，無外部依賴） */
+  .flow { display: flex; flex-direction: column; align-items: stretch; }
+  .flow-node { border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; background: var(--surface); }
+  .flow-node .t { font-weight: 700; font-size: 14.5px; }
+  .flow-node .d { color: var(--muted); font-size: 13px; margin-top: 4px; line-height: 1.6; }
+  .flow-node.accent { border-color: #bfdbfe; background: #eff6ff; }
+  .flow-node.ext { border-style: dashed; background: var(--code-bg); }
+  .flow-node.store { border-color: var(--green-border); background: var(--green-bg); }
+  .arrow { align-self: center; color: var(--muted); font-size: 20px; line-height: 1; padding: 8px 0; text-align: center; }
+  .arrow .lbl { display: block; font-size: 12px; }
+
+  /* Mermaid 流程圖 */
+  figure.diagram { margin: 18px 0; }
+  pre.mermaid {
+    background: #fff; color: var(--text);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px; text-align: center; overflow-x: auto;
+    font-size: 13px; line-height: 1.5;
+  }
+  figure.diagram figcaption { text-align: center; color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+  /* 分層架構 */
+  .layer { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .layer + .layer { margin-top: 14px; }
+  .layer .lh { background: var(--code-bg); padding: 10px 16px; font-weight: 700; font-size: 13.5px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .layer .lb { padding: 16px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 13px; background: var(--surface); }
+  .chip b { font-weight: 700; }
+
+  /* 時間軸 */
+  .timeline { position: relative; padding-left: 28px; margin-top: 6px; }
+  .timeline::before { content: ""; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+  .tl-item { position: relative; padding: 0 0 20px; }
+  .tl-item::before { content: ""; position: absolute; left: -24px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--blue); border: 2px solid var(--surface); box-shadow: 0 0 0 2px var(--blue); }
+  .tl-item.milestone::before { background: var(--green); box-shadow: 0 0 0 2px var(--green); }
+  .tl-item .ver { font-weight: 700; font-size: 15px; }
+  .tl-item .ver .badge { margin-left: 8px; vertical-align: middle; }
+  .tl-item .desc { color: var(--muted); font-size: 14px; margin-top: 3px; }
+
+  footer.page { text-align: center; color: var(--muted); font-size: 13px; padding: 8px 24px 0; }
+</style>
+</head>
+<body>
+
+  <!-- ============================================================
+       英雄區 HERO — 系統定位（主觀，請手填）
+       kicker：分類標籤；h1：系統名 + 一句話副標；lead：一段定位敘述
+       ============================================================ -->
+  <header class="hero">
+    <div class="kicker"><分類標籤，例：企業內部平台 · 專案說明文件></div>
+    <h1><系統名稱><br><一句話副標></h1>
+    <p class="lead"><一段 2-3 句的系統定位敘述：這是什麼、解決什麼、給誰用。></p>
+    <div class="badge-row">
+      <!-- SCAN 可填：技術棧徽章（由偵測結果產生）-->
+      <span class="hbadge"><技術 A></span>
+      <span class="hbadge"><技術 B></span>
+      <span class="hbadge"><技術 C></span>
+    </div>
+  </header>
+
+  <div class="wrap">
+
+    <!-- ============================================================
+         目錄 TOC — 分兩區（PART I / PART II），依實際章節數增減
+         ============================================================ -->
+    <nav class="toc">
+      <p class="toc-title">內容導覽</p>
+
+      <div class="toc-section-label">PART I · 系統與技術設計</div>
+      <div class="toc-grid">
+        <a class="toc-item" href="#summary"><span class="n">1</span><span class="tx"><span class="tt">專案摘要</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#purpose"><span class="n">2</span><span class="tx"><span class="tt">目的</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#problem"><span class="n">3</span><span class="tx"><span class="tt">解決的問題與效益</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#concept"><span class="n">4</span><span class="tx"><span class="tt">核心概念與角色</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#flow"><span class="n">5</span><span class="tx"><span class="tt">系統流程圖</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#arch"><span class="n">6</span><span class="tx"><span class="tt">系統架構</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#evolution"><span class="n">7</span><span class="tx"><span class="tt">版本演進</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#value"><span class="n">8</span><span class="tx"><span class="tt">技術價值</span><span class="ds"><副述></span></span></a>
+      </div>
+
+      <div class="toc-section-label">PART II · 維運操作手冊</div>
+      <div class="toc-grid">
+        <a class="toc-item" href="#env"><span class="n">9</span><span class="tx"><span class="tt">線上環境一覽</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#login"><span class="n">10</span><span class="tx"><span class="tt">第一次登入後台</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#tabs"><span class="n">11</span><span class="tx"><span class="tt">後台分頁導覽</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#ops-concept"><span class="n">12</span><span class="tx"><span class="tt">維運核心觀念</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#playbook"><span class="n">13</span><span class="tx"><span class="tt">常見需求 Playbook</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#manual"><span class="n">14</span><span class="tx"><span class="tt">使用者：呼叫手冊</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#api"><span class="n">15</span><span class="tx"><span class="tt">API 端點總覽</span><span class="ds"><副述></span></span></a>
+        <a class="toc-item" href="#runbook"><span class="n">16</span><span class="tx"><span class="tt">故障排除 Runbook</span><span class="ds"><副述></span></span></a>
+      </div>
+    </nav>
+
+    <!-- ===================================================================
+         ===== PART I · 系統與技術設計 ==================================
+         =================================================================== -->
+    <div class="part-divider">
+      <div class="pk">Part I</div>
+      <h2>系統與技術設計</h2>
+      <p><這個系統解決什麼問題、長什麼樣子、資料怎麼流、做了哪些工程決策與技術價值。></p>
+    </div>
+
+    <!-- ============================================================
+         1 專案摘要 — 主觀，請手填
+         構件示範：lead-line + 文字層級（.rd/.mk/.hl）+ cols3 subcard
+         ============================================================ -->
+    <section id="summary">
+      <h2 class="sec"><span class="num">1</span>專案摘要</h2>
+      <p class="sectlead lead-line">把「<span class="rd"><痛點></span>」變成「<span class="mk"><解法定位></span>」的<系統類型>。</p>
+      <p><一段補充說明，可用 <span class="hl">關鍵術語</span> 標重點。></p>
+      <div class="grid cols3" style="margin-top:18px;">
+        <div class="subcard"><h4><span class="ico">字</span><能力一標題></h4><p><能力一說明，可標 <span class="hl">關鍵詞</span>。></p></div>
+        <div class="subcard"><h4><span class="ico">字</span><能力二標題></h4><p><能力二說明。></p></div>
+        <div class="subcard"><h4><span class="ico">字</span><能力三標題></h4><p><能力三說明。></p></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         2 目的 — 主觀，請手填　構件示範：cols2 subcard（emoji 開頭）
+         ============================================================ -->
+    <section id="purpose">
+      <h2 class="sec"><span class="num">2</span>目的</h2>
+      <div class="grid cols2" style="margin-top:18px;">
+        <div class="subcard"><h4>🔐 <目的一></h4><p><說明。></p></div>
+        <div class="subcard"><h4>💰 <目的二></h4><p><說明。></p></div>
+        <div class="subcard"><h4>📊 <目的三></h4><p><說明。></p></div>
+        <div class="subcard"><h4>⚡ <目的四></h4><p><說明。></p></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         3 解決的問題與效益 — 主觀，請手填
+         構件示範：痛點對照表 + 量化指標卡 metrics
+         ============================================================ -->
+    <section id="problem">
+      <h2 class="sec"><span class="num">3</span>解決的問題與效益</h2>
+      <p class="sectlead"><本章導言。></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:38%">實際痛點 / 風險</th><th>平台的解法</th></tr></thead>
+          <tbody>
+            <tr><td><strong><痛點一></strong><br><span class="muted small"><span class="rd"><風險描述></span></span></td><td><解法一，可標 <span class="hl">重點</span>。></td></tr>
+            <tr><td><strong><痛點二></strong><br><span class="muted small"><span class="rd"><風險描述></span></span></td><td><解法二。></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>量化效益</h3>
+      <div class="metrics">
+        <div class="metric"><div class="big"><數值></div><div class="ml"><指標名></div><div class="ms"><span class="arw"><前 →></span> <後></div></div>
+        <div class="metric"><div class="big">0 <small><單位></small></div><div class="ml"><指標名></div><div class="ms"><說明></div></div>
+        <div class="metric"><div class="big">100<small>%</small></div><div class="ml"><指標名></div><div class="ms"><說明></div></div>
+        <div class="metric"><div class="big">≥ 95</div><div class="ml"><指標名></div><div class="ms"><說明></div></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         4 核心概念與角色 — 主觀，請手填
+         構件示範：橫向 flow-node + cols3 subcard(.badge/.label) + note + 權限表
+         ============================================================ -->
+    <section id="concept">
+      <h2 class="sec"><span class="num">4</span>核心概念與角色</h2>
+      <p class="sectlead"><導言。></p>
+
+      <h3><概念模型標題，例：組織模型></h3>
+      <div class="flow" style="flex-direction:row; flex-wrap:wrap; gap:10px; align-items:center;">
+        <div class="flow-node" style="flex:1; min-width:120px;"><div class="t"><節點 A></div><div class="d"><說明></div></div>
+        <div class="arrow" style="padding:0 4px;">→</div>
+        <div class="flow-node" style="flex:1; min-width:120px;"><div class="t"><節點 B></div><div class="d"><說明></div></div>
+        <div class="arrow" style="padding:0 4px;">→</div>
+        <div class="flow-node" style="flex:1; min-width:120px;"><div class="t"><節點 C></div><div class="d"><說明></div></div>
+      </div>
+
+      <h3><名詞 / 憑證標題></h3>
+      <div class="grid cols3">
+        <div class="subcard"><span class="badge"><標籤></span><p class="label"><分類副述></p><p><說明。></p></div>
+        <div class="subcard"><span class="badge"><標籤></span><p class="label"><分類副述></p><p><說明。></p></div>
+        <div class="subcard"><span class="badge"><標籤></span><p class="label"><分類副述></p><p><說明。></p></div>
+      </div>
+      <div class="note info">
+        <div class="head"><提示標題></div>
+        <提示內容，可用 <span class="hl">術語</span> 與 <code>程式碼</code>。>
+      </div>
+
+      <h3>角色與權限</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:34%">資源 / 動作</th><th><角色 A></th><th><角色 B></th></tr></thead>
+          <tbody>
+            <tr><td><動作一></td><td>✅</td><td>❌</td></tr>
+            <tr><td><動作二></td><td>✅</td><td>僅讀</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         5 系統流程圖 — SCAN 可填（偵測到 auth / 主資料流即改寫 Mermaid）
+         構件示範：Mermaid 序列圖 + 流程圖
+         ============================================================ -->
+    <section id="flow">
+      <h2 class="sec"><span class="num">5</span>系統流程圖</h2>
+
+      <h3>流程 A：<核心資料流標題></h3>
+      <p class="sectlead"><流程導言。></p>
+      <figure class="diagram">
+        <pre class="mermaid">
+%%{init: {'sequence': {'mirrorActors': false, 'actorMargin': 45}} }%%
+sequenceDiagram
+  participant U as 👤 <角色 / 用戶端>
+  participant B as 🛡️ <後端 / 服務>
+  participant D as 🗄️ <資料庫 / 外部>
+
+  U->>B: ① <請求描述>
+  Note over B: <驗證 / 處理說明>
+  B->>D: ② <下游呼叫>
+  D-->>B: ③ <回應>
+  B-->>U: ④ <回傳結果>
+        </pre>
+        <figcaption>圖 1 · <流程說明></figcaption>
+      </figure>
+      <div class="note tip">
+        <div class="head">🔑 <關鍵說明標題></div>
+        <關鍵點說明。>
+      </div>
+
+      <h3>流程 B：<次要流程標題></h3>
+      <p class="sectlead"><流程導言。></p>
+      <figure class="diagram">
+        <pre class="mermaid">
+flowchart TD
+  A([👤 <起點>]) --> B{<判斷>}
+  B -->|<條件一>| X[🛑 <終止分支>]
+  B -->|<條件二>| C[<處理步驟>]
+  C --> G([<完成>])
+
+  classDef ok fill:#ecfdf5,stroke:#6ee7b7,color:#065f46;
+  classDef ai fill:#eff6ff,stroke:#bfdbfe,color:#1e3a8a;
+  classDef stop fill:#fef2f2,stroke:#fecaca,color:#991b1b;
+  class C ai;
+  class G ok;
+  class X stop;
+        </pre>
+        <figcaption>圖 2 · <流程說明></figcaption>
+      </figure>
+    </section>
+
+    <!-- ============================================================
+         6 系統架構 — SCAN 填（依偵測技術棧寫 layer + chip）
+         構件示範：分層 layer，每層 chip 列技術 / 元件
+         ============================================================ -->
+    <section id="arch">
+      <h2 class="sec"><span class="num">6</span>系統架構</h2>
+      <p class="sectlead"><架構導言，例：Monorepo 前後端分離，Docker Compose 編排。></p>
+
+      <div class="layer">
+        <div class="lh">前端層 · Frontend</div>
+        <div class="lb">
+          <span class="chip"><b><框架></b> <版本></span>
+          <span class="chip"><其他技術></span>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="lh">後端層 · Backend</div>
+        <div class="lb">
+          <span class="chip"><b><框架></b> <版本></span>
+          <span class="chip"><分層 / 模組></span>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="lh">資料與基礎設施 · Data &amp; Infra</div>
+        <div class="lb">
+          <span class="chip"><b><資料庫></b></span>
+          <span class="chip"><部署 / 編排></span>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="lh">外部整合 · External</div>
+        <div class="lb">
+          <span class="chip"><b><外部服務 A></b></span>
+          <span class="chip"><b><外部服務 B></b></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         7 版本演進 — SCAN 填（依 git tag / CHANGELOG / docs 版本文件）
+         構件示範：timeline，里程碑用 .milestone + .badge.green
+         ============================================================ -->
+    <section id="evolution">
+      <h2 class="sec"><span class="num">7</span>版本演進</h2>
+      <p class="sectlead"><演進導言。></p>
+      <div class="timeline">
+        <div class="tl-item milestone">
+          <div class="ver"><版本> <span class="badge green">MVP</span></div>
+          <div class="desc"><該版說明。></div>
+        </div>
+        <div class="tl-item">
+          <div class="ver"><版本> · <主題></div>
+          <div class="desc"><該版說明。></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         8 技術價值 — 主觀，請手填
+         構件示範：cols2 subcard + 總結 note.info
+         ============================================================ -->
+    <section id="value">
+      <h2 class="sec"><span class="num">8</span>技術價值</h2>
+      <p class="sectlead"><導言：這份專案展現的可遷移工程能力。></p>
+      <div class="grid cols2">
+        <div class="subcard"><h4>🛡️ <能力一></h4><p><說明，標 <span class="hl">關鍵技術</span>。></p></div>
+        <div class="subcard"><h4>🏗️ <能力二></h4><p><說明。></p></div>
+        <div class="subcard"><h4>⚙️ <能力三></h4><p><說明。></p></div>
+        <div class="subcard"><h4>🤖 <能力四></h4><p><說明。></p></div>
+      </div>
+      <div class="note info">
+        <div class="head">💡 一句話總結</div>
+        <本專案的一句話價值總結，可用 <span class="mk">螢光標</span> 與 <span class="hl">關鍵詞</span>。>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         ===== PART II · 維運操作手冊（多為主觀，請手填）================
+         以「有人來找你說 ___，你該怎麼做」的情境為主。
+         本部多需要實際運維脈絡，SCAN 僅填 API 衍生章節（§14 端點 / §15 API 表）。
+         無對外維運需求的專案（純函式庫 / CLI）可整個 PART II 刪除。
+         =================================================================== -->
+    <div class="part-divider">
+      <div class="pk">Part II</div>
+      <h2>維運操作手冊</h2>
+      <p><以情境為主：管理者 / 維運者如何設定、開通、調整、查詢與排錯；使用者如何呼叫。></p>
+    </div>
+
+    <!-- ============================================================
+         9 線上環境一覽 — 主觀（網址由維運者填），構件示範：環境表 + note.warn
+         ============================================================ -->
+    <section id="env">
+      <h2 class="sec"><span class="num">9</span>線上環境一覽</h2>
+      <p class="sectlead"><環境導言。></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>環境</th><th><用途 A 網址></th><th><用途 B 網址></th></tr></thead>
+          <tbody>
+            <tr><td><strong>正式 Prod</strong></td><td class="mono small"><code><url></code></td><td class="mono small"><code><url></code></td></tr>
+            <tr><td><strong>測試 Test</strong></td><td class="mono small"><code><url></code></td><td class="mono small"><code><url></code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn"><div class="head">⚠ <注意標題></div><注意內容。></div>
+    </section>
+
+    <!-- ============================================================
+         10 第一次登入後台 — 主觀，構件示範：ol.steps 有序步驟 + note.info
+         ============================================================ -->
+    <section id="login">
+      <h2 class="sec"><span class="num">10</span>第一次登入後台</h2>
+      <p class="sectlead"><導言。></p>
+      <ol class="steps">
+        <li><步驟一。></li>
+        <li><步驟二，可引 <code>環境變數</code> / 設定值。></li>
+        <li><步驟三。></li>
+      </ol>
+      <div class="note info"><div class="head"><提示標題></div><提示內容。></div>
+    </section>
+
+    <!-- ============================================================
+         11 後台分頁導覽 — 主觀，構件示範：分頁用途表
+         ============================================================ -->
+    <section id="tabs">
+      <h2 class="sec"><span class="num">11</span>後台分頁導覽</h2>
+      <p class="sectlead"><導言，可標設定動線 <span class="hl">A → B → C</span>。></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:26%">分頁</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td><strong><分頁一></strong></td><td><用途說明。></td></tr>
+            <tr><td><strong><分頁二></strong></td><td><用途說明。></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         12 維運核心觀念 — 主觀，構件示範：ol.steps 規則清單
+         ============================================================ -->
+    <section id="ops-concept">
+      <h2 class="sec"><span class="num">12</span>維運核心觀念</h2>
+      <p class="sectlead"><導言：操作前先記住這幾條。></p>
+      <ol class="steps">
+        <li><strong><規則一></strong><說明，可標 <span class="key">須注意</span>。></li>
+        <li><strong><規則二></strong><說明。></li>
+      </ol>
+    </section>
+
+    <!-- ============================================================
+         13 常見需求 Playbook — 主觀，構件示範：playbook-head 情境標頭 + ol.steps / ul + note
+         每個情境一組「playbook-head + 步驟」
+         ============================================================ -->
+    <section id="playbook">
+      <h2 class="sec"><span class="num">13</span>常見需求 Playbook</h2>
+      <p class="sectlead"><導言：照情境找對應流程。></p>
+
+      <div class="playbook-head">
+        <h3>A · <情境標題></h3>
+        <div class="ctx">情境：<什麼人來找你、要做什麼>。</div>
+      </div>
+      <ol class="steps">
+        <li><步驟一。></li>
+        <li><步驟二。></li>
+      </ol>
+      <div class="note tip"><div class="head">💡 <提示標題></div><提示內容。></div>
+
+      <div class="playbook-head">
+        <h3>B · <情境標題></h3>
+        <div class="ctx">情境：<...>。</div>
+      </div>
+      <ul>
+        <li><strong><動作></strong>：<說明。></li>
+      </ul>
+    </section>
+
+    <!-- ============================================================
+         14 使用者：呼叫手冊 — SCAN 部分填（端點 / Header / Schema 可由 OpenAPI 帶）
+         構件示範：codeblock（HTTP / JSON）+ 欄位表 + cols2 並排 + note.warn
+         無對外 API 的專案可刪本章
+         ============================================================ -->
+    <section id="manual">
+      <h2 class="sec"><span class="num">14</span>使用者：呼叫手冊</h2>
+      <p class="sectlead"><使用導言。></p>
+
+      <h3>① 端點與認證</h3>
+      <div class="codeblock">
+        <div class="lang">HTTP</div>
+        <pre><code><span class="k">POST</span> <端點路徑>
+Content-Type: application/json
+<Header-Name>: &lt;值&gt;</code></pre>
+      </div>
+
+      <h3>② Request Body 欄位</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>欄位</th><th>型別</th><th>必填</th><th>說明</th></tr></thead>
+          <tbody>
+            <tr><td><code><欄位></code></td><td>string</td><td>是</td><td><說明></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>③ Response 統一格式</h3>
+      <div class="grid cols2">
+        <div class="codeblock">
+          <div class="lang">JSON · 成功</div>
+          <pre><code>{
+  <span class="k">"success"</span>: <span class="k">true</span>,
+  <span class="k">"code"</span>: <span class="s">200</span>,
+  <span class="k">"data"</span>: <span class="s">"..."</span>
+}</code></pre>
+        </div>
+        <div class="codeblock">
+          <div class="lang">JSON · 失敗</div>
+          <pre><code>{
+  <span class="k">"success"</span>: <span class="k">false</span>,
+  <span class="k">"code"</span>: <span class="s">4xx</span>,
+  <span class="k">"detail"</span>: <span class="s">"error_code"</span>
+}</code></pre>
+        </div>
+      </div>
+      <div class="note warn"><div class="head">⚠ <注意事項標題></div><注意內容。></div>
+    </section>
+
+    <!-- ============================================================
+         15 API 端點總覽 — SCAN 填（依路由 / OpenAPI 列前綴與說明）
+         構件示範：分類表格。無後端 API 的專案可刪本章
+         ============================================================ -->
+    <section id="api">
+      <h2 class="sec"><span class="num">15</span>API 端點總覽</h2>
+      <p class="sectlead"><API 導言，例：完整 Schema 見 Swagger <code>/api/docs</code>。></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>分類</th><th>路徑前綴</th><th>說明</th></tr></thead>
+          <tbody>
+            <tr><td><分類></td><td><code><路徑前綴></code></td><td><說明></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         16 故障排除 Runbook — 主觀，構件示範：症狀對照表（含紅字 .rd）+ note
+         ============================================================ -->
+    <section id="runbook">
+      <h2 class="sec"><span class="num">16</span>故障排除 Runbook</h2>
+      <p class="sectlead"><導言：依症狀對照原因與第一步該查什麼。></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:30%">症狀</th><th>可能原因</th><th>先檢查什麼</th></tr></thead>
+          <tbody>
+            <tr><td><症狀，可引 <code>錯誤碼</code>></td><td><可能原因></td><td><先檢查什麼，可標 <span class="hl">重點</span>></td></tr>
+            <tr><td><span class="rd"><嚴重症狀></span></td><td><可能原因></td><td><先檢查什麼></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note info"><div class="head"><提示標題></div><提示內容。></div>
+    </section>
+
+    <footer class="page">
+      <系統名稱> · <一句話副標> · 本文件為專案說明用途，技術棧與版本以原始碼為準。
+    </footer>
+
+  </div>
+
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'default',
+      securityLevel: 'loose',
+      fontFamily: '"Microsoft JhengHei", "PingFang TC", "Segoe UI", system-ui, sans-serif',
+      sequence: { useMaxWidth: true, mirrorActors: false, wrap: true },
+      flowchart: { useMaxWidth: true, htmlLabels: true }
+    });
+  </script>
+</body>
+</html>

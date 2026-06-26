@@ -46,6 +46,30 @@ CREATE INDEX idx_api_keys_active ON api_keys (is_active, is_deleted);
 9. **敏感欄位加密**：儲存 OpenRouter API Key、使用者密碼 hash 等敏感欄位時，**必須**以加密或 hash 後寫入，**禁止**以明文存放。解密金鑰一律透過環境變數注入。
 10. **Index / Trigger 命名**：以**複數表名**為基（例：`idx_api_keys_uid`、`trg_api_keys_updated_at`）。
 
+## 3.5 資料表自我說明:COMMENT + 字典登錄(永遠遵守)
+
+**凡 migration 動到 schema,同一份 migration 內必同步維護 COMMENT 與字典**,缺者不得合併。依異動類型:
+
+### A. 新建資料表(`op.create_table`)
+
+兩件事都要做:
+
+1. **補 COMMENT**(表級 + 全欄位,雙軌一致):
+   - migration 下 `COMMENT ON TABLE <table> IS '...'` 與每欄 `COMMENT ON COLUMN <table>.<col> IS '...'`(中英雙語);**不得**只建表不寫說明。
+   - 對應 SQLAlchemy Model 欄位帶 `comment=`,文案與 DB `COMMENT` 一致(避免 alembic autogenerate 誤判)。
+   - 必備欄位(`pid` / `<entity>_uid` / `is_active` / `is_deleted` / `created_at` / `updated_at`)套統一罐頭文案。
+   - 通用規則見 `00-overview.md § 自我說明`。
+2. **登錄字典 `table_catalog`**:同一份 migration upsert 一筆(`table_name` → `display_name_zh` + `category` + `description`),`ON CONFLICT (table_name) DO NOTHING` 保冪等;`description` 與該表 `COMMENT ON TABLE` 同源同文案。
+
+### B. 新增 / 異動欄位(`op.add_column` / `op.alter_column`)
+
+- **新增欄位**:該欄**必**同步 `COMMENT ON COLUMN`(雙語)+ Model 欄位帶 `comment=`(同文案);**不得**只 add_column 不寫說明。
+- **異動欄位語意**(改型別 / 改用途):**必**同步更新該欄 COMMENT 與 Model `comment=`,使說明不過期。
+- **字典處理**:`table_catalog` 為**表級**對照,改欄位通常不需動;但**若該表尚未在字典**(歷史遺留表),藉這次異動順手 upsert 補登一筆。
+
+> `table_catalog` 表由 **v2.0.2** 建立(見 `docs/Tasks/v2.0/propose-v2.0.2.md`);本規則於 v2.0.2 合併後對所有後續 schema 異動生效。
+> 目的:DBeaver / `psql \d+` 直接可讀 schema,前端 / 報表可由 `table_catalog` 取中文表名,避免「表 / 欄多了沒人知道是什麼」。
+
 ## 4. `updated_at` 自動更新
 
 於 Alembic baseline migration(`backend/alembic/baseline_sql/V1__init_auth.sql`)定義共用 trigger function：

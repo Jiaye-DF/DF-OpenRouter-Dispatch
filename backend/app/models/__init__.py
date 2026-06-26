@@ -13,6 +13,7 @@ from app.models.openrouter_key import OpenRouterKey
 from app.models.project import Project
 from app.models.refresh_token import RefreshToken
 from app.models.sdk_api_key import SdkApiKey
+from app.models.table_catalog import TableCatalog
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.user_token import UserToken
@@ -34,6 +35,7 @@ __all__ = [
     "Project",
     "RefreshToken",
     "SdkApiKey",
+    "TableCatalog",
     "UsageLog",
     "User",
     "UserToken",

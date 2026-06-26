@@ -1,7 +1,7 @@
 ---
 id: task-405
 title: rerun service(challenger 串行 → discriminator → 寫一筆)
-status: pending
+status: done
 parallel: true
 depends_on: [task-401, task-403, task-404]
 affected_files:

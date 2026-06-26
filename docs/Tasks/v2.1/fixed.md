@@ -12,3 +12,25 @@
 - **修正**:task-403 範圍只動三檔,**不**擅自修改範圍外 7 檔(遵守 task「禁止碰其他檔案」)。以「task-403 自身兩檔 mypy 全綠」佐證本 task 未引入新型別錯誤;整包殘留錯誤留待專責清債 task 處理。
 - **規範參照**:`03-backend/07-testing.md`(acceptance 全綠要求)/ `04-databases/04-sql-safety.md`(本 task 範圍內已遵守,無 raw 拼接)
 - **後續**:reflect 候選 — (1) 既有 repository 型別債應開獨立 task 清理(優先 `Result.rowcount` 與 `list` 方法命名);(2) 建議 acceptance 的 mypy 範圍對「禁碰其他檔案」的 task 應收斂為「僅本 task 變更檔」,避免既有債連坐,或先建立 mypy baseline。
+
+## §2 — `mypy` 因共用 `app/core/logging.py` 匯入 `seqlog` 無型別 stub 殘留 1 個錯誤(task-407 acceptance 第四條)
+
+- **時間**:2026-06-26T00:00+08:00
+- **commit / PR**:`<pending>`(task-407,orchestrator 統一提交)
+- **影響檔案**:`backend/app/core/logging.py:63`(**非** task-407 範圍檔;為 service 必經的共用 logger)
+- **問題**:task-407 acceptance 第四條 `mypy app/schemas/ai_model_eval_rerun_result.py app/services/ai_model_eval_rerun_result.py` 要求全綠。實跑回報 1 個錯誤:`app\core\logging.py:63: error: Skipping analyzing "seqlog": module is installed, but missing library stubs or py.typed marker [import-untyped]`。task-407 兩個自身檔(schema / service)本身**無任何** mypy 錯誤;錯誤完全來自 service `from app.core.logging import get_logger` 連帶把共用 `logging.py` 拉進分析。
+- **根因**:`seqlog` 套件未提供 `py.typed` / 型別 stub,專案又無 mypy override(`[[tool.mypy.overrides]] ignore_missing_imports`)壓制。任何 import `app.core.logging` 的新檔跑 mypy 都會連坐同一錯;與 §1 同類(既有共用模組的型別債在新 task 驗收上連坐)。已交叉驗證:對既有 v2.0.3 `app/services/ai_model_eval_result.py` 單獨跑 mypy 也回報**完全相同**的 seqlog 錯誤 → 證實為倉庫既有環境債,非 task-407 引入。
+- **修正**:task-407 範圍只動三檔,不擅改 `app/core/logging.py` 或 `pyproject.toml`(遵守「禁止碰其他檔案」)。以「自身兩檔 mypy 無錯 + 既有同類 service 觸發相同錯誤」佐證本 task 未引入新型別錯誤。
+- **規範參照**:`03-backend/07-testing.md`(acceptance 全綠要求)
+- **後續**:reflect 候選 — 於 `pyproject.toml` 加 mypy override `[[tool.mypy.overrides]] module="seqlog.*" ignore_missing_imports=true`(或裝 stub)以根除連坐;應開獨立清債 task 處理,避免每個新檔 acceptance 都受此既有債影響。
+
+## §3 — `AiModelEvaluationRepository` 無「以 `ai_evaluation_uid` 取父評審」getter,task-405 service 須以 ORM `select` 直取父列
+
+- **時間**:2026-06-26T14:30+08:00
+- **commit / PR**:`<pending>`(task-405,orchestrator 統一提交)
+- **影響檔案**:`backend/app/services/ai_model_eval_rerun.py`(task-405 範圍檔);牽涉 `backend/app/repositories/ai_model_evaluation.py`(**非** task-405 範圍,不可動)
+- **問題**:task-405 `rerun_evaluation(ai_evaluation_uid, ...)` 入口須先取父評審拿 `usage_log_uid` / `ai_original_model` / `ai_task_summary`。`AiModelEvaluationRepository` 只提供 `find_by_usage_log_uid`(以 log uid 查)、`find_by_usage_log_uid_including_deleted`、`list_candidates*`、`mark_reran`、`fetch_unreran_evaluation_uids`,**無**任何「以 `ai_evaluation_uid` 取單一父列」的 getter。task-405 範圍鎖死兩檔(service + test),不可在 repository 補方法。`03-backend/00-overview.md` 又明訂「禁 service 直寫 raw SQL」。
+- **根因**:task-403 補 v2.1 重跑游標(`fetch_unreran_evaluation_uids` / `mark_reran`)時,只加了「掃 uid 清單」與「以 uid 標旗標」兩個 by-uid 寫入口,**漏補**對應的「以 uid 讀單列」getter;而消費端 task-405 的入口參數恰為 `ai_evaluation_uid`,形成讀取缺口。任務切分時未把「service 需要的 repo 讀取面」與「service 範圍鎖檔」對齊。
+- **修正**:於 service 內以 SQLAlchemy 2 ORM `select(AiModelEvaluation).where(ai_evaluation_uid==..., is_deleted==False)` 取單列(**非** raw SQL 字串拼接,無注入風險,對齊 `04-databases/04-sql-safety.md`);沿用 `proxy.py` 既有「service 內 ORM select」先例(`proxy.py:283` `_resolve_model` 同模式)。已於程式內註解標明此處為權宜並 cross-ref 本條。
+- **規範參照**:`03-backend/00-overview.md § 分層`(「禁 service 直寫 raw SQL」——此處為 ORM select 非 raw,屬邊界折衷)/ `04-databases/04-sql-safety.md`(已遵守,無字串拼接)
+- **後續**:reflect 候選 — (1) 為 `AiModelEvaluationRepository` 補 `find_by_uid(ai_evaluation_uid)`(對齊既有 `find_by_usage_log_uid` 命名),清債 task 完成後把 service 改回走 repository;(2) 任務切分時應把「消費 service 所需的 repository 讀取方法」一併納入上游 repo task 範圍,避免下游 service 被迫在範圍鎖檔下繞道。

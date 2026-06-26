@@ -81,6 +81,34 @@ class RerunRecommendation(BaseModel):
     triggered_at: datetime
 
 
+class RerunUsageLogInfo(BaseModel):
+    """對應那筆用量紀錄(usage_log)的基礎資訊(供前端 Dialog 顯示,非只給 uid)。
+
+    全取自讀取層已反查的同一筆 `usage_logs` row(不另查 DB);供前端展示「這組重跑
+    源自哪一次呼叫」的人類可讀 metadata。
+
+    - `created_at`:該筆呼叫時間。
+    - `model`:呼叫的模型 key。
+    - `status`:呼叫狀態(success / error 等)。
+    - `prompt_tokens` / `completion_tokens` / `total_tokens`:該筆呼叫的 token 數。
+    - `cost_usd`:該筆呼叫成本(USD);**Decimal → 字串**(沿用金額字串慣例避免 JS 浮點誤差)。
+    - `latency_ms`:該筆呼叫延遲(毫秒)。
+    - `used_tools`:該筆呼叫是否帶 tools(如 web search)。
+    - `error_code`:錯誤碼;無錯誤為 `None`。
+    """
+
+    created_at: datetime
+    model: str
+    status: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    cost_usd: str
+    latency_ms: int
+    used_tools: bool
+    error_code: str | None
+
+
 class RerunGroup(BaseModel):
     """一組 = 一筆用量紀錄(對齊 propose §5.4 / §6.1)。
 
@@ -95,6 +123,8 @@ class RerunGroup(BaseModel):
       與 usage-log 明細頁慣例同)。request_content 為 NULL / 無 text / 非字串 → `None`。
     - `original_cost_usd`:原呼叫成本(USD);**Decimal → 字串**(`str | None`)。
     - `evaluated_at`:該組最新一筆推薦模型的重跑執行時間(供排序 / 顯示;無列 → `None`)。
+    - `usage_log_info`:對應那筆用量紀錄的基礎資訊(供 Dialog 顯示;該筆 usage_log
+      不存在 / 歷史已刪 → `None`)。
     - `recommendations`:去重後的 AI 推薦模型列(最新優先)。
     """
 
@@ -104,6 +134,7 @@ class RerunGroup(BaseModel):
     original_input_text: str | None
     original_cost_usd: str | None
     evaluated_at: datetime | None
+    usage_log_info: RerunUsageLogInfo | None
     recommendations: list[RerunRecommendation]
 
 

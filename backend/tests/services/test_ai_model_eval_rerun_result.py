@@ -181,13 +181,29 @@ async def _insert_usage_log(
     *,
     response_summary: dict | None = None,
     request_content: dict | None = None,
+    model: str = "openai/gpt-4o",
+    status: str = "success",
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    total_tokens: int = 0,
+    cost_usd: Decimal = Decimal("0"),
+    latency_ms: int = 0,
+    used_tools: bool = False,
+    error_code: str | None = None,
 ) -> UUID:
     uid = _new_uid()
     session.add(
         UsageLog(
             usage_log_uid=uid,
-            model="openai/gpt-4o",
-            status="success",
+            model=model,
+            status=status,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+            used_tools=used_tools,
+            error_code=error_code,
             response_summary=response_summary,
             request_content=request_content,
         )
@@ -276,11 +292,20 @@ async def test_overview_groups_multiple_recommendations_same_log(
     - rec/c 該列無 ai_candidate_uid → recommended_by = None(代表「查不到」)。
     """
     repo = AiModelEvalRerunRepository(db_session)
-    # 原模型輸出原文存於 response_summary;任務輸入原文存於 request_content.text
+    # 原模型輸出原文存於 response_summary;任務輸入原文存於 request_content.text;
+    # 並帶該筆呼叫基礎 metadata 供驗 usage_log_info。
     log_uid = await _insert_usage_log(
         db_session,
         response_summary={"output_text": "原模型輸出"},
         request_content={"text": "幫我整理會議記錄"},
+        model="openai/gpt-4o",
+        status="success",
+        prompt_tokens=120,
+        completion_tokens=80,
+        total_tokens=200,
+        cost_usd=Decimal("0.003500"),
+        latency_ms=1234,
+        used_tools=True,
     )
     eval_uid = _new_uid()
 
@@ -347,6 +372,46 @@ async def test_overview_groups_multiple_recommendations_same_log(
     assert by_model["rec/a"] == judge_a_key
     assert by_model["rec/b"] == judge_b_key
     assert by_model["rec/c"] is None
+    # usage_log_info:對應那筆 usage_log 的基礎資訊(取自同一 row)
+    info = group.usage_log_info
+    assert info is not None
+    assert info.model == "openai/gpt-4o"
+    assert info.status == "success"
+    assert info.prompt_tokens == 120
+    assert info.completion_tokens == 80
+    assert info.total_tokens == 200
+    assert info.cost_usd == "0.003500"  # Decimal→str,6 位
+    assert info.latency_ms == 1234
+    assert info.used_tools is True
+    assert info.error_code is None
+    assert info.created_at is not None
+
+
+async def test_overview_usage_log_info_none_when_log_missing(
+    db_session: AsyncSession,
+) -> None:
+    """重跑列指向不存在的 usage_log(歷史已刪)→ usage_log_info 為 None,不爆。"""
+    repo = AiModelEvalRerunRepository(db_session)
+    # 不插 usage_log,直接用一個孤兒 usage_log_uid(軟引用,無 FK)。
+    orphan_log_uid = _new_uid()
+    eval_uid = _new_uid()
+    await repo.create_rerun(
+        RerunInput(
+            ai_evaluation_uid=eval_uid,
+            usage_log_uid=orphan_log_uid,
+            original_model="openai/gpt-4o",
+            rerun_model="rec/orphan",
+            triggered_at=datetime(2099, 1, 1, 16, 30, 0, tzinfo=UTC),
+            status="success",
+        )
+    )
+
+    page = await build_rerun_overview(db=db_session, page=1, size=20)
+    group = next(g for g in page.items if g.usage_log_uid == orphan_log_uid)
+    assert group.usage_log_info is None
+    # 連帶確認其他反查欄位也安全 None(同一 row 不存在)
+    assert group.original_output_text is None
+    assert group.original_input_text is None
 
 
 async def test_overview_handles_null_compare_cost_and_output(

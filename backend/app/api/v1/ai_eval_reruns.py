@@ -19,14 +19,41 @@ transaction、不 commit。service(task-407)`build_rerun_results` 已是無副�
 
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.core.deps import AdminDep, DbDep
 from app.core.response import success_response
-from app.schemas.ai_model_eval_rerun_result import RerunListResponse
-from app.services.ai_model_eval_rerun_result import build_rerun_results
+from app.schemas.ai_model_eval_rerun_result import (
+    RerunListResponse,
+    RerunOverviewPage,
+)
+from app.services.ai_model_eval_rerun_result import (
+    build_rerun_overview,
+    build_rerun_results,
+)
 
 router = APIRouter(prefix="/ai-eval", tags=["ai-eval"])
+
+
+@router.get(
+    "/reruns",
+    summary="AI 判決總覽(跨 log,分頁,admin)",
+)
+async def list_reruns_overview(
+    admin: AdminDep,
+    db: DbDep,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=200),
+):
+    """跨 log 取最新 challenger 重跑 + 對比裁決,供 AI 判決總覽頁(唯讀,分頁)。
+
+    - 權限:`AdminDep`(對齊既有 AI 分析端點)。
+    - 排序:`triggered_at DESC`(最新重跑優先)。
+    - 回應:`ApiResponse` 外殼包 `RerunOverviewPage`(items/total/page/size)。
+    """
+    items, total = await build_rerun_overview(db=db, page=page, size=size)
+    data = RerunOverviewPage(items=items, total=total, page=page, size=size)
+    return success_response(data=data.model_dump(mode="json"), detail="success")
 
 
 @router.get(

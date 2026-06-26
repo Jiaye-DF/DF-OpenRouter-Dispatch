@@ -12,6 +12,7 @@ import {
   CheckSquare,
   Cloud,
   FolderKanban,
+  Gavel,
   KeyRound,
   Layers,
   LayoutDashboard,
@@ -76,6 +77,12 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: "AI 分析",
     items: [
+      {
+        href: "/ai-analysis/verdicts",
+        label: "AI 判決總覽",
+        icon: Gavel,
+        adminOnly: true,
+      },
       {
         href: "/ai-analysis/judge-settings",
         label: "設定判別模型",

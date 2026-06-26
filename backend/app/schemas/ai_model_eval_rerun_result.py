@@ -73,3 +73,33 @@ class RerunListResponse(BaseModel):
     """
 
     reruns: list[RerunResult]
+
+
+class RerunOverviewItem(BaseModel):
+    """AI 判決總覽頁(跨 log)單列:一筆 challenger 重跑 + 對比裁決 + 來源 log 連結資訊。
+
+    對齊 `RerunResult` 的 Decimal → 字串慣例;額外帶 `usage_log_uid`(供前端連到
+    usage-logs 明細頁)與 `original_model`(原模型,用於「原 → challenger」並列顯示)。
+    """
+
+    usage_log_uid: UUID
+    original_model: str
+    rerun_model: str
+    status: str
+    error_code: str | None
+    cost_usd: str | None
+    cost_delta_usd: str | None
+    latency_ms: int | None
+    compare_winner: str | None
+    compare_score: str | None
+    compare_judge_model: str | None
+    triggered_at: datetime
+
+
+class RerunOverviewPage(BaseModel):
+    """AI 判決總覽分頁 wrapper(對齊 `schemas.common.Page` 形狀:items/total/page/size)。"""
+
+    items: list[RerunOverviewItem]
+    total: int
+    page: int
+    size: int

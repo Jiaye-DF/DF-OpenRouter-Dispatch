@@ -505,3 +505,19 @@ export interface RerunResult {
 export interface RerunListResponse {
   reruns: RerunResult[];
 }
+
+// AI 判決總覽頁(跨 log)單列:一筆 challenger 重跑 + 對比裁決 + 來源 log 連結資訊
+export interface RerunOverviewItem {
+  usage_log_uid: string; // 來源 usage_logs.usage_log_uid(連到明細頁)
+  original_model: string; // 原模型(原 → challenger 並列顯示)
+  rerun_model: string; // challenger 模型 key
+  status: string; // success / error
+  error_code: string | null;
+  cost_usd: string | null; // Decimal→string
+  cost_delta_usd: string | null; // Decimal→string
+  latency_ms: number | null;
+  compare_winner: string | null; // original / challenger / tie
+  compare_score: string | null; // 信心分數 0–1;Decimal→string
+  compare_judge_model: string | null;
+  triggered_at: string; // ISO
+}

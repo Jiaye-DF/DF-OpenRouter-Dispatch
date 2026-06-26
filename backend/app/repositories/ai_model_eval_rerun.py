@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
@@ -142,3 +142,27 @@ class AiModelEvalRerunRepository:
             AiModelEvalRerun.is_deleted.is_(False),
         )
         return list((await self.db.execute(stmt)).scalars().all())
+
+    async def list_recent(
+        self, *, limit: int, offset: int
+    ) -> list[AiModelEvalRerun]:
+        """跨 log 取最新 challenger 重跑列(供 AI 判決總覽頁分頁,預設過濾軟刪)。
+
+        以 `triggered_at DESC` 排序(最新重跑優先),`limit`/`offset` 分頁。
+        每列已自帶 `usage_log_uid` / `original_model`,無需 join 父表 / usage_logs。
+        """
+        stmt = (
+            select(AiModelEvalRerun)
+            .where(AiModelEvalRerun.is_deleted.is_(False))
+            .order_by(AiModelEvalRerun.triggered_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list((await self.db.execute(stmt)).scalars().all())
+
+    async def count_active(self) -> int:
+        """跨 log 重跑列總筆數(過濾軟刪),供分頁 total。"""
+        stmt = select(func.count()).select_from(AiModelEvalRerun).where(
+            AiModelEvalRerun.is_deleted.is_(False)
+        )
+        return int((await self.db.execute(stmt)).scalar_one())

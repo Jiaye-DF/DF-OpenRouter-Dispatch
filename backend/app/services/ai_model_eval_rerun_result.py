@@ -25,7 +25,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.models.ai_model_eval_rerun import AiModelEvalRerun
 from app.repositories.ai_model_eval_rerun import AiModelEvalRerunRepository
-from app.schemas.ai_model_eval_rerun_result import RerunResult
+from app.schemas.ai_model_eval_rerun_result import (
+    RerunOverviewItem,
+    RerunResult,
+)
 
 logger = get_logger(__name__)
 
@@ -96,3 +99,43 @@ async def build_rerun_results(
     )
 
     return [_to_rerun_result(row) for row in rows]
+
+
+def _to_overview_item(row: AiModelEvalRerun) -> RerunOverviewItem:
+    """`AiModelEvalRerun` → `RerunOverviewItem`(跨 log 總覽列;金額 / 分數 Decimal→str)。"""
+    return RerunOverviewItem(
+        usage_log_uid=row.usage_log_uid,
+        original_model=row.original_model,
+        rerun_model=row.rerun_model,
+        status=row.status,
+        error_code=row.error_code,
+        cost_usd=_decimal_to_str(row.cost_usd, _COST_QUANT),
+        cost_delta_usd=_decimal_to_str(row.cost_delta_usd, _COST_QUANT),
+        latency_ms=row.latency_ms,
+        compare_winner=row.compare_winner,
+        compare_score=_decimal_to_str(row.compare_score, _SCORE_QUANT),
+        compare_judge_model=row.compare_judge_model,
+        triggered_at=row.triggered_at,
+    )
+
+
+async def build_rerun_overview(
+    *, db: AsyncSession, page: int, size: int
+) -> tuple[list[RerunOverviewItem], int]:
+    """跨 log 取最新 challenger 重跑 + 對比裁決,組成 AI 判決總覽分頁(純讀,無副作用)。
+
+    Args:
+        db: AsyncSession(由 endpoint 提供;本函式不開 transaction / 不 commit)。
+        page: 1-based 頁碼。
+        size: 每頁筆數。
+
+    Returns:
+        `(items, total)`:當頁 `RerunOverviewItem[]` 與全體(過濾軟刪)總筆數。
+    """
+    repo = AiModelEvalRerunRepository(db)
+    rows = await repo.list_recent(limit=size, offset=(page - 1) * size)
+    total = await repo.count_active()
+
+    logger.debug("組裝 AI 判決總覽 page=%d size=%d total=%d", page, size, total)
+
+    return [_to_overview_item(row) for row in rows], total

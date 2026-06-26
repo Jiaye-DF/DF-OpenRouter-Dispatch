@@ -82,4 +82,6 @@ export const API_ENDPOINTS = {
   // AI 分析 — 依 usage_log 取 challenger 重跑 + 對比裁決(v2.1.0,對齊 propose §5.4;admin 限定)
   aiRerunsByUsageLog: (uid: string) =>
     `/api/v1/ai-eval/reruns/by-usage-log/${uid}`,
+  // AI 分析 — 跨 log AI 判決總覽(分頁;admin 限定)
+  aiRerunsOverview: "/api/v1/ai-eval/reruns",
 } as const;

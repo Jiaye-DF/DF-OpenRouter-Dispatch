@@ -406,3 +406,67 @@ export interface JudgeSetting {
 export interface JudgeModelNotActiveData {
   model_uids: string[];
 }
+
+// ─── v2.0.3 評審結果(usage-log 明細頁內嵌「AI 分析」)────────────────
+// 對齊 propose-v2.0.3.md §4.2 對外 JSON 結構,後端 schema 來源:
+// backend/app/schemas/ai_model_eval_result.py。
+// 慣例:Decimal 欄位一律以字串傳輸(`string | null`),避免 JS 浮點誤差
+// (沿用既有 Model「Decimal 以字串傳輸」),實際 Decimal→str 由後端 service 負責。
+
+// 任務分析(父表 dim1/2,v2.0.1 已取首個成功評審值存為單一值)
+export interface TaskAnalysis {
+  summary: string; // 使用者輸入摘要(dim1)
+  intent: string; // 任務意圖原始枚舉字串(如 code_generation);中文對照見 lib/ai-eval-labels.ts
+  complexity: string; // 任務複雜度(low / medium / high)
+}
+
+// 推薦共識(三評審 ai_recommend_model 收斂;對齊 propose §5)
+// 命名以 Eval 前綴避免與其他 RecommendConsensus 語意混淆
+export interface EvalRecommendConsensus {
+  model: string | null; // 多數推薦模型;分歧時為票數最高者;全 null → null
+  tier: string | null; // 眾數模型對應 tier(同模型應一致);null 安全
+  votes: number; // 眾數模型得票數
+  is_split: boolean; // true=無嚴格過半共識(分歧)
+}
+
+// 本版計算的彙總(三評審 → 單一判決;對齊 propose §5)
+export interface EvaluationSummary {
+  judge_count: number; // 候選總數
+  succeeded_count: number; // 其中評審成功(AI 欄位非 null)數,用於「部分成功」標示
+  avg_fit_score: string | null; // 非 null fit 的平均(四捨五入 3 位);Decimal→string;全 null → null
+  min_fit_score: string | null; // 非 null fit 極小值;Decimal→string
+  max_fit_score: string | null; // 非 null fit 極大值;Decimal→string
+  recommend_consensus: EvalRecommendConsensus;
+  self_vote_count: number; // ai_self_vote=true 的候選數(自我偏好警示)
+}
+
+// 單一評審候選(子表 dim3/4,失敗裁判 AI 欄位為 null;對齊 propose §4.2)
+export interface EvalCandidate {
+  ai_candidate_uid: string;
+  judge_model_uid: string;
+  judge_model_key: string | null; // join models 補上;取不到時 null(前端顯示 UUID 尾碼)
+  judge_model_name: string | null; // join models 補上;取不到時 null
+  ai_recommend_model: string | null;
+  ai_recommend_tier: string | null;
+  ai_recommend_reason: string | null;
+  ai_fit_score: string | null; // 吻合度;Decimal→string
+  ai_self_vote: boolean | null; // 該裁判是否推薦自家廠商(偏差語意)
+}
+
+// 評審結果(父表 + 任務分析 + 彙總 + 三子候選;對齊 propose §4.2)
+export interface EvaluationResult {
+  ai_evaluation_uid: string;
+  usage_log_uid: string;
+  ai_original_model: string; // 被評審原文所用的原始模型 key
+  status: "pending" | "evaluated" | "error"; // 評審狀態
+  ai_evaluated_at: string | null; // 評審完成時間(ISO);未完成為 null
+  task_analysis: TaskAnalysis | null; // 無成功評審值時為 null
+  summary: EvaluationSummary | null; // 失敗 / 無候選時為 null
+  candidates: EvalCandidate[]; // 三評審明細(最多 3 筆);v2.0.4 細看專頁重用
+}
+
+// 頂層 wrapper(對齊 propose §4.2 / 決議 #6)
+// 無評審列時 evaluation 為 null(對應 200 + evaluation=null,非 404)
+export interface EvaluationResultResponse {
+  evaluation: EvaluationResult | null;
+}

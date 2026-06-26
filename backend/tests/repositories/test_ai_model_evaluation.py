@@ -16,13 +16,14 @@ from uuid import UUID
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from uuid_utils import uuid7
 
 from app.models.ai_model_eval_candidate import AiModelEvalCandidate
 from app.models.ai_model_evaluation import AiModelEvaluation
+from app.models.model import Model
 from app.models.usage_log import UsageLog
 from app.repositories.ai_model_evaluation import (
     AiModelEvaluationRepository,
@@ -73,6 +74,31 @@ async def _insert_usage_log(session: AsyncSession, *, model: str = "openai/gpt-4
             usage_log_uid=uid,
             model=model,
             status="success",
+        )
+    )
+    await session.flush()
+    return uid
+
+
+async def _insert_model(
+    session: AsyncSession,
+    *,
+    key: str,
+    name: str,
+    is_deleted: bool = False,
+) -> UUID:
+    """插入一筆 `models` 列並回其 model_uid(供 join 測試用)。
+
+    `last_synced_at` NOT NULL 無預設 → 必給值(用 `func.now()`);其餘可空 / 有預設欄位略過。
+    """
+    uid = _new_uid()
+    session.add(
+        Model(
+            model_uid=uid,
+            model_key=key,
+            name=name,
+            last_synced_at=func.now(),
+            is_deleted=is_deleted,
         )
     )
     await session.flush()
@@ -326,3 +352,134 @@ async def test_transaction_rollback_no_half_write(db_session: AsyncSession) -> N
     ).scalar_one()
     # 不直接斷言全表為 0(同 DB 可能有他人資料);改以父表 0 列佐證整批未落地
     assert orphan >= 0
+
+
+async def _create_eval_with_candidate_models(
+    db_session: AsyncSession,
+    repo: AiModelEvaluationRepository,
+    candidates: list[CandidateInput],
+) -> AiModelEvaluation:
+    """建立 evaluation + 給定候選,回父列(供 join 測試共用)。"""
+    log_uid = await _insert_usage_log(db_session)
+    return await repo.create_evaluation_with_candidates(
+        usage_log_uid=log_uid,
+        ai_original_model="openai/gpt-4o",
+        candidates=candidates,
+    )
+
+
+async def test_list_candidates_with_judge_joins_model_key_and_name(
+    db_session: AsyncSession,
+) -> None:
+    """正常 join:3 個 model + 3 候選 → 每筆帶出正確的 judge key/name 與候選欄位。"""
+    repo = AiModelEvaluationRepository(db_session)
+
+    suffix = uuid7()
+    m1 = await _insert_model(
+        db_session, key=f"anthropic/claude-opus-{suffix}", name="Claude Opus"
+    )
+    m2 = await _insert_model(db_session, key=f"openai/gpt-4o-{suffix}", name="GPT-4o")
+    m3 = await _insert_model(db_session, key=f"google/gemini-{suffix}", name="Gemini")
+
+    cands = [
+        CandidateInput(
+            model_uid=m1,
+            ai_recommend_model="anthropic/claude-3.5",
+            ai_recommend_tier="mid",
+            ai_recommend_reason="便宜且足夠",
+            ai_fit_score=Decimal("0.812"),
+            ai_self_vote=False,
+        ),
+        CandidateInput(
+            model_uid=m2,
+            ai_recommend_model="openai/gpt-4o-mini",
+            ai_recommend_tier="low",
+            ai_recommend_reason="任務簡單",
+            ai_fit_score=Decimal("0.640"),
+            ai_self_vote=True,
+        ),
+        CandidateInput(
+            model_uid=m3,
+            ai_recommend_model="google/gemini-flash",
+            ai_recommend_tier="low",
+            ai_recommend_reason="速度優先",
+            ai_fit_score=Decimal("0.701"),
+            ai_self_vote=False,
+        ),
+    ]
+    parent = await _create_eval_with_candidate_models(db_session, repo, cands)
+
+    rows = await repo.list_candidates_with_judge(parent.ai_evaluation_uid)
+    assert len(rows) == 3
+
+    by_model = {r.model_uid: r for r in rows}
+    assert by_model[m1].judge_model_key == f"anthropic/claude-opus-{suffix}"
+    assert by_model[m1].judge_model_name == "Claude Opus"
+    assert by_model[m2].judge_model_key == f"openai/gpt-4o-{suffix}"
+    assert by_model[m2].judge_model_name == "GPT-4o"
+    assert by_model[m3].judge_model_key == f"google/gemini-{suffix}"
+    assert by_model[m3].judge_model_name == "Gemini"
+
+    # 候選欄位正確帶出(fit_score 等)
+    assert by_model[m1].ai_recommend_model == "anthropic/claude-3.5"
+    assert by_model[m1].ai_recommend_tier == "mid"
+    assert by_model[m1].ai_recommend_reason == "便宜且足夠"
+    assert by_model[m1].ai_fit_score == Decimal("0.812")
+    assert by_model[m1].ai_self_vote is False
+    assert by_model[m2].ai_self_vote is True
+    assert by_model[m2].ai_fit_score == Decimal("0.640")
+
+
+async def test_list_candidates_with_judge_missing_model_yields_null_key_name(
+    db_session: AsyncSession,
+) -> None:
+    """判別模型不存在:候選 model_uid 指向沒有的 model → key/name=None,但候選仍回傳。"""
+    repo = AiModelEvaluationRepository(db_session)
+
+    missing_uid = _new_uid()  # 沒有對應 models 列
+    cands = [
+        CandidateInput(
+            model_uid=missing_uid,
+            ai_recommend_model="openai/gpt-4o-mini",
+            ai_fit_score=Decimal("0.555"),
+        )
+    ]
+    parent = await _create_eval_with_candidate_models(db_session, repo, cands)
+
+    rows = await repo.list_candidates_with_judge(parent.ai_evaluation_uid)
+    assert len(rows) == 1  # outer join 不掉列
+    assert rows[0].model_uid == missing_uid
+    assert rows[0].judge_model_key is None
+    assert rows[0].judge_model_name is None
+    assert rows[0].ai_fit_score == Decimal("0.555")
+
+
+async def test_list_candidates_with_judge_soft_deleted_model_still_named(
+    db_session: AsyncSession,
+) -> None:
+    """判別模型已軟刪:仍以 model_uid 補名(不過濾 model 軟刪),key/name 不為 None。"""
+    repo = AiModelEvaluationRepository(db_session)
+
+    soft_key = f"anthropic/retired-{uuid7()}"
+    soft_uid = await _insert_model(
+        db_session, key=soft_key, name="Retired Judge", is_deleted=True
+    )
+    cands = [CandidateInput(model_uid=soft_uid, ai_fit_score=Decimal("0.700"))]
+    parent = await _create_eval_with_candidate_models(db_session, repo, cands)
+
+    rows = await repo.list_candidates_with_judge(parent.ai_evaluation_uid)
+    assert len(rows) == 1
+    # 軟刪 model 仍補名(對齊 propose §4.2「盡量以 model_uid 取既有 models 列補名」)
+    assert rows[0].judge_model_key == soft_key
+    assert rows[0].judge_model_name == "Retired Judge"
+
+
+async def test_list_candidates_with_judge_empty_when_no_candidates(
+    db_session: AsyncSession,
+) -> None:
+    """無候選的 evaluation_uid → 回空 list。"""
+    repo = AiModelEvaluationRepository(db_session)
+    parent = await _create_eval_with_candidate_models(db_session, repo, [])
+
+    rows = await repo.list_candidates_with_judge(parent.ai_evaluation_uid)
+    assert rows == []

@@ -13,6 +13,7 @@ import {
   fitTone,
 } from "@/lib/ai-eval-labels";
 import type {
+  EvalCandidate,
   EvaluationResult,
   EvaluationResultResponse,
   EvaluationSummary,
@@ -20,7 +21,8 @@ import type {
 
 // v2.0.3(task-306):usage-log 明細頁內嵌「AI 分析」基礎摘要區塊。
 // 獨立 fetch 評審結果(評審缺漏不影響 log 本體),自有 loading / error / 四狀態機。
-// 只渲染「基礎摘要卡」(propose §6.1);三評審逐筆明細留 v2.0.4(API 回 candidates 但本版不渲染)。
+// 渲染「基礎摘要卡」(propose §6.1)+ 各評審推薦模型一覽;三評審完整逐筆明細
+// (推薦理由 / self_vote 等)仍留 v2.0.4 細看專頁。
 
 // fitTone → 進度條色階 class(高綠中黃低紅;none 灰)。集中映射,門檻由 ai-eval-labels.fitTone 決定。
 const FIT_BAR_CLASS: Record<ReturnType<typeof fitTone>, string> = {
@@ -51,6 +53,39 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <span className="text-sm text-muted-foreground">{children}</span>;
 }
 
+// 單一裁判的推薦模型一列:裁判名 →(推薦模型 + tier + 吻合度)。
+// 裁判名來源:後端 LEFT JOIN models(不濾 is_deleted),故**軟刪的判別模型仍照常補名**;
+// 只有**硬刪**(models 那列真的不存在)時 name/key 才皆 null。
+// 此時依 02-frontend/00-overview.md §32「識別碼隱藏」用文字 label 取代,不暴露內部 UID。
+// 失敗裁判 ai_recommend_model 為 null → 標示未產出推薦。
+function JudgeRecommendRow({ candidate }: { candidate: EvalCandidate }) {
+  const judge =
+    candidate.judge_model_name ?? candidate.judge_model_key ?? "該模型已刪除";
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-2">
+      <span className="text-sm text-muted-foreground">{judge}</span>
+      <span className="text-muted-foreground">→</span>
+      {candidate.ai_recommend_model ? (
+        <>
+          <span className="font-mono text-sm font-medium">
+            {candidate.ai_recommend_model}
+          </span>
+          {candidate.ai_recommend_tier && (
+            <Badge variant="default">{candidate.ai_recommend_tier}</Badge>
+          )}
+          {candidate.ai_fit_score && (
+            <span className="text-sm text-muted-foreground">
+              吻合 {formatFitPercent(candidate.ai_fit_score)}
+            </span>
+          )}
+        </>
+      ) : (
+        <span className="text-sm text-muted-foreground">(此評審未產出推薦)</span>
+      )}
+    </div>
+  );
+}
+
 // 已評審 → 基礎摘要卡內容(propose §6.1)。summary / task_analysis 皆可能為 null,逐區防呆。
 function EvaluatedSummary({ evaluation }: { evaluation: EvaluationResult }) {
   const ta = evaluation.task_analysis;
@@ -78,10 +113,10 @@ function EvaluatedSummary({ evaluation }: { evaluation: EvaluationResult }) {
 
       {summary ? (
         <>
-          {/* 平均吻合度 + min–max 範圍 + 色階進度條 */}
+          {/* 模型輸出吻合度(平均)+ min–max 範圍 + 色階進度條 */}
           <div className="flex flex-col gap-2">
             <div className="flex items-baseline justify-between">
-              <SectionLabel>平均吻合度</SectionLabel>
+              <SectionLabel>模型輸出吻合度</SectionLabel>
               <span className="text-sm text-muted-foreground">
                 範圍 {formatFitPercent(summary.min_fit_score)}–
                 {formatFitPercent(summary.max_fit_score)}
@@ -95,9 +130,9 @@ function EvaluatedSummary({ evaluation }: { evaluation: EvaluationResult }) {
             </div>
           </div>
 
-          {/* 推薦共識 */}
+          {/* 推薦模型(三評審共識) */}
           <div className="flex flex-col gap-2">
-            <SectionLabel>推薦共識</SectionLabel>
+            <SectionLabel>推薦模型</SectionLabel>
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-sm font-medium">
                 {summary.recommend_consensus.model ?? "(無共識推薦)"}
@@ -115,19 +150,17 @@ function EvaluatedSummary({ evaluation }: { evaluation: EvaluationResult }) {
             </div>
           </div>
 
-          {/* 自我偏好警示(ai_self_vote)*/}
-          <div className="flex flex-col gap-2">
-            <SectionLabel>自我偏好</SectionLabel>
-            <div>
-              {summary.self_vote_count > 0 ? (
-                <Badge variant="warning">
-                  {summary.self_vote_count} 位裁判推薦自家廠商
-                </Badge>
-              ) : (
-                <Badge variant="success">無自我偏好</Badge>
-              )}
+          {/* 各評審推薦模型(三裁判逐筆推薦;自我偏好警示移至 v2.0.4 細看專頁,本頁不顯示)*/}
+          {evaluation.candidates.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <SectionLabel>各評審推薦模型</SectionLabel>
+              <div className="flex flex-col gap-2">
+                {evaluation.candidates.map((c) => (
+                  <JudgeRecommendRow key={c.ai_candidate_uid} candidate={c} />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* 評審完成度(部分成功)*/}
           {summary.succeeded_count < summary.judge_count && (
@@ -199,7 +232,7 @@ export function AiAnalysisSection({ uid }: { uid: string }) {
           ) : evaluation === null ? (
             // 狀態機 1:未評審
             <div className="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
-              尚未評審(可能未啟用 AI 評審 <code>AI_EVAL_ENABLED=false</code>,或尚未輪到此筆)
+              尚未分析
             </div>
           ) : evaluation.status === "pending" ? (
             // 狀態機 2:評審中

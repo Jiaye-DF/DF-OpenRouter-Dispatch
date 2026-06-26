@@ -1,7 +1,7 @@
 ---
 id: task-403
 title: rerun repository + 父表重跑游標查詢
-status: pending
+status: done
 parallel: true
 depends_on: [task-402]
 affected_files:

@@ -1,21 +1,21 @@
 # Tasks v2.1.0 · 推薦模型「真實重跑 + 對比裁決」(champion / challenger,GAN 閉環)
 
-> 狀態:未開始(已完成 0/10)
+> 狀態:全數完成(已完成 10/10;待 /scan-project 收口)
 > 來源:[propose-v2.1.0.md](./propose-v2.1.0.md);母本鏈 [v2.0.0 地基](../v2.0/propose-v2.0.0.md) → [v2.0.1 判別管線](../v2.0/propose-v2.0.1.md) → [v2.0.3 評審結果顯示](../v2.0/propose-v2.0.3.md)
 > 並行:5 / 序列:5 / 預估總時數:27 hr / 阻塞點:0(propose §10 已全數拍板,worker 可直接開工)
 
 | # | 標題 | 狀態 | 並行 | 依賴 | 影響檔案 |
 | --- | --- | --- | --- | --- | --- |
-| 401 | env 兩顆開關 + Settings 欄位 | pending | ✓ | — | `backend/app/core/config.py`、`.env.example` |
-| 402 | 新表 model + 父表游標欄 + migration | pending | ✓ | — | `backend/app/models/ai_model_eval_rerun.py`、`backend/app/models/ai_model_evaluation.py`、`backend/app/models/__init__.py`、`backend/alembic/versions/0026_ai_eval_reruns.py` |
-| 403 | rerun repository + 父表重跑游標查詢 | pending | ✓ | 402 | `backend/app/repositories/ai_model_eval_rerun.py`、`backend/app/repositories/ai_model_evaluation.py`、`backend/tests/repositories/test_ai_model_eval_rerun.py` |
-| 404 | AI discriminator 盲化對比 prompt + 解析 schema | pending | ✓ | — | `backend/app/services/ai_model_eval_rerun_prompt.py`、`backend/app/schemas/ai_model_eval.py`、`backend/tests/services/test_ai_model_eval_rerun_prompt.py` |
-| 405 | rerun service(challenger 串行 → discriminator → 寫一筆) | pending | ✓ | 401, 403, 404 | `backend/app/services/ai_model_eval_rerun.py`、`backend/tests/services/test_ai_model_eval_rerun.py` |
-| 406 | taskiq task + dispatcher(`dispatch_unrerun` / `rerun_evaluation_task`) | pending | ✓ | 403, 405 | `backend/app/tasks/ai_model_eval.py`、`backend/tests/tasks/test_ai_model_eval_rerun_dispatch.py` |
-| 407 | 重跑結果 Response schema + 讀取 service | pending | ✓ | 403 | `backend/app/schemas/ai_model_eval_rerun_result.py`、`backend/app/services/ai_model_eval_rerun_result.py`、`backend/tests/services/test_ai_model_eval_rerun_result.py` |
-| 408 | 查詢 API endpoint + router 註冊 | pending | ✗ | 407 | `backend/app/api/v1/ai_eval_reruns.py`、`backend/app/api/v1/__init__.py`、`backend/tests/api/test_ai_eval_reruns.py` |
-| 409 | 前端型別 + 端點常數 + 裁決 label/util | pending | ✓ | 407 | `frontend/src/types/api.ts`、`frontend/src/lib/api/endpoints.ts`、`frontend/src/lib/ai-eval-labels.ts` |
-| 410 | 摘要層「AI 判決結果」+ 詳細層 inline 對比(AI 分析卡) | pending | ✗ | 408, 409 | `frontend/src/app/(main)/usage-logs/[uid]/AiAnalysisSection.tsx`、`frontend/src/app/(main)/usage-logs/[uid]/AiRerunSection.tsx` |
+| 401 | env 兩顆開關 + Settings 欄位 | done | ✓ | — | `backend/app/core/config.py`、`.env.example` |
+| 402 | 新表 model + 父表游標欄 + migration | done | ✓ | — | `backend/app/models/ai_model_eval_rerun.py`、`backend/app/models/ai_model_evaluation.py`、`backend/app/models/__init__.py`、`backend/alembic/versions/0026_ai_eval_reruns.py` |
+| 403 | rerun repository + 父表重跑游標查詢 | done | ✓ | 402 | `backend/app/repositories/ai_model_eval_rerun.py`、`backend/app/repositories/ai_model_evaluation.py`、`backend/tests/repositories/test_ai_model_eval_rerun.py` |
+| 404 | AI discriminator 盲化對比 prompt + 解析 schema | done | ✓ | — | `backend/app/services/ai_model_eval_rerun_prompt.py`、`backend/app/schemas/ai_model_eval.py`、`backend/tests/services/test_ai_model_eval_rerun_prompt.py` |
+| 405 | rerun service(challenger 串行 → discriminator → 寫一筆) | done | ✓ | 401, 403, 404 | `backend/app/services/ai_model_eval_rerun.py`、`backend/tests/services/test_ai_model_eval_rerun.py` |
+| 406 | taskiq task + dispatcher(`dispatch_unrerun` / `rerun_evaluation_task`) | done | ✓ | 403, 405 | `backend/app/tasks/ai_model_eval.py`、`backend/tests/tasks/test_ai_model_eval_rerun_dispatch.py` |
+| 407 | 重跑結果 Response schema + 讀取 service | done | ✓ | 403 | `backend/app/schemas/ai_model_eval_rerun_result.py`、`backend/app/services/ai_model_eval_rerun_result.py`、`backend/tests/services/test_ai_model_eval_rerun_result.py` |
+| 408 | 查詢 API endpoint + router 註冊 | done | ✗ | 407 | `backend/app/api/v1/ai_eval_reruns.py`、`backend/app/api/v1/__init__.py`、`backend/tests/api/test_ai_eval_reruns.py` |
+| 409 | 前端型別 + 端點常數 + 裁決 label/util | done | ✓ | 407 | `frontend/src/types/api.ts`、`frontend/src/lib/api/endpoints.ts`、`frontend/src/lib/ai-eval-labels.ts` |
+| 410 | 摘要層「AI 判決結果」+ 詳細層 inline 對比(AI 分析卡) | done | ✗ | 408, 409 | `frontend/src/app/(main)/usage-logs/[uid]/AiAnalysisSection.tsx`、`frontend/src/app/(main)/usage-logs/[uid]/AiRerunSection.tsx` |
 
 ## 並行批次
 

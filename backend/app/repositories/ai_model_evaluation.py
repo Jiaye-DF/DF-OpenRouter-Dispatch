@@ -253,14 +253,19 @@ class AiModelEvaluationRepository:
         await self.db.execute(stmt)
 
     async def fetch_unevaluated_log_uids(self, limit: int) -> list[UUID]:
-        """撈尚未評審(`ai_evaluated_at IS NULL`)的 usage log uid 供 dispatcher 派發。"""
+        """撈尚未評審(`ai_evaluated_at IS NULL`)的 usage log uid 供 dispatcher 派發。
+
+        **最舊優先(FIFO,`created_at ASC`)**:確保歷史 backlog 公平處理、不被新進
+        log 餓死(inflow > 每輪批次吞吐時,desc 會讓最舊那批永遠輪不到)。partial index
+        `idx_usage_logs_created_at` 為 DESC,asc 查詢以反向索引掃描,效能影響可忽略。
+        """
         stmt = (
             select(UsageLog.usage_log_uid)
             .where(
                 UsageLog.ai_evaluated_at.is_(None),
                 UsageLog.is_deleted.is_(False),
             )
-            .order_by(UsageLog.created_at.desc())
+            .order_by(UsageLog.created_at.asc())
             .limit(limit)
         )
         return list((await self.db.execute(stmt)).scalars().all())

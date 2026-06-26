@@ -75,7 +75,7 @@ function JudgeRecommendRow({ candidate }: { candidate: EvalCandidate }) {
           )}
           {candidate.ai_fit_score && (
             <span className="text-sm text-muted-foreground">
-              吻合 {formatFitPercent(candidate.ai_fit_score)}
+              原模型輸出吻合度 {formatFitPercent(candidate.ai_fit_score)}
             </span>
           )}
         </>
@@ -113,10 +113,10 @@ function EvaluatedSummary({ evaluation }: { evaluation: EvaluationResult }) {
 
       {summary ? (
         <>
-          {/* 模型輸出吻合度(平均)+ min–max 範圍 + 色階進度條 */}
+          {/* 原模型輸出吻合度(平均)+ min–max 範圍 + 色階進度條 */}
           <div className="flex flex-col gap-2">
             <div className="flex items-baseline justify-between">
-              <SectionLabel>模型輸出吻合度</SectionLabel>
+              <SectionLabel>原模型輸出吻合度(平均)</SectionLabel>
               <span className="text-sm text-muted-foreground">
                 範圍 {formatFitPercent(summary.min_fit_score)}–
                 {formatFitPercent(summary.max_fit_score)}

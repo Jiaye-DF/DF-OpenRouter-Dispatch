@@ -39,6 +39,9 @@ _CANDIDATES = [
     {"model_key": "google/gemini-2.5-pro", "tier": "premium"},
 ]
 
+# 使用者目前使用的模型(非盲測,明確揭露給裁判)。
+_ORIGINAL_MODEL = "openai/gpt-4o-mini"
+
 
 # --- schema:JudgeOutput -----------------------------------------------------
 
@@ -99,22 +102,46 @@ def test_bad_complexity_raises():
 
 def test_prompt_contains_all_candidate_model_keys():
     """Acceptance:prompt 文字含全部傳入候選 model_key。"""
-    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES)
+    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES, _ORIGINAL_MODEL)
     text = _flatten_messages(payload)
     for cand in _CANDIDATES:
         assert cand["model_key"] in text
 
 
-def test_prompt_does_not_leak_original_model():
-    """Acceptance:盲化 — prompt 不含原模型識別字串。"""
-    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES)
+def test_prompt_reveals_current_model():
+    """非盲測:prompt 應明確揭露使用者目前使用的模型(面試式評選)。"""
+    payload = build_judge_prompt(
+        _REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES, _ORIGINAL_MODEL
+    )
     text = _flatten_messages(payload)
-    assert _REQUEST_CONTENT["model"] not in text
+    assert _ORIGINAL_MODEL in text
+
+
+def test_prompt_includes_current_tier_when_given():
+    """目前模型 tier 提供時應一併揭露(基礎資訊)。"""
+    payload = build_judge_prompt(
+        _REQUEST_CONTENT,
+        _RESPONSE_SUMMARY,
+        _CANDIDATES,
+        _ORIGINAL_MODEL,
+        original_tier="standard",
+    )
+    text = _flatten_messages(payload)
+    assert "standard" in text
+
+
+def test_prompt_allows_keeping_current_model():
+    """recommend 規則應允許/鼓勵『維持目前模型』(避免一律建議更換)。"""
+    payload = build_judge_prompt(
+        _REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES, _ORIGINAL_MODEL
+    )
+    text = _flatten_messages(payload)
+    assert "維持" in text
 
 
 def test_prompt_includes_input_and_output_text():
     """prompt 應帶入使用者輸入原文與模型輸出原文。"""
-    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES)
+    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES, _ORIGINAL_MODEL)
     text = _flatten_messages(payload)
     assert _REQUEST_CONTENT["text"] in text
     assert _RESPONSE_SUMMARY["output_text"] in text
@@ -122,7 +149,7 @@ def test_prompt_includes_input_and_output_text():
 
 def test_prompt_requests_json_output():
     """要求 JSON 結構化輸出。"""
-    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES)
+    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES, _ORIGINAL_MODEL)
     assert payload["response_format"] == {"type": "json_object"}
     assert isinstance(payload["messages"], list)
     assert payload["messages"][0]["role"] == "system"
@@ -130,7 +157,7 @@ def test_prompt_requests_json_output():
 
 def test_prompt_pins_temperature_zero():
     """評分/分類任務:temperature=0,壓低取樣隨機性以提升可重現性。"""
-    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES)
+    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES, _ORIGINAL_MODEL)
     assert payload["temperature"] == 0
 
 
@@ -141,7 +168,11 @@ def test_mask_hook_applied_to_input_text():
         return "[REDACTED]"
 
     payload = build_judge_prompt(
-        _REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES, text_masker=masker
+        _REQUEST_CONTENT,
+        _RESPONSE_SUMMARY,
+        _CANDIDATES,
+        _ORIGINAL_MODEL,
+        text_masker=masker,
     )
     text = _flatten_messages(payload)
     assert "[REDACTED]" in text
@@ -150,16 +181,18 @@ def test_mask_hook_applied_to_input_text():
 
 def test_default_mask_hook_is_identity():
     """預設不遮罩:原文應原樣出現。"""
-    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES)
+    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, _CANDIDATES, _ORIGINAL_MODEL)
     text = _flatten_messages(payload)
     assert _REQUEST_CONTENT["text"] in text
 
 
 def test_prompt_handles_empty_candidates():
-    """無候選不應炸,且不洩漏原模型。"""
-    payload = build_judge_prompt(_REQUEST_CONTENT, _RESPONSE_SUMMARY, [])
+    """無候選不應炸,且仍揭露目前模型。"""
+    payload = build_judge_prompt(
+        _REQUEST_CONTENT, _RESPONSE_SUMMARY, [], _ORIGINAL_MODEL
+    )
     text = _flatten_messages(payload)
-    assert _REQUEST_CONTENT["model"] not in text
+    assert _ORIGINAL_MODEL in text
 
 
 # --- helpers ----------------------------------------------------------------

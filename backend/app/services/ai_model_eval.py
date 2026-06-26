@@ -234,6 +234,8 @@ async def evaluate_usage_log(
         request_content,
         response_summary,
         candidate_models,
+        original_model,
+        original_tier=tier_by_model_key.get(original_model),
     )
 
     results: list[_JudgeResult] = []

@@ -4,8 +4,11 @@
 OpenRouter `/chat/completions` 的 payload,要求判別模型輸出 dim1–4 的結構化 JSON
 (對應 `app.schemas.ai_model_eval.JudgeOutput`)。供 task-105 evaluation service 呼叫。
 
-設計約束(propose §5):
-- **盲化**:prompt **不**揭露原 output 出自哪個模型,降低自我偏好偏差。
+設計約束:
+- **非盲測(面試式評選)**:prompt **會**揭露使用者目前使用的模型(含 tier 等基礎資訊)。
+  判別管線非藝術評鑑、不採盲評;裁判在知道現況的前提下,於「目前模型 + 候選白名單」中
+  挑最適合者。**若目前模型已是最適合,即推薦維持目前模型**,避免一律建議更換造成
+  A→B、B→A 互推。仍要求裁判客觀、勿因廠商偏袒。(原盲化設計見 git 史)
 - **候選白名單**:dim4 推薦只能從傳入的 `candidate_models`(model_key + tier)選,
   prompt 明列白名單;tier 由 service 反查所選 model 以保證一致。
 - **PII**:本版**不**遮罩、外送原文;但保留遮罩 hook(`text_masker`),v2.1 可插入。
@@ -25,17 +28,15 @@ def _identity_masker(text: str) -> str:
 
 
 _SYSTEM_PROMPT = (
-    "你是一個嚴格、客觀的模型適配評審。你會看到一筆「使用者輸入原文」與一段"
-    "「某個 AI 模型對該輸入的輸出原文」,以及一份可選用的候選模型白名單。\n"
-    "你的任務是從四個方向做出判斷並只回傳 JSON:\n"
-    "1. task_summary:用一句話摘要使用者想做什麼。\n"
-    "2. task_intent / task_complexity:任務意圖(必須是給定枚舉之一)與複雜度(low|medium|high)。\n"
-    "3. output_fit:輸出對任務意圖的吻合度,score 為 0 到 1 的浮點數,並附理由。\n"
-    "4. recommend:從候選白名單中挑一個你認為更適合此任務的模型,並附理由。\n"
-    "重要約束:\n"
-    "- 你**不知道**輸出是由哪個模型產生的,**不要**臆測或在理由中提及任何模型名稱來源。\n"
-    "- recommend.model **必須**是候選白名單中的 model_key 之一,不得自創。\n"
-    "- 只回傳一個合法 JSON 物件,不要有任何額外文字、註解或 markdown 圍欄。"
+    "你是嚴格客觀的模型適配評審(面試式、非盲測):已知使用者目前使用的模型(含 tier)、"
+    "其對輸入的輸出原文,與候選模型白名單。只回傳一個 JSON 物件,含四欄:\n"
+    "1. task_summary:一句話摘要使用者要做什麼。\n"
+    "2. task_intent / task_complexity:意圖(給定枚舉之一)、複雜度(low|medium|high)。\n"
+    "3. output_fit:{score, reason},score 為目前模型輸出對任務的吻合度(0–1)。\n"
+    "4. recommend:{model, reason},於『目前模型 + 白名單』中綜合適配與成本挑最適合者;"
+    "目前模型已最適合(或無明顯更優 / 更省)就填目前模型(即維持)。\n"
+    "規則:recommend.model 必為白名單中的 model_key(目前模型若在其中亦可選),不得自創;"
+    "客觀判斷、勿因廠商偏袒、勿為換而換;除該 JSON 外不要輸出任何文字或圍欄。"
 )
 
 # 意圖枚舉直接寫入 prompt,讓模型回傳值落在固定集合(對齊 schema 的寬鬆解析)。
@@ -49,10 +50,9 @@ _OUTPUT_SCHEMA_HINT = json.dumps(
         "task_intent": "code_generation",
         "task_complexity": "medium",
         "output_fit": {"score": 0.86, "reason": "原回覆涵蓋…但缺…"},
-        "recommend": {"model": "<候選白名單中的 model_key>", "reason": "此任務為…,建議用…"},
+        "recommend": {"model": "<白名單 model_key;維持則填目前模型>", "reason": "維持/建議用…"},
     },
     ensure_ascii=False,
-    indent=2,
 )
 
 
@@ -60,7 +60,8 @@ def _render_input(request_content: Mapping[str, Any], text_masker: TextMasker) -
     """把 usage_logs.request_content 原文渲染成可讀的「使用者輸入」區塊。
 
     request_content 形狀同 proxy `_build_request_log`:{model, text, images, tools, files}。
-    刻意**不**帶入 `model` 欄(那是使用者指定的原模型),以維持盲化;text 過遮罩 hook。
+    此處**不**帶入 `model` 欄(目前模型改由 build_judge_prompt 的「目前使用的模型」獨立區塊
+    揭露,避免重複);text 過遮罩 hook。
     """
     text = request_content.get("text")
     masked_text = text_masker(text) if isinstance(text, str) else ""
@@ -82,7 +83,7 @@ def _render_output(response_summary: Mapping[str, Any]) -> str:
     """把 usage_logs.response_summary 的原模型 output 全文渲染成「輸出」區塊。
 
     response_summary 形狀同 proxy `_summarize_response`:{output_text, usage?}。
-    **盲化**:只取 output_text,不帶任何模型 / provider / usage 識別。
+    只取 output_text(目前模型由獨立區塊揭露;此處不重複帶 usage 等雜訊)。
     """
     output_text = response_summary.get("output_text")
     if isinstance(output_text, str) and output_text:
@@ -107,36 +108,40 @@ def build_judge_prompt(
     request_content: Mapping[str, Any],
     response_summary: Mapping[str, Any],
     candidate_models: Sequence[Mapping[str, Any]],
+    original_model: str,
     *,
+    original_tier: str | None = None,
     text_masker: TextMasker = _identity_masker,
 ) -> dict[str, Any]:
-    """組出送往判別模型的 `/chat/completions` payload(不含 model;由 service 填)。
+    """組出送往判別模型的 `/chat/completions` payload(不含 judge model;由 service 填)。
 
     Args:
         request_content: usage_logs.request_content 原文({model, text, images, tools, files});
-            `model` 欄會被刻意略過以維持盲化。
+            `model` 欄略過不重複帶(目前模型改由 `original_model` 獨立揭露)。
         response_summary: usage_logs.response_summary({output_text, usage?});只取 output_text。
         candidate_models: 候選白名單,每項至少含 `model_key`,可含 `tier`;dim4 推薦限此清單。
+        original_model: 使用者**目前使用的模型** model_key;非盲測,明確揭露給裁判判斷
+            「現況是否已最適合 / 是否需更換」(面試式評選)。
+        original_tier: 目前模型的 tier(基礎資訊),供裁判參考;None 則不顯示。
         text_masker: 可選的 PII 遮罩 hook(吃文字回文字),預設 identity(本版不遮罩)。
             v2.1 可注入實際遮罩實作而不破壞介面。
 
     Returns:
         OpenAI-compatible payload:{messages, response_format, temperature};呼叫端補上
-        `model` 後即可送出。要求模型以 JSON 物件回應(對應 `JudgeOutput`)。
+        judge `model` 後即可送出。要求模型以 JSON 物件回應(對應 `JudgeOutput`)。
         `temperature=0`:判別為評分/分類任務,壓低取樣隨機性以提升可重現性與裁判間一致性
         (跨 provider / MoE 仍非位元級一致,但變異大幅降低)。
     """
+    current_model = (
+        f"{original_model}(tier: {original_tier})" if original_tier else original_model
+    )
     user_prompt = (
-        "## 候選模型白名單(recommend.model 只能從此清單選)\n"
-        f"{_render_candidates(candidate_models)}\n\n"
-        "## 使用者輸入原文\n"
-        f"{_render_input(request_content, text_masker)}\n\n"
-        "## 模型輸出原文(來源模型不明,請勿臆測)\n"
-        f"{_render_output(response_summary)}\n\n"
-        "## 任務意圖枚舉(task_intent 必為其一)\n"
-        f"{_INTENT_ENUM}\n\n"
-        "## 請只回傳如下結構的 JSON\n"
-        f"{_OUTPUT_SCHEMA_HINT}"
+        f"## 目前模型\n{current_model}\n\n"
+        f"## 候選白名單(recommend 僅能選此)\n{_render_candidates(candidate_models)}\n\n"
+        f"## 使用者輸入\n{_render_input(request_content, text_masker)}\n\n"
+        f"## 目前模型輸出\n{_render_output(response_summary)}\n\n"
+        f"## task_intent 枚舉\n{_INTENT_ENUM}\n\n"
+        f"## 回傳 JSON 範例\n{_OUTPUT_SCHEMA_HINT}"
     )
 
     return {

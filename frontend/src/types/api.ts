@@ -501,6 +501,7 @@ export interface RerunRecommendation {
   compare_score: string | null; // 信心分數 0–1;Decimal→string
   compare_reason: string | null; // 裁決理由
   compare_judge_model: string | null; // 擔任裁決的模型 key(推薦該模型的評審本人)
+  recommended_by: string | null; // 推薦此模型的評審模型 key(由 candidate 反查;查不到 null)
   triggered_at: string; // 重跑執行時間(ISO)
 }
 
@@ -510,6 +511,7 @@ export interface RerunGroup {
   usage_log_uid: string; // 分組鍵(來源 usage_logs.usage_log_uid;連到明細頁)
   original_model: string; // 原模型 key(並排顯示)
   original_output_text: string | null; // 原模型真實輸出原文(歷史未存快照 → null)
+  original_input_text: string | null; // 任務輸入原文(usage_logs.request_content.text;無則 null)
   original_cost_usd: string | null; // 原呼叫成本(USD);Decimal→string
   evaluated_at: string | null; // 該組最新一筆推薦模型的重跑執行時間(ISO;無列 → null)
   recommendations: RerunRecommendation[]; // 去重後的 AI 推薦模型列(最新優先)

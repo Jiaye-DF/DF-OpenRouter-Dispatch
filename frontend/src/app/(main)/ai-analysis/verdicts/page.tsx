@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/EmptyState";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useDialog } from "@/lib/dialog";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
@@ -26,10 +33,14 @@ import type {
   RerunStats,
 } from "@/types/api";
 
-// AI 判決總覽頁(/ai-analysis/verdicts,admin):依用量紀錄分組,並排呈現
-// 「原模型 vs 推薦模型1/2/3 真實輸出原文」+ 成本Δ + 裁決 + 頁頂裁決分布統計。
-// 核心紅線:本頁明細全由 aiRerunsOverview API 一次帶足自含渲染,
+// AI 判決總覽頁(/ai-analysis/verdicts,admin):分層顯示。
+//   第一層 — 頁頂裁決分布統計列(沿用)。
+//   第二層 — 每筆 usage_log 一列(可展開),展開後僅列出該組推薦模型精簡表格,
+//            「不」直接 render 輸出原文(要看再點 [查看])。
+//   第三層 — Dialog(點某列 [查看] 開啟):任務輸入 + 原模型/推薦模型並排輸出 + 裁決理由。
+// 核心紅線:明細全由 aiRerunsOverview API 一次帶足自含渲染,
 // 嚴禁任何連回用量紀錄頁的連結 / 導頁(對齊 propose §6.1 決議 #12)。
+// usage_log uid 只當顯示文字 / 複製,不做成連結。
 
 // winnerTone → Badge variant(集中映射)。
 const WINNER_BADGE_VARIANT: Record<
@@ -85,6 +96,27 @@ function recState(
   return "judged";
 }
 
+// 推薦模型列裁決 Badge:失敗→重跑失敗(error_code);未裁決→已重跑·未裁決;已裁決→winnerLabel/winnerTone。
+function recVerdictBadge(rec: RerunRecommendation): {
+  text: string;
+  variant: React.ComponentProps<typeof Badge>["variant"];
+} {
+  const st = recState(rec);
+  if (st === "failed") {
+    return {
+      text: rec.error_code ? `重跑失敗(${rec.error_code})` : "重跑失敗",
+      variant: "destructive",
+    };
+  }
+  if (st === "unjudged") {
+    return { text: "已重跑·未裁決", variant: "secondary" };
+  }
+  return {
+    text: winnerLabel(rec.compare_winner!),
+    variant: WINNER_BADGE_VARIANT[winnerTone(rec.compare_winner!)],
+  };
+}
+
 // 該組彙總裁決:統計推薦模型裁決分布,挑出多數者組成「n/總 <label>」。
 // 全失敗 / 全未裁決 → 對應狀態文案;無推薦 → null。
 function summaryVerdict(group: RerunGroup): {
@@ -95,12 +127,11 @@ function summaryVerdict(group: RerunGroup): {
   if (recs.length === 0) return null;
   const counts: Record<string, number> = {};
   let failed = 0;
-  let unjudged = 0;
   for (const rec of recs) {
     const st = recState(rec);
     if (st === "failed") failed += 1;
-    else if (st === "unjudged") unjudged += 1;
-    else counts[rec.compare_winner!] = (counts[rec.compare_winner!] ?? 0) + 1;
+    else if (st === "judged")
+      counts[rec.compare_winner!] = (counts[rec.compare_winner!] ?? 0) + 1;
   }
   const judged = Object.entries(counts);
   if (judged.length > 0) {
@@ -112,13 +143,15 @@ function summaryVerdict(group: RerunGroup): {
     };
   }
   if (failed === recs.length) return { text: "全數重跑失敗", variant: "destructive" };
-  if (unjudged > 0) return { text: "已重跑·未裁決", variant: "secondary" };
   return { text: "已重跑·未裁決", variant: "secondary" };
 }
 
 const PAGE_SIZE = 10;
 
-// 真實輸出原文區塊(原模型 / 推薦模型共用):max-h + 內部捲動,null 顯示佔位文案。
+// 第三層 Dialog 開啟狀態:鎖定「哪一組 + 該組第幾個推薦模型」。
+type ViewTarget = { group: RerunGroup; rec: RerunRecommendation } | null;
+
+// 真實輸出原文區塊(Dialog 內,原模型 / 推薦模型共用):max-h + 內部捲動,null 顯示佔位文案。
 function OutputText({
   text,
   emptyHint,
@@ -127,9 +160,7 @@ function OutputText({
   emptyHint: string;
 }) {
   if (!text) {
-    return (
-      <p className="text-sm italic text-muted-foreground">{emptyHint}</p>
-    );
+    return <p className="text-sm italic text-muted-foreground">{emptyHint}</p>;
   }
   return (
     <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-sm leading-relaxed">
@@ -138,90 +169,90 @@ function OutputText({
   );
 }
 
-// 單一比較欄(原模型欄 or 推薦模型欄)。原模型欄不帶 recommendation。
-function CompareColumn({
-  modelKey,
-  tierLabel,
-  outputText,
-  emptyHint,
-  rec,
-}: {
-  modelKey: string;
-  tierLabel: string;
-  outputText: string | null;
-  emptyHint: string;
-  rec?: RerunRecommendation;
-}) {
-  const state = rec ? recState(rec) : null;
+// usage_log uid 顯示 + 複製小鈕(純文字;嚴禁做成連結 / 導頁)。
+function UsageLogUid({ uid }: { uid: string }) {
+  const [copied, setCopied] = React.useState(false);
+  const copy = React.useCallback(() => {
+    navigator.clipboard?.writeText(uid).then(
+      () => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      },
+      () => {
+        /* 剪貼簿不可用時靜默,uid 仍以文字呈現 */
+      },
+    );
+  }, [uid]);
   return (
-    <div className="flex flex-col rounded-lg border border-border bg-card">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-        <span className="break-all font-mono text-sm font-medium">
-          {modelKey}
-        </span>
-        <Badge variant="secondary">{tierLabel}</Badge>
-      </div>
-      <div className="flex-1 p-3">
-        <OutputText text={outputText} emptyHint={emptyHint} />
-      </div>
-      {rec && (
-        <div className="flex flex-col gap-2 border-t border-border p-3 text-sm">
-          {state === "failed" ? (
-            <Badge variant="destructive" className="self-start">
-              重跑失敗
-              {rec.error_code ? `(${rec.error_code})` : ""}
-            </Badge>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="text-muted-foreground">成本</span>
-                <span className="font-mono">{formatUSD(rec.cost_usd)}</span>
-                <span className="text-muted-foreground">Δ</span>
-                <span className={`font-mono ${costDeltaClass(rec.cost_delta_usd)}`}>
-                  {formatCostDelta(rec.cost_delta_usd)}
-                </span>
-                <span className="text-muted-foreground">延遲</span>
-                <span className="font-mono">
-                  {rec.latency_ms === null ? "—" : `${rec.latency_ms} ms`}
-                </span>
-              </div>
-              {state === "unjudged" ? (
-                <Badge variant="secondary" className="self-start">
-                  已重跑·未裁決
-                </Badge>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge
-                      variant={WINNER_BADGE_VARIANT[winnerTone(rec.compare_winner!)]}
-                    >
-                      {winnerLabel(rec.compare_winner!)}
-                    </Badge>
-                    <span className="text-muted-foreground">
-                      信心 {formatConfidencePercent(rec.compare_score)}
-                    </span>
-                  </div>
-                  {rec.compare_reason && (
-                    <p className="text-muted-foreground">{rec.compare_reason}</p>
-                  )}
-                  {rec.compare_judge_model && (
-                    <p className="text-xs text-muted-foreground">
-                      裁決模型:
-                      <span className="font-mono">{rec.compare_judge_model}</span>
-                    </p>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </div>
+    <span className="inline-flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+      <span>對應 usage_log:</span>
+      <span className="break-all font-mono">{uid}</span>
+      <button
+        type="button"
+        onClick={copy}
+        className="inline-flex min-h-[24px] items-center rounded-md border border-border px-2 py-0.5 text-xs hover:bg-muted hover:cursor-pointer"
+        aria-label="複製 usage_log uid"
+      >
+        {copied ? "已複製" : "複製"}
+      </button>
+    </span>
   );
 }
 
-// 一組分組 Card(可展開 / 收合)。
-function GroupCard({ group }: { group: RerunGroup }) {
+// 第二層展開後:單一推薦模型精簡列(表格 row)。不直接 render 輸出原文。
+function RecRow({
+  rec,
+  onView,
+}: {
+  rec: RerunRecommendation;
+  onView: () => void;
+}) {
+  const verdict = recVerdictBadge(rec);
+  const judged = recState(rec) === "judged";
+  return (
+    <tr className="border-b border-border last:border-0 align-top">
+      <td className="whitespace-nowrap px-3 py-2 font-mono text-sm">
+        {rec.rerun_model}
+      </td>
+      <td className="whitespace-nowrap px-3 py-2 font-mono text-sm text-muted-foreground">
+        {rec.recommended_by ?? "—"}
+      </td>
+      <td className="px-3 py-2">
+        <Badge variant={verdict.variant}>{verdict.text}</Badge>
+      </td>
+      <td className="whitespace-nowrap px-3 py-2 text-sm">
+        {judged ? formatConfidencePercent(rec.compare_score) : "—"}
+      </td>
+      <td
+        className={`whitespace-nowrap px-3 py-2 text-right font-mono text-sm ${costDeltaClass(rec.cost_delta_usd)}`}
+      >
+        {formatCostDelta(rec.cost_delta_usd)}
+      </td>
+      <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-sm">
+        {rec.latency_ms === null ? "—" : `${rec.latency_ms} ms`}
+      </td>
+      <td className="whitespace-nowrap px-3 py-2 text-right">
+        <Button
+          variant="outline"
+          size="sm"
+          className="min-h-[44px]"
+          onClick={onView}
+        >
+          查看
+        </Button>
+      </td>
+    </tr>
+  );
+}
+
+// 第二層:一筆 usage_log = 一列(可展開)。收合精簡;展開列出推薦模型精簡表格。
+function GroupRow({
+  group,
+  onView,
+}: {
+  group: RerunGroup;
+  onView: (rec: RerunRecommendation) => void;
+}) {
   const [open, setOpen] = React.useState(false);
   const summary = summaryVerdict(group);
   const recCount = group.recommendations.length;
@@ -234,14 +265,15 @@ function GroupCard({ group }: { group: RerunGroup }) {
           onClick={() => setOpen((v) => !v)}
           className="flex min-h-[44px] w-full flex-col gap-2 p-4 text-left hover:bg-muted/40 md:flex-row md:items-center md:justify-between"
         >
-          <span className="flex flex-wrap items-center gap-2 font-mono text-sm">
-            <span className="font-medium">{group.original_model}</span>
-            <span className="text-muted-foreground">→ 推薦 {recCount} 個</span>
+          <span className="flex flex-col gap-1">
+            <span className="flex flex-wrap items-center gap-2 font-mono text-sm">
+              <span className="font-medium">{group.original_model}</span>
+              <span className="text-muted-foreground">→ 推薦 {recCount} 個</span>
+            </span>
+            <UsageLogUid uid={group.usage_log_uid} />
           </span>
           <span className="flex flex-wrap items-center gap-3 text-sm">
-            {summary && (
-              <Badge variant={summary.variant}>{summary.text}</Badge>
-            )}
+            {summary && <Badge variant={summary.variant}>{summary.text}</Badge>}
             <span className="text-muted-foreground">
               {formatDateTime(group.evaluated_at)}
             </span>
@@ -253,28 +285,159 @@ function GroupCard({ group }: { group: RerunGroup }) {
 
         {open && (
           <div className="border-t border-border p-4">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              <CompareColumn
-                modelKey={group.original_model}
-                tierLabel="原始"
-                outputText={group.original_output_text}
-                emptyHint="無原始輸出快照"
-              />
-              {group.recommendations.map((rec, i) => (
-                <CompareColumn
-                  key={`${rec.rerun_model}-${rec.triggered_at}-${i}`}
-                  modelKey={rec.rerun_model}
-                  tierLabel="推薦"
-                  outputText={rec.output_text}
-                  emptyHint="無輸出"
-                  rec={rec}
-                />
-              ))}
-            </div>
+            {recCount === 0 ? (
+              <p className="text-sm italic text-muted-foreground">
+                此用量紀錄沒有 AI 推薦模型。
+              </p>
+            ) : (
+              <div className="-mx-1 overflow-x-auto">
+                <table className="w-full min-w-[640px] border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-border text-xs text-muted-foreground">
+                      <th className="px-3 py-2 font-medium">推薦模型</th>
+                      <th className="px-3 py-2 font-medium">推薦者</th>
+                      <th className="px-3 py-2 font-medium">裁決</th>
+                      <th className="px-3 py-2 font-medium">信心</th>
+                      <th className="px-3 py-2 text-right font-medium">成本Δ</th>
+                      <th className="px-3 py-2 text-right font-medium">延遲</th>
+                      <th className="px-3 py-2 text-right font-medium">輸出</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.recommendations.map((rec, i) => (
+                      <RecRow
+                        key={`${rec.rerun_model}-${rec.triggered_at}-${i}`}
+                        rec={rec}
+                        onView={() => onView(rec)}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// 第三層:Dialog 內容。對應某推薦模型 → 顯示完整對照(輸入 + 並排輸出 + 裁決理由)。
+function VerdictDialog({
+  target,
+  onClose,
+}: {
+  target: ViewTarget;
+  onClose: () => void;
+}) {
+  if (!target) return null;
+  const { group, rec } = target;
+  const verdict = recVerdictBadge(rec);
+  const judged = recState(rec) === "judged";
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>輸出對照</DialogTitle>
+          <div className="flex flex-col gap-2 pt-1 text-sm">
+            <UsageLogUid uid={group.usage_log_uid} />
+            <div className="flex flex-wrap items-center gap-2 font-mono">
+              <span className="font-medium">{group.original_model}</span>
+              <span aria-hidden className="text-muted-foreground">
+                →
+              </span>
+              <span className="font-medium">{rec.rerun_model}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-muted-foreground">
+                推薦者:
+                <span className="font-mono">{rec.recommended_by ?? "—"}</span>
+              </span>
+              <Badge variant={verdict.variant}>{verdict.text}</Badge>
+              {judged && (
+                <span className="text-muted-foreground">
+                  信心 {formatConfidencePercent(rec.compare_score)}
+                </span>
+              )}
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="mt-4 flex flex-col gap-4">
+          {/* 任務輸入 */}
+          <section className="flex flex-col gap-1.5">
+            <h3 className="text-sm font-semibold">任務輸入</h3>
+            <OutputText
+              text={group.original_input_text}
+              emptyHint="無輸入快照"
+            />
+          </section>
+
+          {/* 並排兩欄輸出(桌機並排、手機堆疊) */}
+          <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <h3 className="break-all text-sm font-semibold">
+                原模型輸出
+                <span className="ml-1 font-mono text-xs text-muted-foreground">
+                  {group.original_model}
+                </span>
+              </h3>
+              <OutputText
+                text={group.original_output_text}
+                emptyHint="無原始輸出快照"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <h3 className="break-all text-sm font-semibold">
+                推薦模型輸出
+                <span className="ml-1 font-mono text-xs text-muted-foreground">
+                  {rec.rerun_model}
+                </span>
+              </h3>
+              <OutputText
+                text={rec.output_text}
+                emptyHint={
+                  recState(rec) === "failed"
+                    ? "重跑失敗,無推薦模型輸出"
+                    : "無輸出"
+                }
+              />
+            </div>
+          </section>
+
+          {/* 裁決理由 + 裁決模型 */}
+          <section className="flex flex-col gap-1.5">
+            <h3 className="text-sm font-semibold">裁決理由</h3>
+            {recState(rec) === "failed" ? (
+              <p className="text-sm text-muted-foreground">
+                此推薦模型重跑失敗
+                {rec.error_code ? `(error_code:${rec.error_code})` : ""},
+                未進行裁決。上方保留原模型輸出供對照。
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  {rec.compare_reason ?? "無"}
+                </p>
+                {rec.compare_judge_model && (
+                  <p className="text-xs text-muted-foreground">
+                    裁決模型:
+                    <span className="font-mono">{rec.compare_judge_model}</span>
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            關閉
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -287,6 +450,7 @@ export default function AiVerdictsPage() {
   const [total, setTotal] = React.useState(0);
   const [page, setPage] = React.useState(1);
   const [loading, setLoading] = React.useState(true);
+  const [viewTarget, setViewTarget] = React.useState<ViewTarget>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -334,11 +498,11 @@ export default function AiVerdictsPage() {
     <>
       <PageTitle title="AI 判決總覽" />
       <PageHint>
-        依用量紀錄分組,並排呈現「原模型 vs AI 推薦模型」的真實輸出原文、成本Δ、對比裁決與信心。
-        展開任一組即可直接比較;明細全在本頁,不需離開。
+        依用量紀錄分組,精簡分層呈現「原模型 vs AI 推薦模型」的對比裁決、成本Δ 與延遲。
+        展開任一組看推薦模型清單,點 [查看] 開啟對照視窗看任務輸入與兩側完整輸出;明細全在本頁,不需離開。
       </PageHint>
 
-      {/* 頁頂裁決分布統計列 */}
+      {/* 第一層 — 頁頂裁決分布統計列 */}
       {loading ? (
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -362,7 +526,7 @@ export default function AiVerdictsPage() {
         </div>
       ) : null}
 
-      {/* 主體:分組 Card 列表 */}
+      {/* 第二層 — 每筆 usage_log 一列(可展開) */}
       {loading ? (
         <div className="flex flex-col gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -381,7 +545,11 @@ export default function AiVerdictsPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {groups.map((group) => (
-            <GroupCard key={group.usage_log_uid} group={group} />
+            <GroupRow
+              key={group.usage_log_uid}
+              group={group}
+              onView={(rec) => setViewTarget({ group, rec })}
+            />
           ))}
         </div>
       )}
@@ -411,6 +579,9 @@ export default function AiVerdictsPage() {
           </div>
         </div>
       )}
+
+      {/* 第三層 — Dialog(本地管理 open state) */}
+      <VerdictDialog target={viewTarget} onClose={() => setViewTarget(null)} />
     </>
   );
 }

@@ -1,7 +1,7 @@
 ---
 id: task-407
 title: 重跑結果 Response schema + 讀取 service
-status: pending
+status: done
 parallel: true
 depends_on: [task-403]
 affected_files:

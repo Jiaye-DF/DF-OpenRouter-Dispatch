@@ -69,6 +69,15 @@ class _JudgeResult:
     output: JudgeOutput | None
 
 
+def _is_free_model(model_key: str | None) -> bool:
+    """是否為免費模型(OpenRouter 慣例:model_key 以 `:free` 結尾)。
+
+    禁止 AI 推薦免費模型(user 拍板):免費模型受嚴格限流 / 隨時可能下架,不適合作為
+    正式派工的推薦對象。據此於候選白名單過濾 + 推薦結果防呆雙重把關。
+    """
+    return bool(model_key) and model_key.strip().lower().endswith(":free")
+
+
 def _vendor_prefix(model_key: str | None) -> str | None:
     """取 model_key 的廠商前綴(`provider/model` 的 `/` 前段);無法判定回 None。"""
     if not model_key or "/" not in model_key:
@@ -152,6 +161,17 @@ def _build_candidate(
 
     out = result.output
     recommend_model = out.recommend.model or None
+    recommend_reason = out.recommend.reason or None
+    # 防呆:即便候選白名單已濾掉 free,模型仍可能幻覺推薦免費模型 → 一律作廢該推薦
+    # (視為無推薦,不得推薦 free;見 _is_free_model)。
+    if _is_free_model(recommend_model):
+        logger.warning(
+            "模型適配評審:判別模型推薦了免費模型,已作廢該推薦 judge=%s recommend=%s",
+            result.model_key,
+            recommend_model,
+        )
+        recommend_model = None
+        recommend_reason = None
     # dim4 tier 由所選 recommend model 反查 models 白名單;不在白名單則留 None。
     recommend_tier = (
         tier_by_model_key.get(recommend_model) if recommend_model is not None else None
@@ -160,7 +180,7 @@ def _build_candidate(
         model_uid=result.model_uid,
         ai_recommend_model=recommend_model,
         ai_recommend_tier=recommend_tier,
-        ai_recommend_reason=out.recommend.reason or None,
+        ai_recommend_reason=recommend_reason,
         ai_fit_score=Decimal(str(out.output_fit.score)),
         # 自我偏好偏差:推薦是否與「該裁判自己」(result.model_key)同廠商,非原模型。
         ai_self_vote=_compute_self_vote(recommend_model, result.model_key),
@@ -216,9 +236,13 @@ async def evaluate_usage_log(
         raise AppError("找不到對應的用量紀錄", code=404)
 
     active_models: list[Model] = await model_repo.list_active()
+    # tier 反查表保留全部 active(供原模型 tier 顯示);候選推薦白名單則濾掉免費模型
+    # (禁止 AI 推薦 free,見 _is_free_model)。
     tier_by_model_key: dict[str, str | None] = {m.model_key: m.tier_key for m in active_models}
     candidate_models = [
-        {"model_key": m.model_key, "tier": m.tier_key} for m in active_models
+        {"model_key": m.model_key, "tier": m.tier_key}
+        for m in active_models
+        if not _is_free_model(m.model_key)
     ]
 
     # 取得各判別模型的 model_key(用於送出 payload 的 model 欄)。

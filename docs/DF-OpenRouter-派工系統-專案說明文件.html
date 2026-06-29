@@ -52,7 +52,8 @@
     padding: 4px 12px; border-radius: 999px; font-size: 13px; color: #fff;
   }
 
-  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px 80px; }
+  .wrap { width: 80%; max-width: 1600px; margin: 0 auto; padding: 0 24px 80px; }
+  @media (max-width: 1024px) { .wrap { width: 100%; } }
 
   /* 目錄 — 兩欄卡片式導覽 */
   nav.toc {
@@ -74,7 +75,7 @@
   }
   a.toc-item .tx { display: flex; flex-direction: column; }
   a.toc-item .tx .tt { font-weight: 700; font-size: 15px; }
-  a.toc-item .tx .ds { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  a.toc-item .tx .ds { color: var(--muted); font-size: 14px; margin-top: 3px; }
   .toc-section-label { font-size: 12px; color: var(--blue-dark); letter-spacing: .08em; text-transform: uppercase; font-weight: 800; margin: 18px 0 10px; }
   .toc-section-label:first-of-type { margin-top: 4px; }
 
@@ -83,6 +84,8 @@
   .part-divider .pk { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; opacity: .8; font-weight: 600; }
   .part-divider h2 { margin: 4px 0 2px; font-size: 22px; border: none; display: block; }
   .part-divider p { margin: 0; font-size: 14px; opacity: .9; }
+  /* 深底橫幅內的 strong 不可沿用全域深色(否則深底配深字看不見),改用白色。 */
+  .part-divider strong { color: #fff; }
 
   /* 有序步驟清單 */
   ol.steps { counter-reset: step; list-style: none; padding-left: 0; margin: 6px 0 12px; }
@@ -114,7 +117,7 @@
   li { margin: 5px 0; }
   strong { font-weight: 700; color: #0f172a; }
   .muted { color: var(--muted); }
-  .small { font-size: 13.5px; }
+  .small { font-size: 14.5px; }
   /* 文字重點層級 */
   .hl { color: var(--blue-dark); font-weight: 700; }                 /* 關鍵術語 / 專有名詞 */
   .mk { background: linear-gradient(transparent 58%, #bfdbfe 58%); font-weight: 700; padding: 0 1px; }  /* 螢光標重點 */
@@ -132,7 +135,7 @@
   .metric .ml { font-weight: 700; font-size: 14px; margin-top: 6px; }
   .metric .ms { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
   .metric .arw { color: var(--muted); font-size: 13px; }
-  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: 13.5px; }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: 14.5px; }
 
   /* inline badge */
   .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 11px; font-size: 12.5px; font-weight: 700; background: #eff6ff; color: var(--blue); border: 1px solid #bfdbfe; }
@@ -146,12 +149,12 @@
   .subcard { border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: var(--surface); }
   .subcard h4 { margin: 0 0 8px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
   .subcard .ico { width: 28px; height: 28px; flex: none; border-radius: 8px; background: #eff6ff; color: var(--blue); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; }
-  .subcard p { margin: 0; font-size: 14px; color: var(--muted); }
+  .subcard p { margin: 0; font-size: 15px; color: var(--muted); }
   .subcard .label { color: var(--muted); font-size: 12.5px; margin: 8px 0 6px; font-weight: 600; }
 
   /* 表格 */
   .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; margin: 6px 0; }
-  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 15.5px; }
   th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
   thead th { background: var(--code-bg); color: var(--muted); font-weight: 700; white-space: nowrap; }
   tbody tr:nth-child(even) { background: #fafbfc; }
@@ -166,7 +169,7 @@
   .codeblock .k { color: #93c5fd; } .codeblock .s { color: #86efac; } .codeblock .c { color: #64748b; }
 
   /* note 提示框 */
-  .note { border-left: 4px solid; padding: 14px 18px; border-radius: 0 10px 10px 0; margin: 16px 0; font-size: 14.5px; }
+  .note { border-left: 4px solid; padding: 14px 18px; border-radius: 0 10px 10px 0; margin: 16px 0; font-size: 15.5px; }
   .note.info { background: #eff6ff; border-color: var(--blue); }
   .note.tip { background: var(--green-bg); border-color: var(--green); }
   .note.warn { background: var(--amber-bg); border-color: var(--amber); }
@@ -210,7 +213,7 @@
   .tl-item.milestone::before { background: var(--green); box-shadow: 0 0 0 2px var(--green); }
   .tl-item .ver { font-weight: 700; font-size: 15px; }
   .tl-item .ver .badge { margin-left: 8px; vertical-align: middle; }
-  .tl-item .desc { color: var(--muted); font-size: 14px; margin-top: 3px; }
+  .tl-item .desc { color: var(--muted); font-size: 15px; margin-top: 3px; }
 
   footer.page { text-align: center; color: var(--muted); font-size: 13px; padding: 8px 24px 0; }
 </style>
@@ -348,26 +351,31 @@
       </div>
 
       <h3>量化效益</h3>
+      <p class="sectlead">對應平台四大核心價值：統一金鑰控管、ERP 成本歸屬、AI 自動開通、AI 真實選型分析。</p>
       <div class="metrics">
-        <div class="metric">
-          <div class="big">分鐘級</div>
-          <div class="ml">申請開通時間</div>
-          <div class="ms"><span class="arw">人工數天 →</span> 規則 + AI 自動開通</div>
-        </div>
+        <!-- 1. 統一企業內部 LLM 呼叫控制平台 + 金鑰不外洩 -->
         <div class="metric">
           <div class="big">0 <small>把</small></div>
-          <div class="ml">前端 / 客戶端持有金鑰</div>
-          <div class="ms">原生 Key <span class="rd">永不下發前端</span></div>
+          <div class="ml">使用者 / 前端自管的供應商金鑰</div>
+          <div class="ms">多家模型供應商 Key <span class="hl">統一集中後端加密</span>，使用者免自管、<span class="rd">杜絕外洩</span></div>
         </div>
+        <!-- 2. 整合 ERP 成本中心,自動歸屬部門成本 -->
         <div class="metric">
           <div class="big">100<small>%</small></div>
-          <div class="ml">呼叫可歸戶</div>
-          <div class="ms">每筆都標部門 / 專案 / 使用者</div>
+          <div class="ml">呼叫歸屬 ERP 成本中心</div>
+          <div class="ms">每筆呼叫<span class="hl">自動歸到使用專案所屬部門</span>，免人工分攤對帳</div>
         </div>
+        <!-- 3. AI 自動化申請表單(分析表單 + 信心分數) -->
         <div class="metric">
-          <div class="big">≥ 95</div>
-          <div class="ml">AI 信心門檻自動放行</div>
-          <div class="ms">低於門檻才轉人工審核</div>
+          <div class="big">分鐘級</div>
+          <div class="ml">AI 自動審核開通</div>
+          <div class="ms"><span class="arw">人工數天 →</span> AI 分析申請表單，信心分數 <span class="hl">≥ 90 自動放行</span></div>
+        </div>
+        <!-- 4. AI 真實分析(模型適配評審 + 真實重跑 + 對比裁決) -->
+        <div class="metric">
+          <div class="big">3 <small>位 AI 評審</small></div>
+          <div class="ml">AI 真實選型分析</div>
+          <div class="ms">交叉評分推薦更適合 / 更省模型，再<span class="hl">實際重跑盲測比較</span>,輸出建議與成本差異</div>
         </div>
       </div>
     </section>
@@ -474,8 +482,8 @@ flowchart TD
   B -->|需人工| H[轉人工審核<br/>狀態 manual_pending]
   B -->|可自動驗證| C[🤖 AI 欄位驗證<br/>Claude Sonnet · 驗 GitHub / Replit 連結]
   C --> D{信心分數}
-  D -->|低於 95| H
-  D -->|達 95 以上| E[自動建立<br/>專案 → 使用者 → SDK Key → User Token<br/>狀態 agent_done]
+  D -->|低於 90| H
+  D -->|達 90 以上| E[自動建立<br/>專案 → 使用者 → SDK Key → User Token<br/>狀態 agent_done]
   E --> F[[📧 Email 通知 · Microsoft Graph<br/>夾帶完整憑證寄給負責人]]
   H --> G([完成 · 狀態 done])
   F --> G
@@ -490,27 +498,27 @@ flowchart TD
         <figcaption>圖 2 · 申請自動開通管線（規則 + AI 混合決策）</figcaption>
       </figure>
 
-      <h3>流程 C：AI 模型評審 + 真實重跑 + 對比裁決（v2.0–v2.1 背景管線）</h3>
-      <p class="sectlead">以 <span class="hl">taskiq + Redis</span> 在背景非同步評估「原模型是否適配、是否有更合適者」，並對推薦模型<span class="hl">真實重跑</span>後做盲化<span class="hl">對比裁決</span>，不影響使用者即時呼叫。</p>
+      <h3>流程 C：AI 模型適配評審 + 真實重跑 + 對比裁決（v2.0–v2.1 背景管線）</h3>
+      <p class="sectlead">以背景排程（taskiq + Redis）非同步評估「目前模型是否適配、有無更合適或更省的選擇」，並對推薦模型<span class="hl">真實重跑</span>後做盲化<span class="hl">對比裁決</span>，全程不影響使用者即時呼叫。</p>
       <figure class="diagram">
         <pre class="mermaid">
 flowchart TD
-  SCH([⏱️ taskiq-scheduler<br/>每 beat 觸發]) --> DE{dispatch_unevaluated<br/>AI_EVAL_ENABLED?}
-  DE -->|關| Z1[略過不派發]
-  DE -->|開| FE[撈未評審 usage_logs<br/>created_at ≥ AI_EVAL_START_AT<br/>FIFO 最舊優先 · 批量上限]
-  FE --> RQ[(🧰 Redis broker<br/>任務佇列)]
-  RQ --> EW[🤖 taskiq-worker<br/>evaluate_usage_log_task]
-  EW --> J[3 個判別模型交叉評審<br/>推薦更適合模型<br/>🚫 排除 free 模型]
-  J --> WP[(🗄️ PostgreSQL<br/>寫評審父表 + 候選 + 游標)]
+  SCH([⏱️ 排程器 · taskiq<br/>週期觸發]) --> DE{是否啟用<br/>AI 評審功能?}
+  DE -->|否| Z1[略過派發<br/>不產生費用]
+  DE -->|是| FE[撈取待評審用量紀錄<br/>限起始日期後 · 最舊優先]
+  FE --> RQ[(🧰 Redis 任務佇列)]
+  RQ --> EW[🤖 背景工作程序<br/>逐筆評審]
+  EW --> J[三判別模型交叉評分<br/>推薦更適配模型<br/>排除免費模型]
+  J --> WP[(🗄️ PostgreSQL<br/>寫入評審結果)]
 
-  SCH --> DR{dispatch_unrerun<br/>AI_RERUN_ENABLED?}
-  DR -->|開| FR[撈已評審未重跑<br/>來源 log created_at ≥ 門檻]
+  SCH --> DR{是否啟用<br/>AI 真實判決功能?}
+  DR -->|是| FR[撈取待重跑評審<br/>限起始日期後]
   FR --> RQ
-  RQ --> RW[🤖 taskiq-worker<br/>rerun_evaluation_task]
-  RW --> CH[對每個推薦 challenger<br/>≠原模型 / ≠free<br/>真實重跑取客觀指標]
-  CH --> DI[⚖️ 對比裁決 discriminator<br/>盲化比：推薦輸出 vs 原輸出]
-  DI --> WP2[(🗄️ PostgreSQL<br/>寫重跑 + 裁決 + 成本Δ)]
-  WP2 --> UI([📊 AI 判決總覽頁<br/>建議維持 / 改用 / 平手])
+  RQ --> RW[🤖 背景工作程序<br/>逐筆重跑]
+  RW --> CH[推薦模型真實重跑<br/>取真實輸出與成本]
+  CH --> DI[⚖️ 盲化對比裁決<br/>推薦輸出 vs 原模型輸出]
+  DI --> WP2[(🗄️ PostgreSQL<br/>寫入重跑與裁決 · 成本Δ)]
+  WP2 --> UI([📊 AI 判決總覽<br/>建議維持 / 改用 / 平手])
 
   classDef ai fill:#eff6ff,stroke:#bfdbfe,color:#1e3a8a;
   classDef store fill:#ecfdf5,stroke:#6ee7b7,color:#065f46;
@@ -519,7 +527,7 @@ flowchart TD
   class WP,WP2,RQ store;
   class Z1 stop;
         </pre>
-        <figcaption>圖 3 · AI 評審管線（評審 → 真實重跑 → 對比裁決；taskiq + Redis 背景非同步）</figcaption>
+        <figcaption>圖 3 · AI 評審管線（評審推薦 → 真實重跑 → 對比裁決；taskiq + Redis 背景非同步）</figcaption>
       </figure>
       <div class="note info">
         <div class="head">🔑 設計重點</div>

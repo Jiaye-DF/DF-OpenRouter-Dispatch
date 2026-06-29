@@ -32,7 +32,6 @@ log 中**不**輸出 API key 等機密(對齊 `03-backend/05-exceptions-and-logg
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -56,6 +55,7 @@ from app.repositories.model import ModelRepository
 from app.repositories.usage_log import UsageLogRepository
 from app.schemas.ai_model_eval import JudgeOutput
 from app.services.ai_model_eval_prompt import build_judge_prompt
+from app.services.llm_json import extract_first_json_object
 
 logger = get_logger(__name__)
 
@@ -101,19 +101,12 @@ def _extract_content(resp: dict[str, Any]) -> str:
 
 
 def _parse_judge_content(content: str) -> JudgeOutput:
-    """寬鬆解析判別模型回傳:容忍 ```json 圍欄與前後夾帶文字,再交 JudgeOutput 驗證。"""
-    text = content.strip()
-    if text.startswith("```"):
-        text = text.removeprefix("```json").removeprefix("```").strip()
-        text = text.removesuffix("```").strip()
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise
-        data = json.loads(text[start : end + 1])
+    """寬鬆解析判別模型回傳:容忍圍欄 / 前後夾帶文字 / 物件後額外資料,再交 JudgeOutput 驗證。
+
+    JSON 萃取共用 `llm_json.extract_first_json_object`(`raw_decode` 取第一個完整物件、
+    忽略其後內容,解決 provider 在物件後追加說明造成的 `Extra data`)。
+    """
+    data = extract_first_json_object(content)
     return JudgeOutput.model_validate(data)
 
 

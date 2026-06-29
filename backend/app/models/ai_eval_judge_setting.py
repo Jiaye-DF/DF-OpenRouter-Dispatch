@@ -23,6 +23,14 @@ class AiEvalJudgeSetting(Base, TimestampMixin):
             "model_uid",
             postgresql_where=sa.text("(is_deleted = false)"),
         ),
+        # ai_judge_slot 唯一須**排除軟刪**(partial),否則 PUT 整批覆寫時:舊設定軟刪後
+        # slot 1/2/3 仍被佔用 → insert 新 3 筆撞 UNIQUE → 設定後無法修改(見 migration 0027)。
+        sa.Index(
+            "uq_ai_eval_judge_settings_slot_active",
+            "ai_judge_slot",
+            unique=True,
+            postgresql_where=sa.text("(is_deleted = false)"),
+        ),
         {"comment": "判別模型設定"},
     )
 
@@ -43,10 +51,9 @@ class AiEvalJudgeSetting(Base, TimestampMixin):
         nullable=False,
         comment="被選為判別模型的模型(軟引用 models.model_uid) | judge model",
     )
-    # 槽位 1/2/3(唯一,限定恰 3 個判別模型)
+    # 槽位 1/2/3(於未軟刪列中唯一,限定恰 3 個判別模型;partial unique 見 __table_args__)
     ai_judge_slot: Mapped[int] = mapped_column(
         SmallInteger,
-        unique=True,
         nullable=False,
-        comment="判別模型槽位 1/2/3(唯一,限定恰 3 個) | judge slot 1/2/3",
+        comment="判別模型槽位 1/2/3(未軟刪中唯一,限定恰 3 個) | judge slot 1/2/3",
     )

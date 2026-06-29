@@ -187,7 +187,12 @@ def _compute_stats(rows: list[AiModelEvalRerun]) -> RerunStats:
 
 
 async def build_rerun_overview(
-    *, db: AsyncSession, page: int, size: int
+    *,
+    db: AsyncSession,
+    page: int,
+    size: int,
+    order: str = "desc",
+    pid: int | None = None,
 ) -> RerunOverviewPage:
     """跨 log 取最新推薦模型重跑 + 對比裁決,組成**依用量紀錄分組**的 AI 判決總覽分頁(純讀)。
 
@@ -216,9 +221,9 @@ async def build_rerun_overview(
     eval_repo = AiModelEvaluationRepository(db)
 
     ordered_uids, rows = await repo.list_grouped_by_usage_log(
-        limit=size, offset=(page - 1) * size
+        limit=size, offset=(page - 1) * size, order=order, pid=pid
     )
-    total = await repo.count_distinct_usage_logs()
+    total = await repo.count_distinct_usage_logs(pid=pid)
 
     # 同一 usage_log 的多筆重跑併入同組(保 repo 的 triggered_at DESC 順序)。
     rows_by_log: dict[Any, list[AiModelEvalRerun]] = defaultdict(list)

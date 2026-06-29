@@ -71,7 +71,6 @@ export default function UsageLogsPage() {
     model: "",
     status: "",
     used_tools: "", // "" | "true" | "false"
-    pid: "", // 搜尋編號(#pid,精確比對)
     order: "desc", // 編號排序方向:desc(大→小,預設)/ asc
     from: daysAgo(2), // 預設最近 3 日
     to: daysAgo(0),
@@ -85,7 +84,6 @@ export default function UsageLogsPage() {
       if (filters.model) query.model = filters.model;
       if (filters.status) query.status = filters.status;
       if (filters.used_tools) query.used_tools = filters.used_tools;
-      if (filters.pid) query.pid = filters.pid;
       query.order = filters.order;
       if (filters.from) query.from = `${filters.from}T00:00:00`;
       if (filters.to) query.to = `${filters.to}T23:59:59`;
@@ -279,15 +277,6 @@ export default function UsageLogsPage() {
                 min={filters.from}
                 max={daysAgo(0)}
                 onChange={(e) => update({ to: e.target.value })}
-              />
-              <span className="ml-1 text-sm text-muted-foreground">編號</span>
-              <Input
-                type="number"
-                inputMode="numeric"
-                placeholder="搜尋編號"
-                className="h-9 w-28"
-                value={filters.pid}
-                onChange={(e) => update({ pid: e.target.value })}
               />
               <Button
                 variant="outline"

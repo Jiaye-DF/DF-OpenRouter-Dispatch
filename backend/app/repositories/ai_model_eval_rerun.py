@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
 from app.models.ai_model_eval_rerun import AiModelEvalRerun
+from app.models.usage_log import UsageLog
 
 
 @dataclass(frozen=True)
@@ -144,7 +145,12 @@ class AiModelEvalRerunRepository:
         return list((await self.db.execute(stmt)).scalars().all())
 
     async def list_grouped_by_usage_log(
-        self, *, limit: int, offset: int
+        self,
+        *,
+        limit: int,
+        offset: int,
+        order: str = "desc",
+        pid: int | None = None,
     ) -> tuple[list[UUID], list[AiModelEvalRerun]]:
         """依用量紀錄分組分頁(供 AI 判決總覽頁,預設過濾軟刪)。
 
@@ -161,15 +167,25 @@ class AiModelEvalRerunRepository:
             - `ordered_usage_log_uids`:當頁分組鍵(已按組最新時戳排序,供 service 保序組裝)。
             - `rows`:這些 usage_log 底下的全部重跑列(未軟刪,`triggered_at DESC`)。
         """
-        # 1) 以 usage_log 為單位取「組最新時戳」,排序分頁取當頁分組鍵。
+        # 1) 以 usage_log 為單位,join usage_logs 取編號 pid,依 pid 排序(預設 desc 大→小)
+        #    / 可選 pid 精確搜尋;limit/offset 以「組」為單位分頁取當頁分組鍵。
+        # LEFT join usage_logs 取編號 pid:孤兒組(無對應 usage_log)仍保留(pid=NULL,排末)。
+        group_stmt = select(
+            AiModelEvalRerun.usage_log_uid,
+            UsageLog.pid.label("pid"),
+        ).outerjoin(
+            UsageLog, UsageLog.usage_log_uid == AiModelEvalRerun.usage_log_uid
+        ).where(AiModelEvalRerun.is_deleted.is_(False))
+        if pid is not None:
+            group_stmt = group_stmt.where(UsageLog.pid == pid)
+        order_by = (
+            UsageLog.pid.asc().nulls_last()
+            if order == "asc"
+            else UsageLog.pid.desc().nulls_last()
+        )
         group_stmt = (
-            select(
-                AiModelEvalRerun.usage_log_uid,
-                func.max(AiModelEvalRerun.triggered_at).label("latest"),
-            )
-            .where(AiModelEvalRerun.is_deleted.is_(False))
-            .group_by(AiModelEvalRerun.usage_log_uid)
-            .order_by(func.max(AiModelEvalRerun.triggered_at).desc())
+            group_stmt.group_by(AiModelEvalRerun.usage_log_uid, UsageLog.pid)
+            .order_by(order_by)
             .limit(limit)
             .offset(offset)
         )
@@ -191,11 +207,19 @@ class AiModelEvalRerunRepository:
         rows = list((await self.db.execute(rows_stmt)).scalars().all())
         return ordered_uids, rows
 
-    async def count_distinct_usage_logs(self) -> int:
-        """跨 log 分組組數(distinct usage_log,過濾軟刪),供分頁 total。"""
+    async def count_distinct_usage_logs(self, *, pid: int | None = None) -> int:
+        """跨 log 分組組數(distinct usage_log,過濾軟刪),供分頁 total。
+
+        與 `list_grouped_by_usage_log` 同源:無 pid 搜尋時計全部組(含孤兒組);
+        有 pid 時 join usage_logs 精確比對,total 與當頁清單一致。
+        """
         stmt = (
             select(func.count(func.distinct(AiModelEvalRerun.usage_log_uid)))
             .select_from(AiModelEvalRerun)
             .where(AiModelEvalRerun.is_deleted.is_(False))
         )
+        if pid is not None:
+            stmt = stmt.join(
+                UsageLog, UsageLog.usage_log_uid == AiModelEvalRerun.usage_log_uid
+            ).where(UsageLog.pid == pid)
         return int((await self.db.execute(stmt)).scalar_one())

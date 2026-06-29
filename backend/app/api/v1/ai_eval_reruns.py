@@ -31,15 +31,20 @@ async def list_reruns_overview(
     db: DbDep,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=200),
+    order: str = Query(default="desc", pattern="^(asc|desc)$"),
+    pid: int | None = Query(default=None, ge=1),
 ):
     """跨 log 取 AI 推薦模型真實重跑 + 對比裁決,依用量紀錄分組回傳(唯讀,分頁)。
 
     - 權限:`AdminDep`(對齊既有 AI 分析端點)。
-    - 排序:各組以最新 `triggered_at` 優先;`total` = 分組組數。
+    - 排序:依用量紀錄編號 `pid` 排序(`order=desc` 大→小,預設;`asc` 小→大)。
+    - 搜尋:`pid` 給值時精確比對該筆編號;`total` = 分組組數。
     - 回應:`ApiResponse` 外殼包 `RerunOverviewPage`(items/total/page/size/stats);
       每組帶原模型輸出原文 + 各推薦模型輸出原文 + 成本Δ + 裁決 + 裁決分布統計。
     """
-    page_data = await build_rerun_overview(db=db, page=page, size=size)
+    page_data = await build_rerun_overview(
+        db=db, page=page, size=size, order=order, pid=pid
+    )
     return success_response(
         data=page_data.model_dump(mode="json"), detail="success"
     )

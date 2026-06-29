@@ -1,6 +1,6 @@
 # Tasks v2.1.0 · AI 推薦模型「真實重跑 + 對比裁決」
 
-> 狀態:全數完成(401–406 初版 + 407–411 為 2026-06-26 redo,皆 done;待 /scan-project 收口)
+> 狀態:全數完成(401–406 初版 + 407–411 為 2026-06-26 redo + 412 為 2026-06-29 pid 排序/搜尋落點微調,皆 done;待 /scan-project 收口)
 > 來源:[propose-v2.1.0.md](./propose-v2.1.0.md);母本鏈 [v2.0.0 地基](../v2.0/propose-v2.0.0.md) → [v2.0.1 判別管線](../v2.0/propose-v2.0.1.md) → [v2.0.3 評審結果顯示](../v2.0/propose-v2.0.3.md)
 > 並行:redo 批 5 個 task 中 3 可並行 / 序列 2 / 預估 redo 總時數:12 hr / 阻塞點:0(propose 已全數拍板,視覺形式 §6.2 已定案)
 
@@ -27,6 +27,7 @@
 | 409 | 前端「分組」型別 + 端點常數收斂 + 裁決 label/util | done | ✓ | 407 | `frontend/src/types/api.ts`、`frontend/src/lib/api/endpoints.ts`、`frontend/src/lib/ai-eval-labels.ts` |
 | 410 | usage-log 明細頁回退 v2.0.3(移除 AiRerunSection) | done | ✓ | — | `frontend/src/app/(main)/usage-logs/[uid]/page.tsx`、`frontend/src/app/(main)/usage-logs/[uid]/AiRerunSection.tsx`(刪) |
 | 411 | AI 判決總覽頁重做(分組 + 原 vs 推薦1/2/3 真實輸出並排 + 統計) | done | ✗ | 408, 409 | `frontend/src/app/(main)/ai-analysis/verdicts/page.tsx` |
+| 412 | 判決總覽頁編號(pid)排序+搜尋(後端分組端點下推 + 前端工具列;用量紀錄頁移除 pid 搜尋) | done | ✗ | 408, 411 | `backend/app/api/v1/ai_eval_reruns.py`、`backend/app/repositories/ai_model_eval_rerun.py`、`backend/app/services/ai_model_eval_rerun_result.py`、`backend/tests/api/test_ai_eval_reruns.py`、`frontend/src/app/(main)/ai-analysis/verdicts/page.tsx`、`frontend/src/app/(main)/usage-logs/page.tsx` |
 
 ## 並行批次(redo)
 

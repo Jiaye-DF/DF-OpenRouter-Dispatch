@@ -141,7 +141,7 @@ def _make_client(monkeypatch, *, service_result, admin_actor: Actor | None):
     - admin_actor=None 表示不覆寫 require_admin(走真實鑑權,用於 401/403)。
     """
 
-    async def _fake_build(*, db, page, size):  # 簽章對齊 service
+    async def _fake_build(*, db, page, size, order="desc", pid=None):  # 簽章對齊 service
         return service_result
 
     monkeypatch.setattr(ai_eval_reruns, "build_rerun_overview", _fake_build)

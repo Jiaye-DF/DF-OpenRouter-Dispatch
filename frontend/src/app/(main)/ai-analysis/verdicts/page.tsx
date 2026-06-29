@@ -5,6 +5,7 @@ import { PageTitle } from "@/components/common/PageTitle";
 import { PageHint } from "@/components/common/PageHint";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -485,15 +486,24 @@ export default function AiVerdictsPage() {
   const [page, setPage] = React.useState(1);
   const [loading, setLoading] = React.useState(true);
   const [viewTarget, setViewTarget] = React.useState<ViewTarget>(null);
+  // 編號(pid)排序方向(預設 desc 大→小)+ 編號精確搜尋。
+  const [order, setOrder] = React.useState<"desc" | "asc">("desc");
+  const [pidSearch, setPidSearch] = React.useState("");
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
+      const query: Record<string, string | number> = {
+        page,
+        size: PAGE_SIZE,
+        order,
+      };
+      if (pidSearch.trim()) query.pid = pidSearch.trim();
       const data = await apiClient.get<RerunOverviewPage>(
         API_ENDPOINTS.aiRerunsOverview,
-        { query: { page, size: PAGE_SIZE } }
+        { query }
       );
       setGroups(data.items);
       setStats(data.stats);
@@ -509,7 +519,7 @@ export default function AiVerdictsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, showDialog]);
+  }, [page, order, pidSearch, showDialog]);
 
   React.useEffect(() => {
     if (role === "admin") load();
@@ -535,6 +545,32 @@ export default function AiVerdictsPage() {
         依用量紀錄分組,精簡分層呈現「原模型 vs AI 推薦模型」的對比裁決、成本Δ 與延遲。
         展開任一組看推薦模型清單,點 [查看] 開啟對照視窗看任務輸入與兩側完整輸出;明細全在本頁,不需離開。
       </PageHint>
+
+      {/* 工具列:編號搜尋 + 編號排序切換(對應用量紀錄編號 #pid) */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Input
+          type="number"
+          inputMode="numeric"
+          placeholder="搜尋編號"
+          className="h-9 w-32"
+          value={pidSearch}
+          onChange={(e) => {
+            setPidSearch(e.target.value);
+            setPage(1);
+          }}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setOrder((o) => (o === "desc" ? "asc" : "desc"));
+            setPage(1);
+          }}
+          title="切換編號排序"
+        >
+          編號 {order === "desc" ? "▼ 大→小" : "▲ 小→大"}
+        </Button>
+      </div>
 
       {/* 第一層 — 頁頂裁決分布統計列 */}
       {loading ? (

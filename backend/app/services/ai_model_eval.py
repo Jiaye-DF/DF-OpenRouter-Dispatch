@@ -32,7 +32,6 @@ log 中**不**輸出 API key 等機密(對齊 `03-backend/05-exceptions-and-logg
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -56,6 +55,7 @@ from app.repositories.model import ModelRepository
 from app.repositories.usage_log import UsageLogRepository
 from app.schemas.ai_model_eval import JudgeOutput
 from app.services.ai_model_eval_prompt import build_judge_prompt
+from app.services.llm_json import extract_first_json_object
 
 logger = get_logger(__name__)
 
@@ -67,6 +67,15 @@ class _JudgeResult:
     model_uid: UUID
     model_key: str
     output: JudgeOutput | None
+
+
+def _is_free_model(model_key: str | None) -> bool:
+    """是否為免費模型(OpenRouter 慣例:model_key 以 `:free` 結尾)。
+
+    禁止 AI 推薦免費模型(user 拍板):免費模型受嚴格限流 / 隨時可能下架,不適合作為
+    正式派工的推薦對象。據此於候選白名單過濾 + 推薦結果防呆雙重把關。
+    """
+    return bool(model_key) and model_key.strip().lower().endswith(":free")
 
 
 def _vendor_prefix(model_key: str | None) -> str | None:
@@ -92,19 +101,12 @@ def _extract_content(resp: dict[str, Any]) -> str:
 
 
 def _parse_judge_content(content: str) -> JudgeOutput:
-    """寬鬆解析判別模型回傳:容忍 ```json 圍欄與前後夾帶文字,再交 JudgeOutput 驗證。"""
-    text = content.strip()
-    if text.startswith("```"):
-        text = text.removeprefix("```json").removeprefix("```").strip()
-        text = text.removesuffix("```").strip()
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise
-        data = json.loads(text[start : end + 1])
+    """寬鬆解析判別模型回傳:容忍圍欄 / 前後夾帶文字 / 物件後額外資料,再交 JudgeOutput 驗證。
+
+    JSON 萃取共用 `llm_json.extract_first_json_object`(`raw_decode` 取第一個完整物件、
+    忽略其後內容,解決 provider 在物件後追加說明造成的 `Extra data`)。
+    """
+    data = extract_first_json_object(content)
     return JudgeOutput.model_validate(data)
 
 
@@ -152,6 +154,17 @@ def _build_candidate(
 
     out = result.output
     recommend_model = out.recommend.model or None
+    recommend_reason = out.recommend.reason or None
+    # 防呆:即便候選白名單已濾掉 free,模型仍可能幻覺推薦免費模型 → 一律作廢該推薦
+    # (視為無推薦,不得推薦 free;見 _is_free_model)。
+    if _is_free_model(recommend_model):
+        logger.warning(
+            "模型適配評審:判別模型推薦了免費模型,已作廢該推薦 judge=%s recommend=%s",
+            result.model_key,
+            recommend_model,
+        )
+        recommend_model = None
+        recommend_reason = None
     # dim4 tier 由所選 recommend model 反查 models 白名單;不在白名單則留 None。
     recommend_tier = (
         tier_by_model_key.get(recommend_model) if recommend_model is not None else None
@@ -160,7 +173,7 @@ def _build_candidate(
         model_uid=result.model_uid,
         ai_recommend_model=recommend_model,
         ai_recommend_tier=recommend_tier,
-        ai_recommend_reason=out.recommend.reason or None,
+        ai_recommend_reason=recommend_reason,
         ai_fit_score=Decimal(str(out.output_fit.score)),
         # 自我偏好偏差:推薦是否與「該裁判自己」(result.model_key)同廠商,非原模型。
         ai_self_vote=_compute_self_vote(recommend_model, result.model_key),
@@ -216,9 +229,13 @@ async def evaluate_usage_log(
         raise AppError("找不到對應的用量紀錄", code=404)
 
     active_models: list[Model] = await model_repo.list_active()
+    # tier 反查表保留全部 active(供原模型 tier 顯示);候選推薦白名單則濾掉免費模型
+    # (禁止 AI 推薦 free,見 _is_free_model)。
     tier_by_model_key: dict[str, str | None] = {m.model_key: m.tier_key for m in active_models}
     candidate_models = [
-        {"model_key": m.model_key, "tier": m.tier_key} for m in active_models
+        {"model_key": m.model_key, "tier": m.tier_key}
+        for m in active_models
+        if not _is_free_model(m.model_key)
     ]
 
     # 取得各判別模型的 model_key(用於送出 payload 的 model 欄)。

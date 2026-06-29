@@ -148,19 +148,31 @@ def _int_or_none(usage: dict[str, Any], key: str) -> int | None:
     return int(val)
 
 
+def _is_free_model(model_key: str | None) -> bool:
+    """是否為免費模型(OpenRouter 慣例:model_key 以 `:free` 結尾)。
+
+    禁止 AI 判決推薦 / 重跑免費模型(user 拍板;與 ai_model_eval._is_free_model 一致):
+    免費模型受嚴格限流、隨時可能下架,不適合作為正式派工的推薦對象,故不納入 challenger。
+    """
+    return bool(model_key) and model_key.strip().lower().endswith(":free")
+
+
 def _build_challengers(
     candidates: list[CandidateWithJudge], original_model: str
 ) -> list[_Challenger]:
-    """算待重跑集合 = `{裁判推薦模型} − {原模型}`,去重(取首個推薦該模型的候選為代表)。
+    """算待重跑集合 = `{裁判推薦模型} − {原模型} − {免費模型}`,去重(取首個推薦該模型的候選為代表)。
 
     決議 #4:三裁判推薦同 challenger → 合併一筆,`ai_candidate_uid` 取代表者
     (首個推薦該模型的候選)。推薦 = 原模型或空 → 跳過(維持原模型不重跑)。
+    免費模型(`:free`)→ 跳過(禁止推薦 / 重跑 free,防呆;見 _is_free_model)。
     """
     seen: set[str] = set()
     out: list[_Challenger] = []
     for cand in candidates:
         rec = cand.ai_recommend_model
         if not rec or rec == original_model or rec in seen:
+            continue
+        if _is_free_model(rec):
             continue
         seen.add(rec)
         out.append(

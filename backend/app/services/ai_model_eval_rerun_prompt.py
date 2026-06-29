@@ -17,11 +17,11 @@ task-405 rerun service 呼叫。
 """
 
 import json
-import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
 from app.schemas.ai_model_eval import DiscriminatorOutput
+from app.services.llm_json import extract_first_json_object
 
 # 遮罩 hook 型別:吃一段文字、回遮罩後文字。預設 identity(本版不遮罩,見模組 docstring)。
 TextMasker = Callable[[str], str]
@@ -120,19 +120,9 @@ def build_discriminator_prompt(
 
 
 def _parse_discriminator_content(content: str) -> DiscriminatorOutput:
-    """寬鬆解析裁決模型回傳:容忍 ```json 圍欄與前後夾帶文字,再交 DiscriminatorOutput 驗證。
+    """寬鬆解析裁決模型回傳:容忍圍欄 / 前後夾帶文字 / 物件後額外資料,再交 DiscriminatorOutput 驗證。
 
-    對齊 `ai_model_eval._parse_judge_content` 慣例。
+    JSON 萃取共用 `llm_json.extract_first_json_object`(對齊 `ai_model_eval._parse_judge_content`)。
     """
-    text = content.strip()
-    if text.startswith("```"):
-        text = text.removeprefix("```json").removeprefix("```").strip()
-        text = text.removesuffix("```").strip()
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match is None:
-            raise
-        data = json.loads(match.group(0))
+    data = extract_first_json_object(content)
     return DiscriminatorOutput.model_validate(data)

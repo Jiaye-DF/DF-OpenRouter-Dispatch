@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -252,42 +253,52 @@ class AiModelEvaluationRepository:
         )
         await self.db.execute(stmt)
 
-    async def fetch_unevaluated_log_uids(self, limit: int) -> list[UUID]:
+    async def fetch_unevaluated_log_uids(
+        self, limit: int, *, start_at: datetime | None = None
+    ) -> list[UUID]:
         """撈尚未評審(`ai_evaluated_at IS NULL`)的 usage log uid 供 dispatcher 派發。
 
         **最舊優先(FIFO,`created_at ASC`)**:確保歷史 backlog 公平處理、不被新進
         log 餓死(inflow > 每輪批次吞吐時,desc 會讓最舊那批永遠輪不到)。partial index
         `idx_usage_logs_created_at` 為 DESC,asc 查詢以反向索引掃描,效能影響可忽略。
+
+        `start_at`(AI 分析起始門檻)給值時只撈 `created_at >= start_at` 的 log,
+        使早於門檻的歷史資料完全不進 AI 評審(避免回溯分析成本暴增)。
         """
-        stmt = (
-            select(UsageLog.usage_log_uid)
-            .where(
-                UsageLog.ai_evaluated_at.is_(None),
-                UsageLog.is_deleted.is_(False),
-            )
-            .order_by(UsageLog.created_at.asc())
-            .limit(limit)
+        stmt = select(UsageLog.usage_log_uid).where(
+            UsageLog.ai_evaluated_at.is_(None),
+            UsageLog.is_deleted.is_(False),
         )
+        if start_at is not None:
+            stmt = stmt.where(UsageLog.created_at >= start_at)
+        stmt = stmt.order_by(UsageLog.created_at.asc()).limit(limit)
         return list((await self.db.execute(stmt)).scalars().all())
 
-    async def fetch_unreran_evaluation_uids(self, limit: int) -> list[UUID]:
+    async def fetch_unreran_evaluation_uids(
+        self, limit: int, *, start_at: datetime | None = None
+    ) -> list[UUID]:
         """撈尚未重跑(`ai_reran_at IS NULL`)且已評審成功的父評審 uid 供重跑 dispatcher 派發。
 
         條件:`ai_reran_at IS NULL`(待重跑)且 `status='evaluated'`(僅對成功評審重跑)
         且 `is_deleted=false`。**最舊優先(FIFO,`created_at ASC`)**,對齊
         `fetch_unevaluated_log_uids` 的反餓死設計:inflow > 每輪吞吐時 desc 會讓最舊
         那批永遠輪不到,asc 確保歷史 backlog 公平處理。
+
+        `start_at`(AI 分析起始門檻)給值時 join 來源 usage_logs,只撈來源 log
+        `created_at >= start_at` 的評審,使早於門檻的歷史資料完全不進重跑 / 對比裁決
+        (與評審撈取同源門檻;涵蓋門檻設定前已評審過的舊資料)。
         """
-        stmt = (
-            select(AiModelEvaluation.ai_evaluation_uid)
-            .where(
-                AiModelEvaluation.ai_reran_at.is_(None),
-                AiModelEvaluation.status == "evaluated",
-                AiModelEvaluation.is_deleted.is_(False),
-            )
-            .order_by(AiModelEvaluation.created_at.asc())
-            .limit(limit)
+        stmt = select(AiModelEvaluation.ai_evaluation_uid).where(
+            AiModelEvaluation.ai_reran_at.is_(None),
+            AiModelEvaluation.status == "evaluated",
+            AiModelEvaluation.is_deleted.is_(False),
         )
+        if start_at is not None:
+            # 軟引用 join:評審的來源 usage_log created_at 須 >= 門檻(以來源 log 時間為準)。
+            stmt = stmt.join(
+                UsageLog, UsageLog.usage_log_uid == AiModelEvaluation.usage_log_uid
+            ).where(UsageLog.created_at >= start_at)
+        stmt = stmt.order_by(AiModelEvaluation.created_at.asc()).limit(limit)
         return list((await self.db.execute(stmt)).scalars().all())
 
     async def mark_reran(self, ai_evaluation_uid: UUID, *, status: int) -> None:

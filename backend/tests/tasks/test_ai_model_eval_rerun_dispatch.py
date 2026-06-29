@@ -77,6 +77,7 @@ def _patch_settings(
         lambda: SimpleNamespace(
             AI_RERUN_ENABLED=enabled,
             AI_EVAL_DISPATCH_BATCH_SIZE=batch,
+            ai_eval_start_at_dt=None,
         ),
     )
 
@@ -87,7 +88,7 @@ def _patch_repo_fetch(
     """讓 repo.fetch_unreran_evaluation_uids 回傳給定 uids;回記呼叫次數的 dict。"""
     calls = {"fetch": 0}
 
-    async def _fetch(self: object, limit: int) -> list[UUID]:
+    async def _fetch(self: object, limit: int, *, start_at: object = None) -> list[UUID]:
         calls["fetch"] += 1
         return uids[:limit]
 

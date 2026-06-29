@@ -36,6 +36,7 @@ _SYSTEM_PROMPT = (
     "4. recommend:{model, reason},於『目前模型 + 白名單』中綜合適配與成本挑最適合者;"
     "目前模型已最適合(或無明顯更優 / 更省)就填目前模型(即維持)。\n"
     "規則:recommend.model 必為白名單中的 model_key(目前模型若在其中亦可選),不得自創;"
+    "嚴禁推薦免費模型(model_key 以 `:free` 結尾者一律不得作為 recommend.model);"
     "客觀判斷、勿因廠商偏袒、勿為換而換;除該 JSON 外不要輸出任何文字或圍欄。"
 )
 

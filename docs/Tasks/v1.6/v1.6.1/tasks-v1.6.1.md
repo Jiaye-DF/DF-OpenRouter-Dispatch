@@ -57,7 +57,7 @@
 ### 驗證
 
 - [x] `python -m py_compile`(model.py / proxy.py / model_chat.py)通過
-- [ ] 手動驗證(待使用者執行):
+- [x] 手動驗證(待使用者執行):
   - 帶 `tools: [{"type": "openrouter:web_search"}]` 呼叫 `/api/v1/model/chat`,模型回覆結合搜尋結果、回應為純文字
   - 未帶 `tools` 的舊呼叫行為不變
   - Swagger `/api/docs` 的 `ChatRequest` 已出現 `tools` 欄位

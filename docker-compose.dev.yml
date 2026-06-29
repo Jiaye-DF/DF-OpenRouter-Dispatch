@@ -65,6 +65,61 @@ services:
       postgres:
         condition: service_healthy
 
+  redis:
+    image: redis:8.6-alpine
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  taskiq-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    command: ["taskiq", "worker", "app.tasks.broker:broker", "app.tasks.ai_model_eval"]
+    restart: unless-stopped
+    env_file: .env
+    # compose 內 Redis 主機名為 redis 服務,覆寫 .env 的 localhost 預設值
+    environment:
+      - TASKIQ_BROKER_URL=redis://redis:6379/0
+      - TASKIQ_RESULT_BACKEND_URL=redis://redis:6379/1
+      - REDIS_URL=redis://redis:6379/2
+    volumes:
+      - ./backend/app:/app/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  taskiq-scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    command: ["taskiq", "scheduler", "app.tasks.scheduler:scheduler"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - TASKIQ_BROKER_URL=redis://redis:6379/0
+      - TASKIQ_RESULT_BACKEND_URL=redis://redis:6379/1
+      - REDIS_URL=redis://redis:6379/2
+    volumes:
+      - ./backend/app:/app/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres-data:
     name: ${COMPOSE_PROJECT_NAME}-postgres-data-dev
+  redis-data:
+    name: ${COMPOSE_PROJECT_NAME}-redis-data-dev

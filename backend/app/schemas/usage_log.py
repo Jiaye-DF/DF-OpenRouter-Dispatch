@@ -15,6 +15,9 @@ class UsageLogListItem(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    # pid 作為 admin 端「顯示編號」(#pid):供用量紀錄與 AI 判決總覽兩頁互相對應。
+    # 註:pid 原為內部識別,此處刻意對 admin 外露當人類可讀參考號(見 v2.1 fixed.md)。
+    pid: int
     usage_log_uid: UUID
     user_uid: UUID | None
     department_uid: UUID | None

@@ -58,6 +58,7 @@ const EMPTY_CREATE: CreateForm = {
 };
 
 interface EditForm {
+  role: UserRole;
   username: string;
   department_uid: string;
   employee_id: string;
@@ -236,6 +237,7 @@ export default function UsersPage() {
   const openEdit = (u: User) => {
     const { local, suffix } = splitEmail(u.email);
     setEditForm({
+      role: u.role,
       username: u.username,
       department_uid: u.department_uid ?? "",
       employee_id: u.employee_id ?? "",
@@ -285,6 +287,7 @@ export default function UsersPage() {
     try {
       const empId = f.employee_id.trim();
       const payload: Record<string, unknown> = {
+        role: f.role,
         username: f.username.trim(),
         department_uid: f.department_uid,
         email: `${emailLocal}${f.email_suffix}`,
@@ -747,6 +750,21 @@ export default function UsersPage() {
               <p className="text-sm text-muted-foreground">
                 修改姓名 / 員工編號 / Email / 部門後,該使用者既有 User Token 會被自動撤銷,需重新產生並交付。
               </p>
+              <FormField label="角色">
+                <select
+                  value={editForm.role}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      role: e.target.value as UserRole,
+                    })
+                  }
+                  className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm hover:cursor-pointer"
+                >
+                  <option value="user">成員(僅 SDK 身分,無法登入後台)</option>
+                  <option value="admin">管理員(可登入後台 + SDK 身分)</option>
+                </select>
+              </FormField>
               <FormField label="姓名">
                 <Input
                   value={editForm.username}

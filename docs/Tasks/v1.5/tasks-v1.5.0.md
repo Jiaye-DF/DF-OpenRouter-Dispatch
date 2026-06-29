@@ -118,14 +118,14 @@
 
 ### 驗證
 
-- [ ] `cd backend && alembic upgrade head` 成功;`usage_logs` 表有 `project_uid` 欄位 + index + FK
-- [ ] `cd backend && pytest` 全綠(若 SDK auth / stats 測試需更新,本版一併修)
-- [ ] `cd frontend && npm run build` 通過(TypeScript 編譯無 error)
-- [ ] E2E:
+- [x] `cd backend && alembic upgrade head` 成功;`usage_logs` 表有 `project_uid` 欄位 + index + FK
+- [x] `cd backend && pytest` 全綠(若 SDK auth / stats 測試需更新,本版一併修)
+- [x] `cd frontend && npm run build` 通過(TypeScript 編譯無 error)
+- [x] E2E:
   - admin 建立部門 A → 部門 A 下建專案 P1, P2 → 建使用者 U1(屬 A)→ 建 SDK Key K1 → 產生 U1 的 User Token T1
   - curl 帶 3 個 header(K1 + T1 + P1.uuid)POST `/api/v1/model/chat` → 預期 200;`usage_logs` 該筆 `project_uid = P1`
   - curl 不帶 `X-Project-Code` → 預期 400 `project_code_required`
   - curl 帶 P1.uuid 但 SDK Key 屬於部門 B → 預期 400 `project_invalid`
-- [ ] Dashboard(admin):三個篩選下拉皆可用,選了部門後 project/user 下拉限縮
-- [ ] Dashboard(non-admin):部門固定為 badge,project/user 下拉只見自己部門
-- [ ] 「依專案彙總」chart 不顯示歷史 NULL project 紀錄
+- [x] Dashboard(admin):三個篩選下拉皆可用,選了部門後 project/user 下拉限縮
+- [x] Dashboard(non-admin):部門固定為 badge,project/user 下拉只見自己部門
+- [x] 「依專案彙總」chart 不顯示歷史 NULL project 紀錄

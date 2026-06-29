@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/EmptyState";
+import { AiAnalysisSection } from "./AiAnalysisSection";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
 import { formatUSD } from "@/lib/utils/format";
@@ -189,6 +190,7 @@ export default function UsageLogDetailPage() {
           {/* Metadata */}
           <Card>
             <CardContent className="grid grid-cols-2 gap-4 pt-6 md:grid-cols-4">
+              <Field label="編號" value={<span className="font-mono">#{log.pid}</span>} />
               <Field
                 label="時間"
                 value={new Date(log.created_at).toLocaleString()}
@@ -228,6 +230,9 @@ export default function UsageLogDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* AI 分析(v2.0.3,task-306):掛在 metadata Card 下方,獨立 fetch 評審結果 */}
+          {uid && <AiAnalysisSection uid={uid} />}
 
           {/* Input */}
           <section>

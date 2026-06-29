@@ -146,6 +146,10 @@ zh-TW
 - **R-DB-010 SQLAlchemy 未繼承 `Base` / 未用 `mapped_column` 🔵**
 - **R-DB-011 每請求建立連線 🟠** → `async_sessionmaker` 連線池
 - **R-DB-012 Migration 修改既有 🔴** — 須建新 revision
+- **R-DB-013 migration 建表/加欄位缺 COMMENT 🟠** — `alembic/versions/*` 同檔有 `op.create_table(` 或 `op.add_column(` 卻無對應 `COMMENT ON TABLE`/`COMMENT ON COLUMN`(或建表用 `sa.Column(..., comment=...)`)→ 違反 `04-databases/00-overview.md § 自我說明`;同份 migration 補表級 + 該欄 COMMENT(中英雙語)
+- **R-DB-014 新建表未登錄 `table_catalog` 🟠** — migration 有 `op.create_table(` 卻無對 `table_catalog` 的 `INSERT`/`bulk_insert`(`ON CONFLICT (table_name) DO NOTHING`)→ 違反 `90-project-database.md § 3.5`;同份 migration 補登一筆(`table_name` → `display_name_zh` + `category`)。*守則:僅當 `table_catalog` 已存在(v2.0.2 已合併)才套用,否則跳過註明*
+- **R-DB-015 Model 欄位缺 `comment=` 🟡** — `app/models/*.py` 的 `mapped_column(...)` 無 `comment=`(雙軌不一致,`alembic autogenerate` 易誤判)→ 補與 DB `COMMENT` 同文案;必備欄位走共用罐頭文案
+- **R-DB-016 整庫零 COMMENT 覆蓋 🟡** — `app/models/*` grep `comment=` 0 命中 **且** `alembic/versions/*` grep `COMMENT ON` 0 命中 → schema 無任何自我說明(存量盤點);依 `04-databases/00-overview.md § 自我說明` 全面回填
 
 ## F. SEC
 

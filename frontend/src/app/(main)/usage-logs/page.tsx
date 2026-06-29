@@ -71,6 +71,7 @@ export default function UsageLogsPage() {
     model: "",
     status: "",
     used_tools: "", // "" | "true" | "false"
+    order: "desc", // 編號排序方向:desc(大→小,預設)/ asc
     from: daysAgo(2), // 預設最近 3 日
     to: daysAgo(0),
   });
@@ -83,6 +84,7 @@ export default function UsageLogsPage() {
       if (filters.model) query.model = filters.model;
       if (filters.status) query.status = filters.status;
       if (filters.used_tools) query.used_tools = filters.used_tools;
+      query.order = filters.order;
       if (filters.from) query.from = `${filters.from}T00:00:00`;
       if (filters.to) query.to = `${filters.to}T23:59:59`;
       const data = await apiClient.get<Paginated<UsageLog>>(
@@ -299,6 +301,18 @@ export default function UsageLogsPage() {
             <Table>
               <THead>
                 <TR>
+                  <TH>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                      onClick={() =>
+                        update({ order: filters.order === "desc" ? "asc" : "desc" })
+                      }
+                      title="點擊切換編號排序"
+                    >
+                      編號 {filters.order === "desc" ? "▼" : "▲"}
+                    </button>
+                  </TH>
                   <TH>時間</TH>
                   <TH>部門</TH>
                   <TH>模型</TH>
@@ -320,6 +334,9 @@ export default function UsageLogsPage() {
                       router.push(`/usage-logs/${log.usage_log_uid}`)
                     }
                   >
+                    <TD className="font-mono text-sm text-muted-foreground whitespace-nowrap">
+                      #{log.pid}
+                    </TD>
                     <TD className="text-sm text-muted-foreground whitespace-nowrap">
                       {new Date(log.created_at).toLocaleString()}
                     </TD>

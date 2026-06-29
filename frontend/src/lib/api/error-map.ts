@@ -50,6 +50,11 @@ const MESSAGES: Record<string, string> = {
   secrets_already_claimed: "憑證已被領取並清空,無法再重送通知。",
   m365_not_configured: "M365 寄信尚未設定,無法寄送通知。",
 
+  // v2.0 判別模型設定
+  judge_models_must_be_three: "請正好選擇 3 個判別模型。",
+  judge_models_duplicated: "判別模型不可重複,請改選不同的模型。",
+  judge_model_not_active: "選擇的模型不存在或已停用,請重新選擇。",
+
   // 預設
   操作失敗: "操作失敗,請稍後再試。",
 };

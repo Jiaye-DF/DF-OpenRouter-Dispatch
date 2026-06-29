@@ -21,56 +21,56 @@
 
 ### DB / Migration
 
-- [ ] migration `0013_api_key_requests_lifecycle`(`down_revision = "0012_api_key_requests"`),`ALTER TABLE api_key_requests` 新增欄位(見「資料模型」)。
-- [ ] 既有資料 `status='pending'` → 一律 `UPDATE` 為 `'manual_pending'`。
-- [ ] `downgrade` 移除新增欄位(並把 `manual_pending` 還原為 `pending`,其餘狀態略過)。
+- [x] migration `0013_api_key_requests_lifecycle`(`down_revision = "0012_api_key_requests"`),`ALTER TABLE api_key_requests` 新增欄位(見「資料模型」)。
+- [x] 既有資料 `status='pending'` → 一律 `UPDATE` 為 `'manual_pending'`。
+- [x] `downgrade` 移除新增欄位(並把 `manual_pending` 還原為 `pending`,其餘狀態略過)。
 
 ### 後端 — Schema / Repository
 
-- [ ] `schemas/api_key_request.py` 擴充:`ApiKeyRequestResponse` 加新欄位;新增 `CancelRequest`(`reason` 必填)、`ApiKeyRequestDetailResponse`(含 `agent_decision` / 一次性憑證)。
-- [ ] `repositories/user.py`:新增 `get_by_email(email) -> list[User]`(email 無唯一約束,回 list 以判斷 0/1/多筆)。
-- [ ] `repositories/project.py`:新增 `get_active_by_department_and_name(department_uid, name) -> Project | None`。
-- [ ] `repositories/sdk_api_key.py`(或既有):新增 `get_active_by_department(department_uid) -> SdkApiKey | None`(取可沿用的部門 Key)。
-- [ ] `repositories/api_key_request.py`:新增 `update_fields()`(狀態流轉用)。
+- [x] `schemas/api_key_request.py` 擴充:`ApiKeyRequestResponse` 加新欄位;新增 `CancelRequest`(`reason` 必填)、`ApiKeyRequestDetailResponse`(含 `agent_decision` / 一次性憑證)。
+- [x] `repositories/user.py`:新增 `get_by_email(email) -> list[User]`(email 無唯一約束,回 list 以判斷 0/1/多筆)。
+- [x] `repositories/project.py`:新增 `get_active_by_department_and_name(department_uid, name) -> Project | None`。
+- [x] `repositories/sdk_api_key.py`(或既有):新增 `get_active_by_department(department_uid) -> SdkApiKey | None`(取可沿用的部門 Key)。
+- [x] `repositories/api_key_request.py`:新增 `update_fields()`(狀態流轉用)。
 
 ### 後端 — 規則路由 / AI / 開通
 
-- [ ] `services/api_key_request_router.py`:`route(db, req) -> RouteResult`,實作 § 規則路由 的決策樹 + 確定性硬規則。
-- [ ] `services/api_key_request_agent.py`:`validate_fields(req, matched_department) -> AgentDecision`,以 `DEFAULT_OPENROUTER_KEY` 呼 `chat_completion`,模型 `settings.API_KEY_AGENT_MODEL`,要求 JSON `{confidence:int, reason:str}`;呼叫失敗/逾時/JSON 不可解析 → 回 `confidence=0` + error。
-- [ ] `services/api_key_request_provision.py`:`provision(db, req, route) -> ProvisionResult`,單一 transaction 內 沿用部門 → 建專案 → 沿用/建使用者 → 沿用/建 SDK Key → 發 User Token;失敗 rollback。
-- [ ] 開通各步 `write_audit`(`create_project`/`create_user`/`create_sdk_key`)+ 一筆 `auto_provision_api_key_request`。
+- [x] `services/api_key_request_router.py`:`route(db, req) -> RouteResult`,實作 § 規則路由 的決策樹 + 確定性硬規則。
+- [x] `services/api_key_request_agent.py`:`validate_fields(req, matched_department) -> AgentDecision`,以 `DEFAULT_OPENROUTER_KEY` 呼 `chat_completion`,模型 `settings.API_KEY_AGENT_MODEL`,要求 JSON `{confidence:int, reason:str}`;呼叫失敗/逾時/JSON 不可解析 → 回 `confidence=0` + error。
+- [x] `services/api_key_request_provision.py`:`provision(db, req, route) -> ProvisionResult`,單一 transaction 內 沿用部門 → 建專案 → 沿用/建使用者 → 沿用/建 SDK Key → 發 User Token;失敗 rollback。
+- [x] 開通各步 `write_audit`(`create_project`/`create_user`/`create_sdk_key`)+ 一筆 `auto_provision_api_key_request`。
 
 ### 後端 — 端點
 
-- [ ] `POST /api-key-requests`(擴充):送出後同步 `route → (AI) → provision`;終態與一次性憑證寫回並於回應帶回。
-- [ ] `POST /api-key-requests/{uid}/cancel`(本人):限 `manual_pending`;寫 `cancel_reason`、`cancel_source='user'`、`status='cancelled'`。
-- [ ] `POST /api-key-requests/{uid}/revoke`(本人/admin):限 `manual_pending`;否則 `409`。
-- [ ] `POST /api-key-requests/{uid}/process`(admin):確定性開通 → `done`、`handled_by_user_uid`。
-- [ ] `GET /api-key-requests/{uid}`(本人/admin):詳情(本人僅能看自己)。
-- [ ] `POST /api-key-requests/{uid}/claim-secrets`(本人):回 `provisioned_secrets` 後以 `NULL` 覆寫。
-- [ ] 所有寫入動作寫對應 `write_audit`。
+- [x] `POST /api-key-requests`(擴充):送出後同步 `route → (AI) → provision`;終態與一次性憑證寫回並於回應帶回。
+- [x] `POST /api-key-requests/{uid}/cancel`(本人):限 `manual_pending`;寫 `cancel_reason`、`cancel_source='user'`、`status='cancelled'`。
+- [x] `POST /api-key-requests/{uid}/revoke`(本人/admin):限 `manual_pending`;否則 `409`。
+- [x] `POST /api-key-requests/{uid}/process`(admin):確定性開通 → `done`、`handled_by_user_uid`。
+- [x] `GET /api-key-requests/{uid}`(本人/admin):詳情(本人僅能看自己)。
+- [x] `POST /api-key-requests/{uid}/claim-secrets`(本人):回 `provisioned_secrets` 後以 `NULL` 覆寫。
+- [x] 所有寫入動作寫對應 `write_audit`。
 
 ### 後端 — 設定
 
-- [ ] `core/config.py` 新增 `API_KEY_AGENT_MODEL: str = "anthropic/claude-sonnet-4.6"`。
-- [ ] `.env.example` 新增 `API_KEY_AGENT_MODEL`(並確認 `DEFAULT_OPENROUTER_KEY` 已列)。
-- [ ] `DEFAULT_OPENROUTER_KEY` 未設/為空時:自動候選一律降級 `manual_pending`(不報錯)。
+- [x] `core/config.py` 新增 `API_KEY_AGENT_MODEL: str = "anthropic/claude-sonnet-4.6"`。
+- [x] `.env.example` 新增 `API_KEY_AGENT_MODEL`(並確認 `DEFAULT_OPENROUTER_KEY` 已列)。
+- [x] `DEFAULT_OPENROUTER_KEY` 未設/為空時:自動候選一律降級 `manual_pending`(不報錯)。
 
 ### 前端
 
-- [ ] `types/api.ts`:`ApiKeyRequest` 加新欄位;新增 `ApiKeyRequestDetail`、`ProvisionedSecrets`、`AgentDecision`。
-- [ ] `lib/api/endpoints.ts`:新增 `apiKeyRequestById` / `cancelApiKeyRequest` / `revokeApiKeyRequest` / `processApiKeyRequest` / `claimApiKeyRequestSecrets`。
-- [ ] `app/(main)/api-key-requests/page.tsx`:
-  - [ ] 列表狀態 badge(待人工處理=warning、Agent 已處理/已處理=success、已撤銷/已取消=secondary)。
-  - [ ] 送出採 loading(同步含 AI 呼叫);成功若 `agent_done` → 彈一次性憑證視窗。
-  - [ ] 列操作:本人可 取消(填原因)/ 撤銷(限 `manual_pending`,二次確認);詳情可領取一次性憑證。
-  - [ ] admin:`manual_pending` 可開「人工處理」(顯示 `agent_decision` 信心分數/理由 → 一鍵開通)。
-- [ ] 取消 / 撤銷 / 領取憑證的 Dialog 與錯誤處理(`showDialog` + `err.localizedDetail`)。
+- [x] `types/api.ts`:`ApiKeyRequest` 加新欄位;新增 `ApiKeyRequestDetail`、`ProvisionedSecrets`、`AgentDecision`。
+- [x] `lib/api/endpoints.ts`:新增 `apiKeyRequestById` / `cancelApiKeyRequest` / `revokeApiKeyRequest` / `processApiKeyRequest` / `claimApiKeyRequestSecrets`。
+- [x] `app/(main)/api-key-requests/page.tsx`:
+  - [x] 列表狀態 badge(待人工處理=warning、Agent 已處理/已處理=success、已撤銷/已取消=secondary)。
+  - [x] 送出採 loading(同步含 AI 呼叫);成功若 `agent_done` → 彈一次性憑證視窗。
+  - [x] 列操作:本人可 取消(填原因)/ 撤銷(限 `manual_pending`,二次確認);詳情可領取一次性憑證。
+  - [x] admin:`manual_pending` 可開「人工處理」(顯示 `agent_decision` 信心分數/理由 → 一鍵開通)。
+- [x] 取消 / 撤銷 / 領取憑證的 Dialog 與錯誤處理(`showDialog` + `err.localizedDetail`)。
 
 ### 文件
 
-- [ ] `/user-guide`:補「申請後的狀態與領取憑證」說明(申請人視角)。
-- [ ] `/admin-guide`:補「待人工處理的審核與新部門開通(含 OpenRouter 後台建 Key)」。
+- [x] `/user-guide`:補「申請後的狀態與領取憑證」說明(申請人視角)。
+- [x] `/admin-guide`:補「待人工處理的審核與新部門開通(含 OpenRouter 後台建 Key)」。
 
 ### 不做(v1.9.1 明確排除)
 

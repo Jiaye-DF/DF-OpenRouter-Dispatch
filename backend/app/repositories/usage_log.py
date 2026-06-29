@@ -39,8 +39,11 @@ class UsageLogRepository:
         to_time: datetime | None,
         status: str | None,
         used_tools: bool | None = None,
+        pid: int | None = None,
     ):
         stmt = stmt.where(UsageLog.is_deleted.is_(False))
+        if pid is not None:
+            stmt = stmt.where(UsageLog.pid == pid)
         if department_uid is not None:
             stmt = stmt.where(UsageLog.department_uid == department_uid)
         if project_uid is not None:
@@ -72,6 +75,8 @@ class UsageLogRepository:
         to_time: datetime | None = None,
         status: str | None = None,
         used_tools: bool | None = None,
+        pid: int | None = None,
+        order: str = "desc",
     ) -> tuple[list[UsageLog], int]:
         stmt = select(UsageLog)
         stmt = self._apply_filters(
@@ -84,6 +89,7 @@ class UsageLogRepository:
             to_time=to_time,
             status=status,
             used_tools=used_tools,
+            pid=pid,
         )
         count_stmt = self._apply_filters(
             select(func.count()).select_from(UsageLog),
@@ -95,8 +101,11 @@ class UsageLogRepository:
             to_time=to_time,
             status=status,
             used_tools=used_tools,
+            pid=pid,
         )
-        stmt = stmt.order_by(UsageLog.pid.desc()).offset((page - 1) * size).limit(size)
+        # 編號(pid)排序:預設 desc(大→小);order="asc" 改小→大。
+        order_by = UsageLog.pid.asc() if order == "asc" else UsageLog.pid.desc()
+        stmt = stmt.order_by(order_by).offset((page - 1) * size).limit(size)
         items = list((await self.db.execute(stmt)).scalars().all())
         total = int((await self.db.execute(count_stmt)).scalar_one())
         return items, total

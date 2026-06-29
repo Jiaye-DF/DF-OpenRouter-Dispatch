@@ -226,7 +226,8 @@
       <span class="hbadge">Next.js · TypeScript</span>
       <span class="hbadge">PostgreSQL 17</span>
       <span class="hbadge">Docker / Coolify</span>
-      <span class="hbadge">演進至 v1.10 · 10 版迭代</span>
+      <span class="hbadge">taskiq + Redis 背景任務</span>
+      <span class="hbadge">演進至 v2.1 · AI 模型評審</span>
     </div>
   </header>
 
@@ -244,7 +245,7 @@
         <a class="toc-item" href="#concept"><span class="n">4</span><span class="tx"><span class="tt">核心概念與角色</span><span class="ds">名詞、憑證、權限模型</span></span></a>
         <a class="toc-item" href="#flow"><span class="n">5</span><span class="tx"><span class="tt">系統流程圖</span><span class="ds">代理鏈與自動開通管線</span></span></a>
         <a class="toc-item" href="#arch"><span class="n">6</span><span class="tx"><span class="tt">系統架構</span><span class="ds">四層分層與技術棧</span></span></a>
-        <a class="toc-item" href="#evolution"><span class="n">7</span><span class="tx"><span class="tt">版本演進</span><span class="ds">v1.0 → v1.10 時間軸</span></span></a>
+        <a class="toc-item" href="#evolution"><span class="n">7</span><span class="tx"><span class="tt">版本演進</span><span class="ds">v1.0 → v2.1 時間軸</span></span></a>
         <a class="toc-item" href="#value"><span class="n">8</span><span class="tx"><span class="tt">技術價值</span><span class="ds">可遷移的工程能力佐證</span></span></a>
       </div>
 
@@ -286,6 +287,10 @@
           <h4><span class="ico">動</span>自動開通</h4>
           <p>申請表單 + 規則路由 + <span class="hl">AI 欄位驗證</span>，信心足夠即全自動建立憑證並寄送通知信。</p>
         </div>
+      </div>
+      <div class="note info" style="margin-top:16px;">
+        <div class="head">🧪 v2.0 → v2.1 新增能力 · AI 模型適配評審</div>
+        平台不只代發，更能<span class="hl">自我優化選型</span>：背景 AI 評審針對每筆呼叫評估「原模型 vs 其他候選模型」的適配度並推薦更合適者（v2.0）；再對推薦模型<span class="hl">真實重跑</span>、以盲化「<span class="hl">對比裁決</span>」判定推薦輸出與原輸出孰優，給出<span class="mk">建議維持 / 建議改用 / 平手</span>與成本差，集中呈現於「AI 判決總覽」頁（v2.1）。
       </div>
     </section>
 
@@ -510,7 +515,19 @@ flowchart TD
           <span class="chip">api → <b>services</b> → repositories → models</span>
           <span class="chip"><b>clients/</b> OpenRouter · Internal 統一出口</span>
           <span class="chip">JWT 認證 · 權限 Dependency</span>
+          <span class="chip"><b>AI 模型評審 / 對比裁決</b> service（v2.0–2.1）</span>
           <span class="chip">Swagger <code>/api/docs</code></span>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="lh">背景任務層 · Async Workers（v2.0 起）</div>
+        <div class="lb">
+          <span class="chip"><b>taskiq</b> 任務分派</span>
+          <span class="chip"><b>Redis</b> broker / result（未來可換 RabbitMQ）</span>
+          <span class="chip"><b>taskiq-worker</b> 執行評審 / 重跑</span>
+          <span class="chip"><b>taskiq-scheduler</b> 週期派發未評審 log</span>
+          <span class="chip">AI 評審打分 · 推薦模型真實重跑 · 盲化對比裁決</span>
         </div>
       </div>
 
@@ -532,7 +549,7 @@ flowchart TD
           <span class="chip"><b>企業地端 LLM</b>（OpenAI-compatible）</span>
           <span class="chip"><b>DF-SSO</b>（OIDC 單一登入）</span>
           <span class="chip"><b>Microsoft Graph</b>（通知信）</span>
-          <span class="chip"><b>Claude API</b>（AI 欄位驗證）</span>
+          <span class="chip"><b>Claude API</b>（AI 欄位驗證 · 模型評審 · 對比裁決）</span>
         </div>
       </div>
     </section>
@@ -540,7 +557,7 @@ flowchart TD
     <!-- 7 版本演進 -->
     <section id="evolution">
       <h2 class="sec"><span class="num">7</span>版本演進</h2>
-      <p class="sectlead">從 MVP 的 API 代理層，成長為「申請—審核—開通—通知」一條龍的自動化平台。</p>
+      <p class="sectlead">從 MVP 的 API 代理層，成長為「申請—審核—開通—通知」一條龍的自動化平台，再進化到 <span class="hl">AI 模型適配評審與真實重跑對比裁決</span>的自我選型能力。</p>
       <div class="timeline">
         <div class="tl-item milestone">
           <div class="ver">v1.0 <span class="badge green">MVP</span></div>
@@ -586,6 +603,26 @@ flowchart TD
           <div class="ver">v1.10 · 申請欄位下拉化</div>
           <div class="desc">負責人改為 Combobox 選取現有成員、信箱自動帶入唯讀，從輸入端降低人工配對落空。</div>
         </div>
+        <div class="tl-item milestone">
+          <div class="ver">v2.0.0 <span class="badge green">AI 模型評審地基</span></div>
+          <div class="desc">新增三張 <code>ai_</code> 表 + 判別模型設定 CRUD + 「AI 分析」前端頁；以 <span class="hl">taskiq + Redis</span> 導入背景任務基建，為模型適配評審鋪底。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v2.0.1 · 判別管線</div>
+          <div class="desc">背景三評審打分管線：對每筆呼叫由多位 AI 評審評估候選模型適配度並彙整推薦（taskiq worker 執行）。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v2.0.2 · 資料庫自我說明</div>
+          <div class="desc">新增 <code>table_catalog</code> 字典表 + 全表 / 欄位 COMMENT + schema parity 校驗，讓 DB 結構可自我描述、利於稽核與交接。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v2.0.3 · 評審結果顯示</div>
+          <div class="desc">用量明細頁內嵌 AI 分析基礎摘要（評審推薦與吻合度），讀取層 derive 不動 DB。</div>
+        </div>
+        <div class="tl-item milestone">
+          <div class="ver">v2.1.0 <span class="badge green">真實重跑 + 對比裁決</span></div>
+          <div class="desc">對 AI 推薦模型做<span class="hl">真實重跑</span>，以盲化「對比裁決」判定推薦輸出 vs 原輸出孰優（<span class="hl">建議維持 / 改用 / 平手</span>）+ 成本差；獨立「AI 判決總覽」admin 頁依用量紀錄分組並排真實輸出、可依編號排序 / 搜尋。</div>
+        </div>
       </div>
     </section>
 
@@ -623,8 +660,12 @@ flowchart TD
           <p><span class="hl">Monorepo 前後端分離</span>、分層架構（api / service / repository / model）、Pydantic 契約、Alembic Migration、Swagger 文件、Docker Compose 部署與 healthcheck。</p>
         </div>
         <div class="subcard">
+          <h4>🤖 AI 自我選型 / 評審</h4>
+          <p>以背景 <span class="hl">taskiq + Redis</span> 跑多評審打分、推薦模型<span class="hl">真實重跑</span>與盲化<span class="hl">對比裁決</span>，形成「生成 → 評審 → 重跑 → 裁決」閉環，把模型選型從人工經驗轉為資料驅動。</p>
+        </div>
+        <div class="subcard">
           <h4>🔄 持續迭代能力</h4>
-          <p><span class="hl">10 個版本穩定演進</span>，每版皆有設計提案（propose）與任務拆解（tasks）文件，向後相容（deprecated alias）、軟刪除保留歷史，展現規格驅動開發紀律。</p>
+          <p><span class="hl">跨 v1.0 → v2.1 穩定演進</span>，每版皆有設計提案（propose）與任務拆解（tasks）文件，向後相容（deprecated alias）、軟刪除保留歷史，展現規格驅動開發紀律。</p>
         </div>
       </div>
       <div class="note info">
@@ -690,6 +731,7 @@ flowchart TD
             <tr><td><strong>模型白名單</strong></td><td>啟用 / 停用 / 分級模型、與 OpenRouter 同步清單、同步餘額；未啟用模型一律 403。</td></tr>
             <tr><td><strong>用量紀錄 / 統計</strong></td><td>依<span class="hl">部門 / 專案 / 使用者</span>三層查 token 與美元成本、延遲、成功與否。</td></tr>
             <tr><td><strong>申請表單</strong></td><td>檢視 API Key 線上申請與 5 態生命週期；信心不足者在此人工審核。</td></tr>
+            <tr><td><strong>AI 分析</strong><span class="badge" style="margin-left:6px;">v2.0+</span></td><td>設定<span class="hl">判別（裁決）模型</span>；「<span class="hl">AI 判決總覽</span>」依用量紀錄分組檢視原模型 vs AI 推薦模型的真實輸出、對比裁決、成本差與延遲，可依編號排序 / 搜尋。</td></tr>
           </tbody>
         </table>
       </div>
@@ -778,6 +820,21 @@ flowchart TD
         <li><strong>多數自動</strong>：規則路由 + AI（Claude）驗證信心達標即<span class="hl">自動建立憑證並寄送通知信</span>（狀態 <code>agent_done → done</code>）。</li>
         <li><strong>需人工</strong>：資料異常者取消（<code>cancelled</code>）；信心不足者落到 <code>manual_pending</code>，由 admin 在「申請表單」頁審核後，比照 Playbook A 後半 / B 手動開通。</li>
       </ul>
+
+      <div class="playbook-head">
+        <h3>G · 看 AI 是否建議換更合適的模型 <span class="badge" style="margin-left:6px;">v2.1</span></h3>
+        <div class="ctx">情境：想知道某些呼叫用更省 / 更好的模型是否更划算，作為調整白名單或預設模型的依據。</div>
+      </div>
+      <ol class="steps">
+        <li>後台進<strong>「AI 分析 → AI 判決總覽」</strong>；先在<strong>「判別模型設定」</strong>確認已指定一個裁決模型（否則不會產生裁決）。</li>
+        <li>頁頂統計列看整體分布（<span class="hl">建議維持 / 建議改用 / 平手 / 未裁決 / 失敗</span>）；清單依<strong>用量紀錄編號</strong>分組，可用上方<strong>編號搜尋 / 排序</strong>定位特定一筆。</li>
+        <li>展開任一組看該筆「原模型 → AI 推薦模型」的<strong>對比裁決</strong>、信心、<strong>成本差</strong>與延遲；點<strong>[查看]</strong>開對照視窗，並排原模型與推薦模型的<span class="hl">真實輸出原文</span>與裁決理由。</li>
+        <li>若大量呈現「<strong>建議改用</strong>」且成本更省，可評估把該推薦模型<strong>納入白名單 / 設為預設</strong>；本頁僅供分析，<span class="key">不會自動改動</span>任何設定。</li>
+      </ol>
+      <div class="note info">
+        <div class="head">運作方式</div>
+        評審與重跑都在<span class="hl">背景（taskiq + Redis）</span>非同步執行，不影響使用者即時呼叫；裁決採<span class="hl">盲化對比</span>（裁決模型不知哪邊是原模型）以降低偏好偏差。需開啟對應環境開關 <code>AI_RERUN_ENABLED</code> / <code>AI_RERUN_DISCRIMINATOR_ENABLED</code> 才會產生重跑與裁決。
+      </div>
     </section>
 
     <!-- 14 使用者：SDK 呼叫手冊 -->
@@ -863,6 +920,7 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
             <tr><td>模型</td><td><code>/api/v1/models/*</code>、<code>/api/v1/allowed/models</code></td><td>白名單 / 分級 / 同步；公開查詢已啟用模型</td></tr>
             <tr><td>用量與統計</td><td><code>/api/v1/usage-logs/*</code>、<code>/api/v1/stats/*</code></td><td>用量查詢、依部門 / 專案 / 使用者彙總</td></tr>
             <tr><td>申請開通</td><td><code>/api/v1/applications/*</code></td><td>API Key 申請表單送出 / 檢視 / 生命週期流轉</td></tr>
+            <tr><td>AI 分析（v2.0–2.1，admin）</td><td><code>/api/v1/ai-eval/judge-settings</code>、<code>/ai-eval/evaluations/by-usage-log/{uid}</code>、<code>/ai-eval/reruns</code></td><td>判別模型設定；依用量紀錄取評審結果；跨 log AI 判決總覽（分組分頁 + 編號排序 / 搜尋）</td></tr>
             <tr><td>代理（非串流）</td><td><code>/api/v1/model/chat</code></td><td>SDK 呼叫模型（canonical）</td></tr>
             <tr><td>代理（串流）</td><td><code>/api/v1/model/chat/stream</code></td><td>SSE 串流回應</td></tr>
           </tbody>

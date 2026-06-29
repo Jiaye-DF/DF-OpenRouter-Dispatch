@@ -2,11 +2,33 @@ from __future__ import annotations
 
 import logging
 import sys
+from datetime import datetime
 from functools import lru_cache
 from typing import Any, NoReturn
+from zoneinfo import ZoneInfo
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_TW_TZ = ZoneInfo("Asia/Taipei")
+
+
+def parse_ai_eval_start_at(raw: Any) -> datetime | None:
+    """解析 AI 分析起始時間門檻;空 → None(不設限)。
+
+    接受 `YYYY-MM-DD` / `YYYY/MM/DD` / ISO datetime;無時區資訊者視為 Asia/Taipei
+    (全棧 UTC+8,對齊 usage_logs.created_at 語意)。無法解析回 None(由 validator 攔成致命設定錯誤)。
+    """
+    if raw is None:
+        return None
+    text = str(raw).strip().replace("/", "-")
+    if text == "":
+        return None
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=_TW_TZ)
 
 
 def fatal_config_exit(message: str) -> NoReturn:
@@ -141,6 +163,10 @@ class Settings(BaseSettings):
     AI_EVAL_DISPATCH_BATCH_SIZE: int = 100
     # 單一評審任務失敗時的最大重試次數(配合 SimpleRetryMiddleware)。
     AI_EVAL_TASK_MAX_RETRIES: int = 3
+    # AI 分析起始時間門檻:只有 usage_logs.created_at >= 此時間的資料才進行 AI 評審 / 重跑。
+    # 空字串 = 不設限(處理全部 backlog)。用於避免對大量歷史資料回溯分析造成成本暴增。
+    # 格式:YYYY-MM-DD(視為 Asia/Taipei 午夜)或 ISO datetime。見 ai_eval_start_at_dt。
+    AI_EVAL_START_AT: str = ""
 
     # --- AI 真實重跑 + 對比裁決 (v2.1) ---
     # AI_RERUN_ENABLED:重跑總開關;false → 完全不觸發真實重跑與對比裁決(零成本)。
@@ -174,6 +200,11 @@ class Settings(BaseSettings):
     def is_prod(self) -> bool:
         return self.APP_ENV.lower() in ("prod", "production")
 
+    @property
+    def ai_eval_start_at_dt(self) -> datetime | None:
+        """AI 分析起始時間門檻(tz-aware Asia/Taipei);未設定回 None(不設限)。"""
+        return parse_ai_eval_start_at(self.AI_EVAL_START_AT)
+
     # v2.0.1 型別化評審設定:容錯部署注入(空字串 → 預設;壞值 → 明確 log 後正常退出),
     # 避免 Coolify 等把 ${VAR} 未定義代成空字串時,pydantic 解析以例外 crash 且無從得知原因。
     @field_validator("AI_EVAL_ENABLED", mode="before")
@@ -195,6 +226,22 @@ class Settings(BaseSettings):
     @classmethod
     def _coerce_ai_eval_max_retries(cls, v: Any) -> int:
         return coerce_int_env("AI_EVAL_TASK_MAX_RETRIES", v, 3)
+
+    @field_validator("AI_EVAL_START_AT", mode="before")
+    @classmethod
+    def _coerce_ai_eval_start_at(cls, v: Any) -> str:
+        """空 → ""(不設限);非空但無法解析為日期/時間 → 明確 log 後正常退出。"""
+        if v is None:
+            return ""
+        text = str(v).strip()
+        if text == "":
+            return ""
+        if parse_ai_eval_start_at(text) is None:
+            fatal_config_exit(
+                f"環境變數 AI_EVAL_START_AT 的值 {v!r} 不是合法日期/時間"
+                "(YYYY-MM-DD 或 ISO datetime);請於部署環境(如 Coolify)修正後重新部署。"
+            )
+        return text
 
     @field_validator("AI_RERUN_ENABLED", mode="before")
     @classmethod

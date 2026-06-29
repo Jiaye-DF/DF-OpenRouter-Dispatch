@@ -120,7 +120,8 @@ async def dispatch_unevaluated() -> int:
 
     async with SessionLocal() as db:
         uids = await AiModelEvaluationRepository(db).fetch_unevaluated_log_uids(
-            settings.AI_EVAL_DISPATCH_BATCH_SIZE
+            settings.AI_EVAL_DISPATCH_BATCH_SIZE,
+            start_at=settings.ai_eval_start_at_dt,
         )
 
     for uid in uids:
@@ -209,7 +210,8 @@ async def dispatch_unrerun() -> int:
 
     async with SessionLocal() as db:
         uids = await AiModelEvaluationRepository(db).fetch_unreran_evaluation_uids(
-            settings.AI_EVAL_DISPATCH_BATCH_SIZE
+            settings.AI_EVAL_DISPATCH_BATCH_SIZE,
+            start_at=settings.ai_eval_start_at_dt,
         )
 
     for uid in uids:

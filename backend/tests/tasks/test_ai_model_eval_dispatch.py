@@ -64,6 +64,7 @@ def _patch_settings(monkeypatch: pytest.MonkeyPatch, *, enabled: bool, batch: in
         lambda: SimpleNamespace(
             AI_EVAL_ENABLED=enabled,
             AI_EVAL_DISPATCH_BATCH_SIZE=batch,
+            ai_eval_start_at_dt=None,
         ),
     )
 
@@ -72,7 +73,7 @@ def _patch_repo_fetch(monkeypatch: pytest.MonkeyPatch, uids: list[UUID]) -> dict
     """讓 repo.fetch_unevaluated_log_uids 回傳給定 uids;回記呼叫次數的 dict。"""
     calls = {"fetch": 0}
 
-    async def _fetch(self: object, limit: int) -> list[UUID]:
+    async def _fetch(self: object, limit: int, *, start_at: object = None) -> list[UUID]:
         calls["fetch"] += 1
         return uids[:limit]
 

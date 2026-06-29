@@ -4,7 +4,9 @@
 >
 > 本檔為**交接用**：環境、啟動、部署、分支流程、維運須知一次看完。功能設計細節見 [docs/](docs/)。
 >
-> 目前版本進度：**v1.9.2 已上線**（已併入 `main` / `development`）。後續小微調走 `dev-v1.10`。
+> 目前版本進度：**v2.1.0 已上線**（已併入 `main` / `development`）。當前開發分支 `dev-v2.1`。
+>
+> v2.0–v2.1 主軸：**AI 模型適配評審 + 真實重跑 + 對比裁決**（taskiq + Redis 背景管線），詳見 §12。完整系統說明與架構/流程圖見 [docs/DF-OpenRouter-派工系統-專案說明文件.html](docs/DF-OpenRouter-派工系統-專案說明文件.html)。
 
 ---
 
@@ -26,6 +28,7 @@
 | --- | --- |
 | 前端 | Next.js（App Router）+ TypeScript，npm |
 | 後端 | FastAPI（Python **3.14**，套件管理用 **uv**）、SQLAlchemy async + asyncpg、Alembic、httpx、pydantic-settings、Jinja2（Email 範本） |
+| 背景任務 | **taskiq + Redis**（broker / result，未來可換 RabbitMQ）；`taskiq-worker` 執行、`taskiq-scheduler` 週期派發（v2.0 起：AI 模型評審 / 真實重跑 / 對比裁決） |
 | 資料庫 | PostgreSQL 17 |
 | 認證 | JWT（HttpOnly cookie）+ **DF-SSO**（Azure AD） |
 | 寄信 | Microsoft Graph（app-only，M365） |
@@ -43,17 +46,20 @@ backend/                    FastAPI 後端
     api/v1/                 路由（auth/users/departments/projects/sdk_keys/
                             openrouter_keys/internal_keys/models/model_tiers/
                             allowed_models/usage_logs/stats/api_key_requests/
-                            model_chat〔代理〕/user_tokens/health）
+                            model_chat〔代理〕/user_tokens/health/
+                            ai_eval〔判別模型設定〕/ai_eval_results/ai_eval_reruns〔v2.0–2.1〕）
     clients/                外部呼叫（openrouter / sso / internal）
     core/                   config / database / security / crypto / audit / deps / logging
-    models/ repositories/ schemas/ services/
+    tasks/                  taskiq broker / scheduler / ai_model_eval〔評審+重跑 task/dispatcher〕
+    models/ repositories/ schemas/ services/  （含 ai_model_eval* / ai_eval_judge_setting / llm_json）
     templates/email/        Jinja2 Email 範本（base.html + provision.html）
-  alembic/versions/         migration 0001–0014
-  tests/                    pytest（services / core）
-frontend/                   Next.js（src/app/(main)/<各功能頁>）
+  alembic/versions/         migration 0001–0027
+  tests/                    pytest（services / core / repositories / tasks / api）
+frontend/                   Next.js（src/app/(main)/<各功能頁>；含 ai-analysis/judge-settings、ai-analysis/verdicts）
 docs/
   Design-Base/              不隨版本變動的基礎設計
-  Tasks/v1.x/               各版 propose / tasks（實作契約）
+  Tasks/v1.x/ v2.x/         各版 propose / tasks（實作契約）+ fixed.md（根因紀錄）
+  DF-OpenRouter-…-專案說明文件.html  單頁式系統說明（含架構圖 / 流程圖）
 docker-compose.dev.yml      本機開發
 docker-compose-prod.yml     Coolify 部署（值由 Coolify 注入）
 CLAUDE.md                   AI 協作規範
@@ -69,8 +75,14 @@ CLAUDE.md                   AI 協作規範
 3. **DF-SSO**（要 SSO 登入才需）：`SSO_URL` / `SSO_APP_ID` / `SSO_APP_SECRET` / `BACKEND_URL` / `FRONTEND_URL`。
 4. **AI 自動開通**：`DEFAULT_OPENROUTER_KEY`（須為**有效** OpenRouter key，否則申請單 AI 驗證一律降級人工）。
 5. **M365 寄信**（開通通知信）：`M365_TENANT_ID` / `M365_CLIENT_ID` / `M365_CLIENT_SECRET` / `M365_MAIL_SENDER`，**四者皆有值才啟用**，缺則優雅略過（不報錯、不阻斷開通）。
+6. **AI 模型評審 / 重跑（v2.0–v2.1）**：
+   - `TASKIQ_BROKER_URL` / `TASKIQ_RESULT_BACKEND_URL` / `REDIS_URL`（Redis 連線；compose 內主機名為 `redis`）。
+   - `AI_EVAL_ENABLED`（評審總開關）、`AI_EVAL_BEAT_INTERVAL_SECONDS`（beat 間隔）、`AI_EVAL_DISPATCH_BATCH_SIZE`（每輪派發筆數）、`AI_EVAL_TASK_MAX_RETRIES`。
+   - `AI_EVAL_START_AT`（**起始時間門檻**：只分析 `created_at >=` 此時間的資料，空=不設限；格式 `YYYY-MM-DD`，視為 Asia/Taipei 00:00:00。用於避免回溯大量歷史資料成本暴增）。
+   - `AI_RERUN_ENABLED`（真實重跑總開關）、`AI_RERUN_DISCRIMINATOR_ENABLED`（對比裁決子開關；重跑沿用評審的 beat / batch，不另設）。
+   - 判別模型於後台「AI 分析 → 判別模型設定」設定（恰 3 個、不可重複、不得選 free）。
 
-> ⚠️ **改 `.env` 後一定要重啟後端才生效**：settings 於程序啟動時讀入且 `get_settings()` 有 lru_cache，熱改檔案不會生效。
+> ⚠️ **改 `.env` 後一定要重啟後端才生效**：settings 於程序啟動時讀入且 `get_settings()` 有 lru_cache，熱改檔案不會生效。**改 AI_EVAL_* / AI_RERUN_* 後須重啟 `taskiq-worker` 與 `taskiq-scheduler`。**
 
 ---
 
@@ -88,6 +100,8 @@ docker compose -f docker-compose.dev.yml --env-file .env up --build
 | Backend API | http://localhost:8800 |
 | **Swagger** | http://localhost:8800/api/docs |
 | PostgreSQL | localhost:5533 |
+
+compose 另含 **redis**（taskiq broker）、**taskiq-worker**（執行評審 / 重跑）、**taskiq-scheduler**（週期派發）等服務；AI 評審需 `AI_EVAL_ENABLED=true` 才會動作。
 
 首次啟動 Alembic 會自動 `upgrade head`，Backend Seed 建立初始 admin（帳號 `INITIAL_ADMIN_ACCOUNT` / 密碼 `INITIAL_ADMIN_PASSWORD`，掛於 `SYSTEM` 部門）。
 
@@ -108,7 +122,7 @@ docker compose -f docker-compose.dev.yml --env-file .env up --build
 
 ```bash
 cd backend
-uv run alembic upgrade head      # 套用至最新（目前 0014）
+uv run alembic upgrade head      # 套用至最新（目前 0027）
 uv run alembic revision -m "..." # 新增 migration
 ```
 
@@ -131,7 +145,7 @@ npm run type-check && npm run lint
 
 ## 8. Git 分支與推送流程
 
-- 分支：`main`（正式）← `development`（整合）← `dev-v1.x`（功能）。下一個小微調分支：**`dev-v1.10`**。
+- 分支：`main`（正式）← `development`（整合）← `dev-vX.Y`（功能）。當前功能分支：**`dev-v2.1`**。
 - **雙遠端**：`origin`（Jiaye-DF）與 `df-it`（Dafon-IT）。**任何推送 origin 先、df-it 後，兩邊都要推。**
 - Commit message 繁中、格式 `<類型>: <描述>`（`Add`/`Modify`/`Fix`/`Refactor`/`Docs`）；AI 產生加 `(AI)` 前綴。
 - 禁未授權的破壞性操作（`--force` / `reset --hard` / `--no-verify`）。
@@ -150,6 +164,7 @@ npm run type-check && npm run lint
 | 用量 | `/usage-logs/*`、`/stats/*` | 用量查詢、彙總 |
 | **代理** | `/model/chat` | SDK 呼叫入口（依模型 provider 自動分流；舊 `/model/openrouter/chat` 已 deprecated） |
 | 申請單 | `/api-key-requests/*` | API Key 申請生命週期（見下） |
+| **AI 分析** | `/ai-eval/judge-settings`、`/ai-eval/evaluations/by-usage-log/{uid}`、`/ai-eval/reruns` | 判別模型設定；依用量紀錄取評審結果；跨 log AI 判決總覽（分組分頁 + 編號排序/搜尋）。admin only（v2.0–2.1，見 §12） |
 | 健康 | `/health` | 健康檢查 |
 
 **SDK 呼叫**需帶三個 Header：`X-SDK-Key` / `X-User-Token` / `X-Project-Code`（細節與範例見 [docs/INTEGRATION.md](docs/INTEGRATION.md)）。
@@ -179,5 +194,25 @@ npm run type-check && npm run lint
 
 - [CLAUDE.md](CLAUDE.md)：開發 / 協作規範（規範優先序、Git、敏感資訊）
 - [docs/Design-Base/](docs/Design-Base/)：基礎設計（不隨版本變動）
-- [docs/Tasks/v1.9/](docs/Tasks/v1.9/)：v1.9 系列 propose / tasks（實作契約）
+- [docs/Tasks/v1.9/](docs/Tasks/v1.9/)、[docs/Tasks/v2.0/](docs/Tasks/v2.0/)、[docs/Tasks/v2.1/](docs/Tasks/v2.1/)：各版 propose / tasks（實作契約）+ `fixed.md`（根因紀錄）
+- [docs/DF-OpenRouter-派工系統-專案說明文件.html](docs/DF-OpenRouter-派工系統-專案說明文件.html)：單頁式系統說明（含架構圖 / 流程圖 / 版本演進 / 維運手冊）
 - [docs/INTEGRATION.md](docs/INTEGRATION.md)：對外 SDK 串接說明（Header、端點、錯誤碼、範例）
+
+---
+
+## 12. AI 模型適配評審（v2.0–v2.1）
+
+背景非同步（**taskiq + Redis**）評估「使用者原模型是否適配、是否有更合適者」，並對推薦模型**真實重跑**後做盲化**對比裁決**，集中呈現於後台「AI 分析 → AI 判決總覽」。**不影響使用者即時呼叫**。
+
+**管線**（兩段，皆由 `taskiq-scheduler` 週期觸發、`taskiq-worker` 執行）：
+
+1. **評審**（`AI_EVAL_ENABLED`）：撈未評審 `usage_logs`（`created_at >= AI_EVAL_START_AT`、FIFO）→ 由 **3 個判別模型**交叉評審打分、推薦更適合模型（**排除 free 模型**）→ 寫評審父表 + 候選。
+2. **真實重跑 + 對比裁決**（`AI_RERUN_ENABLED`）：對推薦模型（≠ 原模型、≠ free）逐一**真實重跑**取客觀指標 → `AI_RERUN_DISCRIMINATOR_ENABLED` 時由推薦該模型的評審本人當裁判，**盲化**比「推薦輸出 vs 原輸出」→ 得「建議維持 / 改用 / 平手」+ 成本Δ。
+
+**重點設計**：
+
+- **成本控制**：`AI_EVAL_START_AT` 設起始門檻，舊資料不回溯分析；兩道開關可獨立關閉達零成本。
+- **品質**：推薦/重跑一律**排除 free 模型**（限流、易下架）；裁決**盲化**降低偏好偏差；判別模型回覆採**強健 JSON 解析**（容忍圍欄 / 夾帶文字 / `Extra data`）。
+- **判別模型設定**：後台恰選 3 個、不可重複；`ai_judge_slot` 採 **partial unique**（排除軟刪），設定後可正常修改。
+
+對應 propose / tasks 見 [docs/Tasks/v2.0/](docs/Tasks/v2.0/)、[docs/Tasks/v2.1/](docs/Tasks/v2.1/)；流程圖 / 架構圖見專案說明文件 §5 圖 3、§6 圖 4。

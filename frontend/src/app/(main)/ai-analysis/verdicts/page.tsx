@@ -247,7 +247,7 @@ function RecRow({
       <td className="whitespace-nowrap px-3 py-2 font-mono text-sm text-muted-foreground">
         {rec.recommended_by ?? "—"}
       </td>
-      <td className="px-3 py-2">
+      <td className="whitespace-nowrap px-3 py-2">
         <Badge variant={verdict.variant}>{verdict.text}</Badge>
       </td>
       <td className="whitespace-nowrap px-3 py-2 text-sm">
@@ -323,9 +323,11 @@ function GroupRow({
               </p>
             ) : (
               <div className="-mx-1 overflow-x-auto">
-                <table className="w-full min-w-[640px] border-collapse text-left">
+                {/* 欄位各取自然寬度水平排開(w-max),至少撐滿容器(min-w-full);
+                    總寬超出容器時由外層 overflow-x-auto 水平滾動,欄位一律不換行。 */}
+                <table className="w-max min-w-full border-collapse text-left">
                   <thead>
-                    <tr className="border-b border-border text-xs text-muted-foreground">
+                    <tr className="whitespace-nowrap border-b border-border text-xs text-muted-foreground">
                       <th className="px-3 py-2 font-medium">推薦模型</th>
                       <th className="px-3 py-2 font-medium">推薦者</th>
                       <th className="px-3 py-2 font-medium">裁決</th>

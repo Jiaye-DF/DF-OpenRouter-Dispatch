@@ -243,8 +243,8 @@
         <a class="toc-item" href="#purpose"><span class="n">2</span><span class="tx"><span class="tt">目的</span><span class="ds">安全、成本、稽核、統一接點</span></span></a>
         <a class="toc-item" href="#problem"><span class="n">3</span><span class="tx"><span class="tt">解決的問題與效益</span><span class="ds">痛點對照 + 量化成效</span></span></a>
         <a class="toc-item" href="#concept"><span class="n">4</span><span class="tx"><span class="tt">核心概念與角色</span><span class="ds">名詞、憑證、權限模型</span></span></a>
-        <a class="toc-item" href="#flow"><span class="n">5</span><span class="tx"><span class="tt">系統流程圖</span><span class="ds">代理鏈與自動開通管線</span></span></a>
-        <a class="toc-item" href="#arch"><span class="n">6</span><span class="tx"><span class="tt">系統架構</span><span class="ds">四層分層與技術棧</span></span></a>
+        <a class="toc-item" href="#flow"><span class="n">5</span><span class="tx"><span class="tt">系統流程圖</span><span class="ds">代理鏈 · 自動開通 · AI 評審管線</span></span></a>
+        <a class="toc-item" href="#arch"><span class="n">6</span><span class="tx"><span class="tt">系統架構</span><span class="ds">分層技術棧 + v2.0+ 元件架構圖</span></span></a>
         <a class="toc-item" href="#evolution"><span class="n">7</span><span class="tx"><span class="tt">版本演進</span><span class="ds">v1.0 → v2.1 時間軸</span></span></a>
         <a class="toc-item" href="#value"><span class="n">8</span><span class="tx"><span class="tt">技術價值</span><span class="ds">可遷移的工程能力佐證</span></span></a>
       </div>
@@ -489,6 +489,42 @@ flowchart TD
         </pre>
         <figcaption>圖 2 · 申請自動開通管線（規則 + AI 混合決策）</figcaption>
       </figure>
+
+      <h3>流程 C：AI 模型評審 + 真實重跑 + 對比裁決（v2.0–v2.1 背景管線）</h3>
+      <p class="sectlead">以 <span class="hl">taskiq + Redis</span> 在背景非同步評估「原模型是否適配、是否有更合適者」，並對推薦模型<span class="hl">真實重跑</span>後做盲化<span class="hl">對比裁決</span>，不影響使用者即時呼叫。</p>
+      <figure class="diagram">
+        <pre class="mermaid">
+flowchart TD
+  SCH([⏱️ taskiq-scheduler<br/>每 beat 觸發]) --> DE{dispatch_unevaluated<br/>AI_EVAL_ENABLED?}
+  DE -->|關| Z1[略過不派發]
+  DE -->|開| FE[撈未評審 usage_logs<br/>created_at ≥ AI_EVAL_START_AT<br/>FIFO 最舊優先 · 批量上限]
+  FE --> RQ[(🧰 Redis broker<br/>任務佇列)]
+  RQ --> EW[🤖 taskiq-worker<br/>evaluate_usage_log_task]
+  EW --> J[3 個判別模型交叉評審<br/>推薦更適合模型<br/>🚫 排除 free 模型]
+  J --> WP[(🗄️ PostgreSQL<br/>寫評審父表 + 候選 + 游標)]
+
+  SCH --> DR{dispatch_unrerun<br/>AI_RERUN_ENABLED?}
+  DR -->|開| FR[撈已評審未重跑<br/>來源 log created_at ≥ 門檻]
+  FR --> RQ
+  RQ --> RW[🤖 taskiq-worker<br/>rerun_evaluation_task]
+  RW --> CH[對每個推薦 challenger<br/>≠原模型 / ≠free<br/>真實重跑取客觀指標]
+  CH --> DI[⚖️ 對比裁決 discriminator<br/>盲化比：推薦輸出 vs 原輸出]
+  DI --> WP2[(🗄️ PostgreSQL<br/>寫重跑 + 裁決 + 成本Δ)]
+  WP2 --> UI([📊 AI 判決總覽頁<br/>建議維持 / 改用 / 平手])
+
+  classDef ai fill:#eff6ff,stroke:#bfdbfe,color:#1e3a8a;
+  classDef store fill:#ecfdf5,stroke:#6ee7b7,color:#065f46;
+  classDef stop fill:#fef2f2,stroke:#fecaca,color:#991b1b;
+  class EW,RW,J,CH,DI ai;
+  class WP,WP2,RQ store;
+  class Z1 stop;
+        </pre>
+        <figcaption>圖 3 · AI 評審管線（評審 → 真實重跑 → 對比裁決；taskiq + Redis 背景非同步）</figcaption>
+      </figure>
+      <div class="note info">
+        <div class="head">🔑 設計重點</div>
+        全程<span class="hl">背景非同步</span>、不擋使用者即時呼叫；<span class="hl">起始時間門檻</span>（<code>AI_EVAL_START_AT</code>）讓舊資料不回溯分析以控成本；推薦與重跑<span class="key">一律排除 free 模型</span>；裁決採<span class="hl">盲化對比</span>降低偏好偏差；兩道開關（<code>AI_EVAL_ENABLED</code> / <code>AI_RERUN_ENABLED</code>）可獨立關閉達零成本。
+      </div>
     </section>
 
     <!-- 6 系統架構 -->
@@ -552,6 +588,51 @@ flowchart TD
           <span class="chip"><b>Claude API</b>（AI 欄位驗證 · 模型評審 · 對比裁決）</span>
         </div>
       </div>
+
+      <h3>元件架構圖（v2.0+，含 AI 評審背景管線）</h3>
+      <p class="sectlead">前後端分離 + <span class="hl">taskiq + Redis 背景工作層</span>；同步請求與背景 AI 評審共用 PostgreSQL，但路徑完全解耦。</p>
+      <figure class="diagram">
+        <pre class="mermaid">
+flowchart LR
+  subgraph CLIENT[使用者 / 管理者]
+    U[👤 SDK 應用]
+    A[🧑‍💼 admin 瀏覽器]
+  end
+  subgraph FE[前端 · Next.js]
+    UI[管理 UI<br/>判別模型設定 / AI 判決總覽]
+  end
+  subgraph BE[後端 · FastAPI]
+    PROXY[代理層<br/>/model/chat]
+    ADMINAPI[管理 / AI 分析 API]
+    AISVC[AI 評審 · 對比裁決 service]
+  end
+  subgraph WORKERS[背景工作層 · taskiq]
+    SCH[⏱️ scheduler]
+    WK[🤖 worker]
+  end
+  RED[(🧰 Redis<br/>broker / result)]
+  PG[(🗄️ PostgreSQL 17)]
+  OR{{🌐 OpenRouter / 地端 LLM}}
+
+  U --> PROXY
+  A --> UI --> ADMINAPI
+  PROXY --> OR
+  PROXY --> PG
+  ADMINAPI --> PG
+  SCH -->|beat 派發| RED --> WK
+  WK --> AISVC --> OR
+  WK --> PG
+  ADMINAPI -. 讀評審 / 裁決 .-> PG
+
+  classDef be fill:#eff6ff,stroke:#bfdbfe,color:#1e3a8a;
+  classDef store fill:#ecfdf5,stroke:#6ee7b7,color:#065f46;
+  classDef ext fill:#f3f4f6,stroke:#e5e7eb,color:#374151;
+  class PROXY,ADMINAPI,AISVC,WK,SCH,UI be;
+  class RED,PG store;
+  class OR ext;
+        </pre>
+        <figcaption>圖 4 · 系統元件架構（同步代理路徑 + AI 評審背景管線，經 Redis 解耦）</figcaption>
+      </figure>
     </section>
 
     <!-- 7 版本演進 -->

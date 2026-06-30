@@ -652,7 +652,7 @@ export default function ApiKeyRequestsPage() {
           </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <ReqLabel htmlFor="department_name">部門</ReqLabel>
+              <ReqLabel htmlFor="department_name">專案負責人部門</ReqLabel>
               <Combobox
                 options={deptOptions}
                 value={form.department_code}
@@ -663,7 +663,7 @@ export default function ApiKeyRequestsPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <ReqLabel htmlFor="department_code">部門代號</ReqLabel>
+              <ReqLabel htmlFor="department_code">專案負責人部門代號</ReqLabel>
               <Input
                 id="department_code"
                 value={form.department_code}

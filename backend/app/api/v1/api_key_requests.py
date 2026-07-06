@@ -21,6 +21,7 @@ from app.schemas.api_key_request import (
     ApiKeyRequestDetailResponse,
     ApiKeyRequestResponse,
     CancelRequest,
+    RevokeRequest,
 )
 from app.schemas.common import Page
 from app.services import api_key_request_agent as agent
@@ -271,22 +272,27 @@ async def cancel_api_key_request(
     return success_response(data=_detail(row), detail="success")
 
 
-@router.post("/{uid}/revoke", summary="撤銷申請（本人/admin，限 manual_pending）")
+@router.post("/{uid}/revoke", summary="撤銷申請（本人/admin，須填理由，限 manual_pending）")
 async def revoke_api_key_request(
     uid: UUID,
+    body: RevokeRequest,
     actor: UserDep,
     db: DbDep,
     ip: ClientIpDep,
 ):
     repo = ApiKeyRequestRepository(db)
     row = await _get_or_404(repo, uid)
-    if row.applicant_user_uid != actor.user_uid and not actor.is_admin:
+    is_owner = row.applicant_user_uid == actor.user_uid
+    if not is_owner and not actor.is_admin:
         raise AppError("forbidden", code=403)
     # 已處理(agent_done / done)禁止撤銷;撤銷僅限 manual_pending。
     if row.status != "manual_pending":
         raise AppError("invalid_status", code=409)
 
     row.status = "revoked"
+    # 撤銷本人單 → user;admin 撤銷他人單 → admin。
+    row.revoke_source = "user" if is_owner else "admin"
+    row.revoke_reason = body.reason
     row.processed_at = _now()
     await write_audit(
         db,
@@ -296,6 +302,7 @@ async def revoke_api_key_request(
         target_type="api_key_request",
         target_uid=row.request_uid,
         ip=ip,
+        detail=body.reason,
     )
     await db.commit()
     return success_response(data=_detail(row), detail="success")

@@ -95,6 +95,17 @@ class ApiKeyRequest(Base, TimestampMixin):
         nullable=True,
         comment="取消來源(user / admin 等) | cancel source",
     )
+    # 撤銷資訊(本人 / admin 皆須填理由)
+    revoke_reason: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="撤銷原因 | revoke reason",
+    )
+    revoke_source: Mapped[str | None] = mapped_column(
+        String(8),
+        nullable=True,
+        comment="撤銷來源(user / admin) | revoke source",
+    )
     # 人工處理 admin
     handled_by_user_uid: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),

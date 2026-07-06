@@ -207,6 +207,13 @@ export default function ApiKeyRequestsPage() {
   const [cancelReason, setCancelReason] = React.useState("");
   const [cancelSaving, setCancelSaving] = React.useState(false);
 
+  // 撤銷原因輸入視窗(受控;本人 / admin 皆須填理由)
+  const [revokeTarget, setRevokeTarget] = React.useState<ApiKeyRequest | null>(
+    null
+  );
+  const [revokeReason, setRevokeReason] = React.useState("");
+  const [revokeSaving, setRevokeSaving] = React.useState(false);
+
   // 人工處理視窗(admin):顯示 agent_decision 後確認開通
   const [processTarget, setProcessTarget] =
     React.useState<ApiKeyRequestDetail | null>(null);
@@ -366,35 +373,39 @@ export default function ApiKeyRequestsPage() {
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [k]: e.target.value }));
 
-  // 撤銷(二次確認)
-  const onRevoke = (it: ApiKeyRequest) => {
-    showDialog({
-      type: "warning",
-      title: "確認撤銷申請",
-      message: "撤銷後此申請將標記為已撤銷且無法復原,確定撤銷?",
-      confirmText: "確定撤銷",
-      destructive: true,
-      onConfirm: async () => {
-        setActingUid(it.request_uid);
-        try {
-          await apiClient.post(
-            API_ENDPOINTS.revokeApiKeyRequest(it.request_uid)
-          );
-          toast("已撤銷申請", "success");
-          await load();
-        } catch (err) {
-          if (err instanceof ApiError) {
-            showDialog({
-              type: "error",
-              title: "撤銷失敗",
-              message: err.localizedDetail,
-            });
-          }
-        } finally {
-          setActingUid(null);
-        }
-      },
-    });
+  // 撤銷(填理由)→ 開啟受控輸入視窗(本人 / admin 皆須填理由)
+  const openRevoke = (it: ApiKeyRequest) => {
+    setRevokeReason("");
+    setRevokeTarget(it);
+  };
+
+  const submitRevoke = async () => {
+    if (!revokeTarget) return;
+    const reason = revokeReason.trim();
+    if (!reason) {
+      showDialog({ type: "warning", title: "請填寫撤銷原因" });
+      return;
+    }
+    setRevokeSaving(true);
+    try {
+      await apiClient.post(
+        API_ENDPOINTS.revokeApiKeyRequest(revokeTarget.request_uid),
+        { reason }
+      );
+      toast("已撤銷申請", "success");
+      setRevokeTarget(null);
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showDialog({
+          type: "error",
+          title: "撤銷失敗",
+          message: err.localizedDetail,
+        });
+      }
+    } finally {
+      setRevokeSaving(false);
+    }
   };
 
   // 取消(填原因)→ 開啟受控輸入視窗
@@ -570,15 +581,15 @@ export default function ApiKeyRequestsPage() {
           >
             取消
           </Button>,
-          <LoadingButton
+          <Button
             key="revoke"
             variant="destructive"
             size="sm"
-            loading={busy}
-            onClick={() => onRevoke(it)}
+            disabled={busy}
+            onClick={() => openRevoke(it)}
           >
             撤銷
-          </LoadingButton>
+          </Button>
         );
       } else if (it.status === "agent_done" || it.status === "done") {
         actions.push(
@@ -606,6 +617,20 @@ export default function ApiKeyRequestsPage() {
           人工處理
         </LoadingButton>
       );
+      // admin 撤銷他人申請單(本人單已在 isOwner 分支提供撤銷,避免重複)
+      if (!isOwner) {
+        actions.push(
+          <Button
+            key="admin-revoke"
+            variant="destructive"
+            size="sm"
+            disabled={busy}
+            onClick={() => openRevoke(it)}
+          >
+            撤銷
+          </Button>
+        );
+      }
     }
 
     // v1.9.2 admin:已開通但通知失敗 / 尚未通知 → 可重送通知
@@ -937,6 +962,50 @@ export default function ApiKeyRequestsPage() {
             </Button>
             <LoadingButton loading={cancelSaving} onClick={submitCancel}>
               確定取消
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 撤銷原因輸入視窗(受控;本人 / admin 皆須填理由) */}
+      <Dialog
+        open={revokeTarget !== null}
+        onOpenChange={(o) => {
+          if (!o && !revokeSaving) setRevokeTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>撤銷申請</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5 pt-2">
+            <ReqLabel htmlFor="revoke_reason">撤銷原因</ReqLabel>
+            <Input
+              id="revoke_reason"
+              value={revokeReason}
+              onChange={(e) => setRevokeReason(e.target.value)}
+              placeholder="請說明撤銷原因"
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              撤銷後此申請將標記為已撤銷且無法復原。
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRevokeTarget(null)}
+              disabled={revokeSaving}
+            >
+              關閉
+            </Button>
+            <LoadingButton
+              variant="destructive"
+              loading={revokeSaving}
+              onClick={submitRevoke}
+            >
+              確定撤銷
             </LoadingButton>
           </DialogFooter>
         </DialogContent>

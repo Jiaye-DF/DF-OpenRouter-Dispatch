@@ -40,6 +40,9 @@ export interface ApiKeyRequest {
   // v1.9.1 取消 / 錯誤 / 處理時間
   cancel_reason?: string | null;
   cancel_source?: string | null;
+  // v2.1 撤銷理由 / 來源(本人 = user、admin 撤他人 = admin)
+  revoke_reason?: string | null;
+  revoke_source?: string | null;
   error_message?: string | null;
   processed_at?: string | null;
   // v1.9.2 開通完成 Email 通知:寄送成功時間 / 失敗原因

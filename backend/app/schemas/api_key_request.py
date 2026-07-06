@@ -45,6 +45,8 @@ class ApiKeyRequestResponse(BaseModel):
     created_at: datetime
     cancel_reason: str | None = None
     cancel_source: str | None = None
+    revoke_reason: str | None = None
+    revoke_source: str | None = None
     error_message: str | None = None
     processed_at: datetime | None = None
     notified_at: datetime | None = None
@@ -67,6 +69,10 @@ class CancelRequest(BaseModel):
     reason: str = Field(min_length=1)
 
 
+class RevokeRequest(BaseModel):
+    reason: str = Field(min_length=1)
+
+
 class ApiKeyRequestDetailResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -82,6 +88,8 @@ class ApiKeyRequestDetailResponse(BaseModel):
     created_at: datetime
     cancel_reason: str | None = None
     cancel_source: str | None = None
+    revoke_reason: str | None = None
+    revoke_source: str | None = None
     error_message: str | None = None
     processed_at: datetime | None = None
     notified_at: datetime | None = None

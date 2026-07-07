@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>DF-OpenRouter 派工系統 — 專案說明文件</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMWUzYThhIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMjU2M2ViIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTUiIGZpbGw9InVybCgjZykiLz48ZyBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMy40IiBzdHJva2UtbGluZWNhcD0icm91bmQiPjxwYXRoIGQ9Ik0yMSAzMkgzMyIvPjxwYXRoIGQ9Ik0zMyAzMiA0NCAxOCIvPjxwYXRoIGQ9Ik0zMyAzMkg0NSIvPjxwYXRoIGQ9Ik0zMyAzMiA0NCA0NiIvPjwvZz48ZyBmaWxsPSIjZmZmZmZmIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjMyIiByPSI1LjQiLz48Y2lyY2xlIGN4PSI0NSIgY3k9IjE4IiByPSI0LjIiLz48Y2lyY2xlIGN4PSI0NiIgY3k9IjMyIiByPSI0LjIiLz48Y2lyY2xlIGN4PSI0NSIgY3k9IjQ2IiByPSI0LjIiLz48L2c+PC9zdmc+Cg==" />
 <style>
   :root {
     --blue: #2563eb;
@@ -31,8 +32,8 @@
     font-family: "Microsoft JhengHei", "PingFang TC", "Segoe UI", system-ui, sans-serif;
     color: var(--text);
     background: var(--bg);
-    line-height: 1.7;
-    font-size: 16px;
+    line-height: 1.75;
+    font-size: 17px;
   }
   code, pre, .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, Menlo, monospace; }
 
@@ -52,7 +53,7 @@
     padding: 4px 12px; border-radius: 999px; font-size: 13px; color: #fff;
   }
 
-  .wrap { width: 80%; max-width: 1600px; margin: 0 auto; padding: 0 24px 80px; }
+  .wrap { width: 90%; max-width: 1720px; margin: 0 auto; padding: 0 24px 80px; }
   @media (max-width: 1024px) { .wrap { width: 100%; } }
 
   /* 目錄 — 兩欄卡片式導覽 */
@@ -154,7 +155,7 @@
 
   /* 表格 */
   .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; margin: 6px 0; }
-  table { border-collapse: collapse; width: 100%; font-size: 15.5px; }
+  table { border-collapse: collapse; width: 100%; font-size: 16px; }
   th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
   thead th { background: var(--code-bg); color: var(--muted); font-weight: 700; white-space: nowrap; }
   tbody tr:nth-child(even) { background: #fafbfc; }
@@ -196,6 +197,20 @@
     font-size: 13px; line-height: 1.5;
   }
   figure.diagram figcaption { text-align: center; color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+  /* 圖片 / 圖表:在新視窗開啟原圖 */
+  figure.diagram { position: relative; }
+  figure.diagram svg, .wrap img { cursor: zoom-in; }
+  .open-new {
+    position: absolute; top: 10px; right: 10px; z-index: 2;
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 11px; font-size: 12.5px; font-weight: 600;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: rgba(255,255,255,.94); color: var(--blue);
+    cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  .open-new:hover { background: #eff6ff; border-color: var(--blue); }
+  figure.diagram figcaption::after { content: " · 點擊圖表可在新視窗開啟"; color: var(--blue); font-size: 12px; }
 
   /* 分層架構 */
   .layer { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
@@ -1054,13 +1069,106 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
     mermaid.initialize({
-      startOnLoad: true,
+      startOnLoad: false,
       theme: 'default',
       securityLevel: 'loose',
       fontFamily: '"Microsoft JhengHei", "PingFang TC", "Segoe UI", system-ui, sans-serif',
       sequence: { useMaxWidth: true, mirrorActors: false, wrap: true },
       flowchart: { useMaxWidth: true, htmlLabels: true }
     });
+
+    // 顯式渲染,渲染完成後才掛「新視窗開啟」(mermaid 圖表是非同步產生的 SVG)。
+    try { await mermaid.run(); } catch (e) { console.error('mermaid render error', e); }
+    setupOpenInNewWindow();
+
+    // 把渲染好的 SVG 序列化,於新分頁開啟成「可縮放 / 平移 / 捲動」的檢視器。
+    // popup 由使用者點擊觸發,不會被阻擋器擋掉。
+    function openSvgInNewWindow(svg) {
+      const clone = svg.cloneNode(true);
+      clone.removeAttribute('style');
+      clone.removeAttribute('width');
+      clone.removeAttribute('height');
+      if (!clone.getAttribute('xmlns')) clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      const svgText = new XMLSerializer().serializeToString(clone);
+      const url = URL.createObjectURL(new Blob([buildViewerPage(svgText)], { type: 'text/html;charset=utf-8' }));
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+
+    // 產生新分頁的檢視器頁面:工具列(縮放 / 符合視窗 / 實際大小)+ 滾輪對準游標縮放 + 拖曳平移 + 捲軸。
+    function buildViewerPage(svgText) {
+      return `<!doctype html><html lang="zh-TW"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>圖表放大檢視</title>
+<style>
+  html,body{margin:0;height:100%;font-family:"Microsoft JhengHei","Segoe UI",system-ui,sans-serif;background:#f1f5f9;}
+  #bar{position:fixed;top:0;left:0;right:0;height:48px;display:flex;align-items:center;gap:8px;padding:0 14px;background:#1e3a8a;color:#fff;z-index:10;box-shadow:0 1px 6px rgba(0,0,0,.25);}
+  #bar .t{font-size:14px;font-weight:600;margin-right:auto;opacity:.95;}
+  #bar button{border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;border-radius:8px;padding:6px 12px;font-size:14px;line-height:1;cursor:pointer;}
+  #bar button:hover{background:rgba(255,255,255,.26);}
+  #pct{min-width:58px;text-align:center;font-variant-numeric:tabular-nums;font-size:14px;}
+  #stage{position:absolute;inset:48px 0 0 0;overflow:auto;background:#f1f5f9;cursor:grab;}
+  #stage.grabbing{cursor:grabbing;}
+  #canvas{display:inline-block;padding:24px;box-sizing:content-box;}
+  #canvas svg{display:block;}
+  .hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.82);color:#fff;font-size:12.5px;padding:6px 13px;border-radius:999px;z-index:10;pointer-events:none;}
+</style></head><body>
+<div id="bar">
+  <span class="t">圖表放大檢視</span>
+  <button id="out" title="縮小">&minus;</button>
+  <span id="pct">100%</span>
+  <button id="in" title="放大">&plus;</button>
+  <button id="fit" title="符合視窗">符合視窗</button>
+  <button id="real" title="實際大小 100%">100%</button>
+</div>
+<div id="stage"><div id="canvas">${svgText}</div></div>
+<div class="hint">滾輪縮放 · 拖曳平移 · 捲軸滾動</div>
+<script>
+(function(){
+  var stage=document.getElementById('stage'),canvas=document.getElementById('canvas'),svg=canvas.querySelector('svg'),pct=document.getElementById('pct');
+  var vb=svg.getAttribute('viewBox'),baseW,baseH;
+  if(vb){var p=vb.split(/[\\s,]+/).map(Number);baseW=p[2];baseH=p[3];}
+  if(!baseW||!baseH){var bb;try{bb=svg.getBBox();}catch(e){}baseW=(bb&&bb.width)||800;baseH=(bb&&bb.height)||600;}
+  svg.removeAttribute('width');svg.removeAttribute('height');
+  var zoom=1,MIN=0.1,MAX=10;
+  function apply(){svg.style.width=(baseW*zoom)+'px';svg.style.height=(baseH*zoom)+'px';pct.textContent=Math.round(zoom*100)+'%';}
+  function fit(){var aw=stage.clientWidth-48,ah=stage.clientHeight-48;var z=Math.min(aw/baseW,ah/baseH);if(!isFinite(z)||z<=0)z=1;zoom=Math.min(z,1);apply();}
+  function zoomAt(f,cx,cy){var prev=zoom;zoom=Math.min(MAX,Math.max(MIN,zoom*f));var r=zoom/prev;stage.scrollLeft=(stage.scrollLeft+cx)*r-cx;stage.scrollTop=(stage.scrollTop+cy)*r-cy;apply();}
+  document.getElementById('in').onclick=function(){zoomAt(1.25,stage.clientWidth/2,stage.clientHeight/2);};
+  document.getElementById('out').onclick=function(){zoomAt(0.8,stage.clientWidth/2,stage.clientHeight/2);};
+  document.getElementById('fit').onclick=fit;
+  document.getElementById('real').onclick=function(){var prev=zoom;zoom=1;var r=zoom/prev,cx=stage.clientWidth/2,cy=stage.clientHeight/2;stage.scrollLeft=(stage.scrollLeft+cx)*r-cx;stage.scrollTop=(stage.scrollTop+cy)*r-cy;apply();};
+  stage.addEventListener('wheel',function(e){e.preventDefault();var rc=stage.getBoundingClientRect();zoomAt(e.deltaY<0?1.12:0.89,e.clientX-rc.left,e.clientY-rc.top);},{passive:false});
+  var drag=false,lx=0,ly=0;
+  stage.addEventListener('mousedown',function(e){drag=true;lx=e.clientX;ly=e.clientY;stage.classList.add('grabbing');e.preventDefault();});
+  window.addEventListener('mousemove',function(e){if(!drag)return;stage.scrollLeft-=e.clientX-lx;stage.scrollTop-=e.clientY-ly;lx=e.clientX;ly=e.clientY;});
+  window.addEventListener('mouseup',function(){drag=false;stage.classList.remove('grabbing');});
+  apply();fit();
+})();
+<\/script>
+</body></html>`;
+    }
+
+    function setupOpenInNewWindow() {
+      // 每張 mermaid 圖表:整張可點擊 + 右上角「在新視窗開啟」按鈕。
+      document.querySelectorAll('figure.diagram').forEach((fig) => {
+        const svg = fig.querySelector('svg');
+        if (!svg) return;
+        svg.setAttribute('title', '點擊在新視窗開啟');
+        svg.addEventListener('click', () => openSvgInNewWindow(svg));
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'open-new';
+        btn.textContent = '⧉ 在新視窗開啟';
+        btn.addEventListener('click', (e) => { e.stopPropagation(); openSvgInNewWindow(svg); });
+        fig.appendChild(btn);
+      });
+      // 內文一般圖片(目前無,未來新增自動適用):直接於新分頁開原圖。
+      document.querySelectorAll('.wrap img').forEach((img) => {
+        img.setAttribute('title', '點擊在新視窗開啟');
+        img.addEventListener('click', () => window.open(img.src, '_blank'));
+      });
+    }
   </script>
 </body>
 </html>

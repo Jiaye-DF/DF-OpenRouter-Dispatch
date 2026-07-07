@@ -32,6 +32,9 @@ interface NavItem {
   subtitle?: string; // 副標(expanded 時顯示小字;collapsed 時併入 tooltip)
   icon: React.ComponentType<{ className?: string }>;
   adminOnly?: boolean;
+  // 該入口對非-admin 需具「所屬部門」才顯示(用量紀錄下放部門:無部門者後端一律 403,
+  // 故整條隱藏避免點進壞頁)。admin 不受此限。
+  memberNeedsDepartment?: boolean;
 }
 
 interface NavSection {
@@ -45,7 +48,12 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/dashboard", label: "儀錶板", icon: LayoutDashboard },
       { href: "/api-key-requests", label: "API Key 申請表單", icon: KeyRound },
-      { href: "/usage-logs", label: "用量紀錄", icon: ScrollText },
+      {
+        href: "/usage-logs",
+        label: "用量紀錄",
+        icon: ScrollText,
+        memberNeedsDepartment: true,
+      },
     ],
   },
   {
@@ -137,11 +145,17 @@ export function Sidebar() {
 
   const collapsed = state === "collapsed";
   const role = actor?.role ?? "user";
+  const hasDepartment = actor?.department_uid != null;
 
-  // 過濾掉 adminOnly 與空 section
+  // 過濾掉 adminOnly 與空 section;非-admin 且無部門者再隱藏 memberNeedsDepartment 入口
   const visibleSections = NAV_SECTIONS.map((sec) => ({
     ...sec,
-    items: sec.items.filter((it) => !it.adminOnly || role === "admin"),
+    items: sec.items.filter((it) => {
+      if (it.adminOnly && role !== "admin") return false;
+      if (it.memberNeedsDepartment && role !== "admin" && !hasDepartment)
+        return false;
+      return true;
+    }),
   })).filter((sec) => sec.items.length > 0);
 
   return (

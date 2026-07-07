@@ -17,6 +17,8 @@
 
 ## 候選 1 — 禁 repository / 類別方法名遮蔽 Python 內建型別(`list` / `dict` / `id` …)
 
+> **決議:✅ 採納(user 2026-07-07)** — 走**方案 A**(命名規則 + grandfather),已於 C 段落地:`03-backend/00-overview.md § 命名 / § 型別` 增訂「新增方法禁名 `list`(用 `list_page`);grandfather scope 回傳標註用 `builtins.list[...]`」+ 檔頭變更紀錄。方案 B(8 repo 全改名)另開清債 task,不阻塞。
+
 - **類型**:強化(新增可執行規則,root-cause 前次候選 1 的部分來源)
 - **來源**:fixed.md `v2.1 §7`(`UsageLogRepository.list` 遮蔽內建 `list`,使全 class `-> list[...]` 標註觸 mypy `valid-type` 假錯,並連坐 `stats.py` 端點 `for r in rows` 的 `__iter__` 錯;worker 明示「跨 §1/§2/§4/§7 **第 4 次**」)、`v2.1 §1`(`mypy app/repositories/` 整包 20 錯)、`v2.1 §4`(`mypy app/tasks/ai_model_eval.py` 連坐 10 錯)
 - **pattern**:符合判準①「同根因 ≥ 3 次」。§7 明確指認**根因**=方法名 `list` 遮蔽內建型別;現況盤點證實此為**全域系統性慣例**——`api_key_request` / `department` / `internal_key` / `openrouter_key` / `project` / `sdk_api_key` / `usage_log` / `user` **8 個 repository 全部**定義 `async def list(...)`(`grep "def list(" backend/app/repositories/`)。前次候選 1 談的是「acceptance 範圍 vs 鎖檔」的**流程面**,本候選補的是**碼面根因**:方法名遮蔽使任何 `list[...]` 回傳標註在該 class scope 失效,是 §1/§4/§7 mypy 債的直接來源之一。
@@ -29,6 +31,8 @@
 ---
 
 ## 候選 2 — 共用 `frontend/src/lib/utils/datetime.ts`(`formatDateTime`)缺口(強化前次候選 2)
+
+> **決議:✅ 採納(user 2026-07-07)** — 已於 C 段落地:建 `frontend/src/lib/utils/datetime.ts`(照 `04-datetime.md` spec)、遷移就地實作(`excel.ts` 的 `formatBucketTaipei` → 改用共用 `formatDateTime`;`usage-logs/[uid]/page.tsx:182` 的 `new Date(...).toLocaleString()` → `formatDateTime`)、`04-datetime.md` 檔頭補「共用檔正式落地」變更紀錄。規則本已存在,本次補的是**缺失的檔案 + 遷移**。
 
 - **類型**:強化(前次候選 2 的 datetime 分支再度復發)
 - **來源**:fixed.md `v2.1 §5`(task-410 首個需日期顯示的前端 task,鎖檔下就地實作 `formatDateTime`)、`v2.1 §8`(task-422 時序 sheet 再次就地實作 `formatBucketTaipei`,**明標「§5 同源復發、第 2 次」**);另 `usage-logs/[uid]/page.tsx:195` 現存 `toLocaleString()` 亦為同缺口下的就地寫法

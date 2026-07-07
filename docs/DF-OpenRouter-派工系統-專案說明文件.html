@@ -31,8 +31,8 @@
     font-family: "Microsoft JhengHei", "PingFang TC", "Segoe UI", system-ui, sans-serif;
     color: var(--text);
     background: var(--bg);
-    line-height: 1.7;
-    font-size: 16px;
+    line-height: 1.75;
+    font-size: 17px;
   }
   code, pre, .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, Menlo, monospace; }
 
@@ -52,7 +52,7 @@
     padding: 4px 12px; border-radius: 999px; font-size: 13px; color: #fff;
   }
 
-  .wrap { width: 80%; max-width: 1600px; margin: 0 auto; padding: 0 24px 80px; }
+  .wrap { width: 90%; max-width: 1720px; margin: 0 auto; padding: 0 24px 80px; }
   @media (max-width: 1024px) { .wrap { width: 100%; } }
 
   /* 目錄 — 兩欄卡片式導覽 */
@@ -154,7 +154,7 @@
 
   /* 表格 */
   .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; margin: 6px 0; }
-  table { border-collapse: collapse; width: 100%; font-size: 15.5px; }
+  table { border-collapse: collapse; width: 100%; font-size: 16px; }
   th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
   thead th { background: var(--code-bg); color: var(--muted); font-weight: 700; white-space: nowrap; }
   tbody tr:nth-child(even) { background: #fafbfc; }
@@ -196,6 +196,18 @@
     font-size: 13px; line-height: 1.5;
   }
   figure.diagram figcaption { text-align: center; color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+  /* 圖片 / 圖表點擊放大(lightbox) */
+  .zoomable { cursor: zoom-in; transition: filter .15s ease, outline-color .15s ease; outline: 2px solid transparent; outline-offset: 3px; border-radius: 4px; }
+  .zoomable:hover { filter: brightness(.98); outline-color: var(--blue); }
+  figure.diagram figcaption::after { content: " · 點擊圖表可放大"; color: var(--blue); font-size: 12px; }
+  .lightbox-overlay { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; padding: 32px; background: rgba(15, 23, 42, .86); backdrop-filter: blur(2px); }
+  .lightbox-overlay.open { display: flex; }
+  .lightbox-inner { background: #fff; border-radius: 14px; padding: 28px; max-width: 96vw; max-height: 92vh; overflow: auto; box-shadow: 0 24px 70px rgba(0,0,0,.45); }
+  .lightbox-inner svg, .lightbox-inner img { width: 100%; height: auto; max-width: none; display: block; }
+  .lightbox-close { position: fixed; top: 20px; right: 26px; width: 46px; height: 46px; border-radius: 50%; border: none; background: rgba(255,255,255,.92); color: #0f172a; font-size: 26px; line-height: 1; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+  .lightbox-close:hover { background: #fff; }
+  .lightbox-hint { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,.85); font-size: 13px; letter-spacing: .04em; }
 
   /* 分層架構 */
   .layer { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
@@ -1054,13 +1066,52 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
     mermaid.initialize({
-      startOnLoad: true,
+      startOnLoad: false,
       theme: 'default',
       securityLevel: 'loose',
       fontFamily: '"Microsoft JhengHei", "PingFang TC", "Segoe UI", system-ui, sans-serif',
       sequence: { useMaxWidth: true, mirrorActors: false, wrap: true },
       flowchart: { useMaxWidth: true, htmlLabels: true }
     });
+
+    // 顯式渲染,渲染完成後才掛「點擊放大」(mermaid 圖表是非同步產生的 SVG)。
+    try { await mermaid.run(); } catch (e) { console.error('mermaid render error', e); }
+    setupLightbox();
+
+    function setupLightbox() {
+      const overlay = document.createElement('div');
+      overlay.className = 'lightbox-overlay';
+      overlay.innerHTML =
+        '<button class="lightbox-close" aria-label="關閉">&times;</button>' +
+        '<div class="lightbox-inner"></div>' +
+        '<div class="lightbox-hint">點擊空白處或按 Esc 關閉</div>';
+      document.body.appendChild(overlay);
+      const inner = overlay.querySelector('.lightbox-inner');
+
+      function close() { overlay.classList.remove('open'); inner.innerHTML = ''; }
+      function open(el) {
+        const clone = el.cloneNode(true);
+        if (clone.tagName && clone.tagName.toLowerCase() === 'svg') {
+          clone.removeAttribute('width');
+          clone.removeAttribute('height');
+          clone.style.maxWidth = 'none';
+        }
+        inner.innerHTML = '';
+        inner.appendChild(clone);
+        overlay.classList.add('open');
+      }
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay || e.target.classList.contains('lightbox-close')) close();
+      });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+
+      // 所有圖表(mermaid 渲染出的 SVG)與內文圖片皆可點擊放大。
+      document.querySelectorAll('figure.diagram svg, .wrap img').forEach((el) => {
+        el.classList.add('zoomable');
+        el.setAttribute('title', '點擊放大');
+        el.addEventListener('click', () => open(el));
+      });
+    }
   </script>
 </body>
 </html>

@@ -131,6 +131,7 @@
     <a href="#examples">完整範例</a>
     <a href="#stream">串流回應(SSE)</a>
     <a href="#errors">錯誤碼對照</a>
+    <a href="#usage">查看部門用量</a>
     <a href="#security">安全注意事項</a>
   </nav>
 
@@ -586,6 +587,32 @@ if __name__ == "__main__":
           </tbody>
         </table>
       </div>
+    </div>
+  </section>
+
+  <!-- 查看部門用量 -->
+  <section id="usage">
+    <h2>查看部門用量紀錄(平台網站)</h2>
+    <div class="card">
+      <p>呼叫代理端點<strong>不需要</strong>登入本網站(見上文)。但自 v2.1.1 起,<strong>有所屬部門的使用者</strong>可另外登入平台網站,查看<strong>自己部門</strong>的用量紀錄——用量本質上是部門的成本,開放給部門成員自助掌握花費。</p>
+      <ul>
+        <li><strong>誰看得到</strong>:登入後,若你有所屬部門,左側選單會出現「<strong>用量紀錄</strong>」;<strong>沒有所屬部門的帳號不會看到此功能</strong>(選單不顯示)。你只會看到自己部門的紀錄,看不到其他部門。</li>
+        <li><strong>看得到什麼</strong>:每一筆呼叫都是一列,可看到時間、模型、token 用量、花費、是否成功等;點單筆可展開<strong>單筆明細</strong>。</li>
+      </ul>
+
+      <p class="fw">用量列表顯示所屬專案 + 專案篩選</p>
+      <ul>
+        <li>列表新增「<strong>專案</strong>」欄,一眼看出<strong>每筆呼叫屬於哪個專案</strong>(對應呼叫時帶的 <code>X-Project-Code</code>)。</li>
+        <li>上方篩選列新增可<strong>輸入搜尋的「專案」下拉</strong>:輸入專案名稱關鍵字挑選後,列表只顯示該專案的用量,方便單獨檢視某專案的花費。</li>
+      </ul>
+
+      <p class="fw">下載 Excel 更完整</p>
+      <p>在用量儀表板點「<strong>下載 Excel</strong>」,匯出的活頁簿包含更完整的多張工作表,讓你從不同角度盤點花費:</p>
+      <ul>
+        <li><strong>總覽</strong>、<strong>部門</strong>、<strong>專案</strong>、<strong>專案 × 模型花費明細</strong>、<strong>依模型</strong>、<strong>使用者</strong>、<strong>時序</strong>。</li>
+        <li>其中「專案 × 模型花費明細」可看到<strong>每個專案的花費再依模型拆解</strong>,快速掌握哪個專案、用哪個模型花得多。</li>
+      </ul>
+      <p class="muted small">管理員的操作與檢視範圍不變;非管理員檢視單筆用量明細時,<strong>不會</strong>顯示「AI 分析」區塊。</p>
     </div>
   </section>
 

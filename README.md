@@ -4,9 +4,9 @@
 >
 > 本檔為**交接用**：環境、啟動、部署、分支流程、維運須知一次看完。功能設計細節見 [docs/](docs/)。
 >
-> 目前版本進度：**v2.1.0 已上線**（已併入 `main` / `development`）。當前開發分支 `dev-v2.1`。
+> 目前版本進度：**v2.1.1 已上線**（已併入 `main` / `development`）。當前開發分支 `dev-v2.1`。
 >
-> v2.0–v2.1 主軸：**AI 模型適配評審 + 真實重跑 + 對比裁決**（taskiq + Redis 背景管線），詳見 §12。完整系統說明與架構/流程圖見 [docs/DF-OpenRouter-派工系統-專案說明文件.html](docs/DF-OpenRouter-派工系統-專案說明文件.html)。
+> v2.0–v2.1 主軸：**AI 模型適配評審 + 真實重跑 + 對比裁決**（taskiq + Redis 背景管線），詳見 §12。v2.1.1 另補：**下載 Excel 全維度鏡射儀表板（含專案×模型花費）** 與 **用量紀錄下放部門（顯示所屬專案 + 專案篩選）**。完整系統說明與架構/流程圖見 [docs/DF-OpenRouter-派工系統-專案說明文件.html](docs/DF-OpenRouter-派工系統-專案說明文件.html)。
 
 ---
 
@@ -161,7 +161,7 @@ npm run type-check && npm run lint
 | 組織 | `/departments/*`、`/projects/*` | 部門、專案（專案代碼即 `X-Project-Code`） |
 | 金鑰 | `/openrouter-keys/*`、`/sdk-keys/*`、`/internal-keys/*` | OpenRouter / SDK / 內部 LLM 金鑰 |
 | 模型 | `/models/*`、`/allowed/models`、`/model-tiers/*` | 模型主檔同步、白名單、分級 |
-| 用量 | `/usage-logs/*`、`/stats/*` | 用量查詢、彙總 |
+| 用量 | `/usage-logs/*`、`/stats/*`（含 `/stats/by-project-model`） | 用量查詢、彙總（依部門 / 模型 / 專案 / 使用者 / 時序 / **專案×模型**）。admin 看全部;一般使用者鎖**自身部門**（v2.1.1）。`/usage-logs` 回應帶所屬專案、列表支援專案篩選 |
 | **代理** | `/model/chat` | SDK 呼叫入口（依模型 provider 自動分流；舊 `/model/openrouter/chat` 已 deprecated） |
 | 申請單 | `/api-key-requests/*` | API Key 申請生命週期（見下） |
 | **AI 分析** | `/ai-eval/judge-settings`、`/ai-eval/evaluations/by-usage-log/{uid}`、`/ai-eval/reruns` | 判別模型設定；依用量紀錄取評審結果；跨 log AI 判決總覽（分組分頁 + 編號排序/搜尋）。admin only（v2.0–2.1，見 §12） |

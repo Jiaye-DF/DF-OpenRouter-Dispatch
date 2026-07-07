@@ -5,7 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAppSelector } from "@/store/hooks";
 
 // 非 admin 僅允許這些路徑；其餘 (main) 路由一律視為 admin 專用，新增頁面自動受保護。
-const MEMBER_ALLOWED_PREFIXES = ["/dashboard", "/user-guide", "/api-key-requests"];
+const MEMBER_ALLOWED_PREFIXES = [
+  "/dashboard",
+  "/user-guide",
+  "/api-key-requests",
+  "/usage-logs",
+];
 
 function isMemberAllowed(pathname: string): boolean {
   return MEMBER_ALLOWED_PREFIXES.some(

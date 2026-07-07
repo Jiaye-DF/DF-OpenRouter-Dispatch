@@ -1,7 +1,7 @@
 ---
 id: task-423
 title: 前端 用量記錄 專案欄 + 專案 Combobox 篩選 + 明細專案欄 + RouteGuard/Sidebar 放行
-status: pending
+status: done
 parallel: false
 depends_on: [task-421, task-422]
 affected_files:

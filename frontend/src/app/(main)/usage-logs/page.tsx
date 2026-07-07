@@ -17,7 +17,7 @@ import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
 import { formatUSD } from "@/lib/utils/format";
 import { useAppSelector } from "@/store/hooks";
-import type { Department, Model, Paginated, UsageLog } from "@/types/api";
+import type { Department, Model, Paginated, Project, UsageLog } from "@/types/api";
 
 // 用量紀錄頁:部門 / 狀態 chip、模型 Combobox、時間區間快捷篩選
 
@@ -58,9 +58,11 @@ export default function UsageLogsPage() {
   const router = useRouter();
   const { showDialog } = useDialog();
   const role = useAppSelector((s) => s.auth.actor?.role);
+  const isAdmin = role === "admin";
   const [items, setItems] = React.useState<UsageLog[]>([]);
   const [depts, setDepts] = React.useState<Department[]>([]);
   const [models, setModels] = React.useState<Model[]>([]);
+  const [projects, setProjects] = React.useState<Project[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [page, setPage] = React.useState(1);
   const [total, setTotal] = React.useState(0);
@@ -68,6 +70,7 @@ export default function UsageLogsPage() {
 
   const [filters, setFilters] = React.useState({
     department_uid: "",
+    project_uid: "",
     model: "",
     status: "",
     used_tools: "", // "" | "true" | "false"
@@ -81,6 +84,7 @@ export default function UsageLogsPage() {
     try {
       const query: Record<string, string | number> = { page, size };
       if (filters.department_uid) query.department_uid = filters.department_uid;
+      if (filters.project_uid) query.project_uid = filters.project_uid;
       if (filters.model) query.model = filters.model;
       if (filters.status) query.status = filters.status;
       if (filters.used_tools) query.used_tools = filters.used_tools;
@@ -103,21 +107,31 @@ export default function UsageLogsPage() {
   }, [page, filters, showDialog]);
 
   React.useEffect(() => {
-    if (role === "admin") load();
-  }, [load, role]);
+    load();
+  }, [load]);
+
+  React.useEffect(() => {
+    // 專案 / 模型 清單所有登入者皆需(專案 / 模型篩選);非-admin 由後端鎖部門 / 僅回 active
+    apiClient
+      .get<Paginated<Project>>(API_ENDPOINTS.projects, {
+        query: { page: 1, size: 200 },
+      })
+      .then((d) => setProjects(d.items))
+      .catch(() => {});
+    apiClient
+      .get<Paginated<Model>>(API_ENDPOINTS.models)
+      .then((d) => setModels(d.items))
+      .catch(() => {});
+  }, []);
 
   React.useEffect(() => {
     if (role !== "admin") return;
-    // 部門 / 模型 清單僅載入一次,供篩選元件使用
+    // 部門清單僅 admin 需要(部門篩選為 admin-only)
     apiClient
       .get<Paginated<Department>>(API_ENDPOINTS.departments, {
         query: { page: 1, size: 200 },
       })
       .then((d) => setDepts(d.items))
-      .catch(() => {});
-    apiClient
-      .get<Paginated<Model>>(API_ENDPOINTS.models)
-      .then((d) => setModels(d.items))
       .catch(() => {});
   }, [role]);
 
@@ -130,6 +144,18 @@ export default function UsageLogsPage() {
       ...models.map((m) => ({ value: m.model_key, label: m.model_key })),
     ],
     [models]
+  );
+
+  // 專案選項:label 帶「代號 · 名稱」供 Combobox 關鍵字搜尋
+  const projectOptions = React.useMemo(
+    () => [
+      { value: "", label: "全部專案" },
+      ...projects.map((p) => ({
+        value: p.project_uid,
+        label: `${p.code} · ${p.name}`,
+      })),
+    ],
+    [projects]
   );
 
   // 篩選變更一律回到第 1 頁;load 依賴 filters / page 變化自動重新查詢
@@ -147,6 +173,7 @@ export default function UsageLogsPage() {
   const reset = () =>
     update({
       department_uid: "",
+      project_uid: "",
       model: "",
       status: "",
       used_tools: "",
@@ -155,19 +182,6 @@ export default function UsageLogsPage() {
     });
 
   const totalPages = Math.max(1, Math.ceil(total / size));
-
-  if (role !== "admin") {
-    return (
-      <>
-        <PageTitle title="用量紀錄" />
-        <Card>
-          <CardContent className="pt-6">
-            <EmptyState title="權限不足" description="本頁僅限 admin 存取" />
-          </CardContent>
-        </Card>
-      </>
-    );
-  }
 
   return (
     <>
@@ -179,32 +193,48 @@ export default function UsageLogsPage() {
         <CardContent className="pt-6 flex flex-col gap-4">
           {/* 篩選區 — 依面向分列 */}
           <div className="flex flex-col gap-3 border-b border-border pb-4">
-            {/* 部門 */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-20 shrink-0 text-sm text-muted-foreground">
-                部門：
-              </span>
-              <FilterChip
-                active={!filters.department_uid}
-                onClick={() => update({ department_uid: "" })}
-              >
-                全部
-              </FilterChip>
-              {depts.map((d) => (
-                <FilterChip
-                  key={d.department_uid}
-                  active={filters.department_uid === d.department_uid}
-                  onClick={() => update({ department_uid: d.department_uid })}
-                >
-                  {d.name}
-                </FilterChip>
-              ))}
-            </div>
-
-            {/* 狀態 + 模型 — 同列水平排列 */}
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+            {/* 部門(admin-only;非-admin 由後端鎖自身部門) */}
+            {isAdmin && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="w-20 shrink-0 text-sm text-muted-foreground">
+                  部門：
+                </span>
+                <FilterChip
+                  active={!filters.department_uid}
+                  onClick={() => update({ department_uid: "" })}
+                >
+                  全部
+                </FilterChip>
+                {depts.map((d) => (
+                  <FilterChip
+                    key={d.department_uid}
+                    active={filters.department_uid === d.department_uid}
+                    onClick={() => update({ department_uid: d.department_uid })}
+                  >
+                    {d.name}
+                  </FilterChip>
+                ))}
+              </div>
+            )}
+
+            {/* 專案 + 狀態 + 模型 — 同列水平排列 */}
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  專案：
+                </span>
+                <Combobox
+                  className="w-64"
+                  options={projectOptions}
+                  value={filters.project_uid}
+                  onChange={(v) => update({ project_uid: v })}
+                  placeholder="全部專案"
+                  searchPlaceholder="搜尋專案..."
+                  emptyText="查無專案"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="shrink-0 text-sm text-muted-foreground">
                   狀態：
                 </span>
                 {STATUS_OPTIONS.map((o) => (
@@ -314,7 +344,8 @@ export default function UsageLogsPage() {
                     </button>
                   </TH>
                   <TH>時間</TH>
-                  <TH>部門</TH>
+                  {isAdmin && <TH>部門</TH>}
+                  <TH>專案</TH>
                   <TH>模型</TH>
                   <TH className="text-right">輸入 Token</TH>
                   <TH className="text-right">回覆 Token</TH>
@@ -340,7 +371,23 @@ export default function UsageLogsPage() {
                     <TD className="text-sm text-muted-foreground whitespace-nowrap">
                       {new Date(log.created_at).toLocaleString()}
                     </TD>
-                    <TD>{deptName(log.department_uid)}</TD>
+                    {isAdmin && <TD>{deptName(log.department_uid)}</TD>}
+                    <TD>
+                      {log.project_code ? (
+                        <div className="flex flex-col">
+                          <span className="font-mono text-sm">
+                            {log.project_code}
+                          </span>
+                          {log.project_name && (
+                            <span className="text-xs text-muted-foreground">
+                              {log.project_name}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TD>
                     <TD className="font-mono text-sm">{log.model}</TD>
                     <TD className="text-right">
                       {log.prompt_tokens.toLocaleString()}

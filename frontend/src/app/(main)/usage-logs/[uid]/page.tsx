@@ -8,7 +8,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/common/EmptyState";
 import { AiAnalysisSection } from "./AiAnalysisSection";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
@@ -123,7 +122,7 @@ export default function UsageLogDetailPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!uid || role !== "admin") return;
+    if (!uid) return;
     setLoading(true);
     apiClient
       .get<UsageLogDetail>(API_ENDPOINTS.usageLogById(uid))
@@ -141,19 +140,6 @@ export default function UsageLogDetailPage() {
   // v1.6.2 起 output_text 為完整回覆;舊紀錄僅有截斷的 first_text。
   const outputText = resp?.output_text ?? resp?.first_text ?? "";
   const isLegacyOutput = !resp?.output_text && !!resp?.first_text;
-
-  if (role !== "admin") {
-    return (
-      <>
-        <PageTitle title="用量紀錄詳情" />
-        <Card>
-          <CardContent className="pt-6">
-            <EmptyState title="權限不足" description="本頁僅限 admin 存取" />
-          </CardContent>
-        </Card>
-      </>
-    );
-  }
 
   return (
     <>
@@ -195,6 +181,19 @@ export default function UsageLogDetailPage() {
                 label="時間"
                 value={new Date(log.created_at).toLocaleString()}
               />
+              <Field
+                label="專案"
+                value={
+                  log.project_code ? (
+                    <span>
+                      <span className="font-mono">{log.project_code}</span>
+                      {log.project_name ? ` · ${log.project_name}` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )
+                }
+              />
               <Field label="模型" value={<span className="font-mono">{log.model}</span>} />
               <Field
                 label="狀態"
@@ -231,8 +230,9 @@ export default function UsageLogDetailPage() {
             </CardContent>
           </Card>
 
-          {/* AI 分析(v2.0.3,task-306):掛在 metadata Card 下方,獨立 fetch 評審結果 */}
-          {uid && <AiAnalysisSection uid={uid} />}
+          {/* AI 分析(v2.0.3,task-306):掛在 metadata Card 下方,獨立 fetch 評審結果。
+              v2.1.1:維持 admin-only,非-admin 檢視不渲染。 */}
+          {uid && role === "admin" && <AiAnalysisSection uid={uid} />}
 
           {/* Input */}
           <section>

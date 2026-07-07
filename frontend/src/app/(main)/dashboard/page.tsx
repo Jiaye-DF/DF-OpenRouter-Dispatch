@@ -21,6 +21,7 @@ import type {
   StatsByDepartment,
   StatsByModel,
   StatsByProject,
+  StatsByProjectModel,
   StatsByUser,
   StatsOverview,
   StatsTimeseriesPoint,
@@ -122,13 +123,37 @@ export default function DashboardPage() {
     setExporting(true);
     try {
       const { exportDashboardToExcel } = await import("@/lib/export/excel");
+      // 下載時補抓 by-project-model(同畫面篩選 + 台北日界 +08:00);其餘維度畫面已持有
+      const query: Record<string, string> = {};
+      if (filters.department_uid) query.department_uid = filters.department_uid;
+      if (filters.project_uid) query.project_uid = filters.project_uid;
+      if (filters.user_uid) query.user_uid = filters.user_uid;
+      if (filters.from) query.from = `${filters.from}T00:00:00+08:00`;
+      if (filters.to) query.to = `${filters.to}T23:59:59+08:00`;
+      let byProjectModel: StatsByProjectModel[] | undefined;
+      try {
+        byProjectModel = await apiClient.get<StatsByProjectModel[]>(
+          API_ENDPOINTS.statsByProjectModel,
+          { query },
+        );
+      } catch {
+        byProjectModel = undefined;
+      }
       // 檔名帶篩選的日期區間(資料本身已是該區間彙總結果)
       const range =
         filters.from && filters.to
           ? `${filters.from}_${filters.to}`
           : localYmd(new Date());
       exportDashboardToExcel(
-        { byDept, byProject, byUser },
+        {
+          overview,
+          byDept,
+          byProject,
+          byProjectModel,
+          byModel,
+          byUser,
+          timeseries,
+        },
         `dashboard_${range}.xlsx`,
       );
     } finally {

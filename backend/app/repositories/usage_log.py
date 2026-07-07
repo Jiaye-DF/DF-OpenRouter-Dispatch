@@ -1,8 +1,9 @@
+import builtins
 from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import String, case, cast, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.department import Department
@@ -24,6 +25,28 @@ class UsageLogRepository:
             UsageLog.is_deleted.is_(False),
         )
         return (await self.db.execute(stmt)).scalar_one_or_none()
+
+    async def get_by_uid_with_project(
+        self, usage_log_uid: UUID
+    ) -> tuple[UsageLog, str | None, str | None] | None:
+        """單筆用量 + 所屬專案(LEFT JOIN projects,保留 project_uid IS NULL 的歷史列)。
+
+        另立方法而不改 get_by_uid:後者被 AI 評審管線(ai_model_eval*)以
+        `UsageLog | None` 直用,改其回傳型別會連坐 AI 評審鏈(v2.1.1 明訂不涉評審管線)。
+        見 docs/Tasks/v2.1/fixed.md §8。
+        """
+        stmt = (
+            select(UsageLog, Project.code, Project.name)
+            .join(Project, Project.project_uid == UsageLog.project_uid, isouter=True)
+            .where(
+                UsageLog.usage_log_uid == usage_log_uid,
+                UsageLog.is_deleted.is_(False),
+            )
+        )
+        row = (await self.db.execute(stmt)).first()
+        if row is None:
+            return None
+        return row[0], row[1], row[2]
 
     # --- 查詢 ---
 
@@ -77,8 +100,12 @@ class UsageLogRepository:
         used_tools: bool | None = None,
         pid: int | None = None,
         order: str = "desc",
-    ) -> tuple[list[UsageLog], int]:
-        stmt = select(UsageLog)
+    ) -> tuple[builtins.list[tuple[UsageLog, str | None, str | None]], int]:
+        # LEFT JOIN projects:每筆帶所屬專案 code/name;歷史 project_uid IS NULL 的列仍保留
+        # (三欄回 None)。回傳 (UsageLog, project_code, project_name) tuple 供 router 組 schema。
+        stmt = select(UsageLog, Project.code, Project.name).join(
+            Project, Project.project_uid == UsageLog.project_uid, isouter=True
+        )
         stmt = self._apply_filters(
             stmt,
             department_uid=department_uid,
@@ -106,7 +133,8 @@ class UsageLogRepository:
         # 編號(pid)排序:預設 desc(大→小);order="asc" 改小→大。
         order_by = UsageLog.pid.asc() if order == "asc" else UsageLog.pid.desc()
         stmt = stmt.order_by(order_by).offset((page - 1) * size).limit(size)
-        items = list((await self.db.execute(stmt)).scalars().all())
+        rows = (await self.db.execute(stmt)).all()
+        items = [(r[0], r[1], r[2]) for r in rows]
         total = int((await self.db.execute(count_stmt)).scalar_one())
         return items, total
 
@@ -248,6 +276,53 @@ class UsageLogRepository:
             .group_by(
                 UsageLog.project_uid, Project.code, Project.name, Project.description
             )
+        )
+        stmt = self._apply_filters(
+            stmt,
+            department_uid=department_uid,
+            project_uid=project_uid,
+            user_uid=user_uid,
+            model=None,
+            from_time=from_time,
+            to_time=to_time,
+            status=None,
+        )
+        rows = (await self.db.execute(stmt)).all()
+        return [
+            (r[0], r[1], r[2], r[3], int(r[4]), int(r[5]), Decimal(r[6]))
+            for r in rows
+        ]
+
+    async def by_project_model(
+        self,
+        *,
+        department_uid: UUID | None,
+        project_uid: UUID | None = None,
+        user_uid: UUID | None = None,
+        from_time: datetime | None,
+        to_time: datetime | None,
+    ) -> builtins.list[tuple[UUID, str, str, str, int, int, Decimal]]:
+        """依「專案 × 模型」彙總;歷史 project_uid 為 NULL 的紀錄不出現(JOIN 內連線)。
+
+        排序:專案代碼升冪、同專案內模型花費(cost_usd)由大到小。
+        """
+        cost_sum = func.coalesce(func.sum(UsageLog.cost_usd), 0)
+        stmt = (
+            select(
+                UsageLog.project_uid,
+                Project.code,
+                Project.name,
+                UsageLog.model,
+                func.count(UsageLog.pid),
+                func.coalesce(func.sum(UsageLog.total_tokens), 0),
+                cost_sum,
+            )
+            .select_from(UsageLog)
+            .join(Project, Project.project_uid == UsageLog.project_uid)
+            .group_by(
+                UsageLog.project_uid, Project.code, Project.name, UsageLog.model
+            )
+            .order_by(Project.code.asc(), cost_sum.desc())
         )
         stmt = self._apply_filters(
             stmt,

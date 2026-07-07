@@ -21,6 +21,12 @@ class UsageLogListItem(BaseModel):
     usage_log_uid: UUID
     user_uid: UUID | None
     department_uid: UUID | None
+    # v2.1.1:每筆呼叫所屬專案。project_uid 為 UsageLog 既有欄位(from_attributes 直讀);
+    # project_code / project_name 由 repository LEFT JOIN projects 取得,於 router 以
+    # model_copy(update=...) 補上;歷史 project_uid IS NULL 的列三欄皆為 None。
+    project_uid: UUID | None = None
+    project_code: str | None = None
+    project_name: str | None = None
     openrouter_key_uid: UUID | None
     model: str
     prompt_tokens: int

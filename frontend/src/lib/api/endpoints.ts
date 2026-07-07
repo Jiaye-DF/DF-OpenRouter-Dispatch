@@ -57,6 +57,8 @@ export const API_ENDPOINTS = {
   statsByDepartment: "/api/v1/stats/by-department",
   statsByModel: "/api/v1/stats/by-model",
   statsByProject: "/api/v1/stats/by-project",
+  // v2.1.1 依「專案 × 模型」雙維度彙總(Excel 專案×模型明細 sheet)
+  statsByProjectModel: "/api/v1/stats/by-project-model",
   statsByUser: "/api/v1/stats/by-user",
   statsTimeseries: "/api/v1/stats/timeseries",
 

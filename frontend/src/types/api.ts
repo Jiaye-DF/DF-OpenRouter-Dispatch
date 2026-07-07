@@ -190,7 +190,11 @@ export interface UsageLog {
   usage_log_uid: string;
   user_uid: string | null;
   department_uid: string;
+  // v2.1.1:每筆呼叫所屬專案(repository LEFT JOIN projects 取得)。
+  // 歷史 project_uid IS NULL 的列三欄皆為 null,列仍出現。
   project_uid: string | null;
+  project_code: string | null;
+  project_name: string | null;
   openrouter_key_uid: string | null;
   model: string;
   prompt_tokens: number;
@@ -226,6 +230,20 @@ export interface UsageResponseSummary {
 export interface UsageLogDetail extends UsageLog {
   request_content: UsageRequestContent | null;
   response_summary: UsageResponseSummary | null;
+}
+
+// 用量紀錄列表查詢參數(v2.1.1 補 project_uid;非-admin 部門由後端鎖定)
+export interface UsageLogListQuery {
+  page?: number;
+  size?: number;
+  department_uid?: string;
+  project_uid?: string;
+  model?: string;
+  status?: string;
+  used_tools?: string;
+  order?: string;
+  from?: string;
+  to?: string;
 }
 
 // 儀錶板彙總
@@ -270,6 +288,18 @@ export interface StatsByUser {
   user_uid: string | null;
   username: string | null;
   employee_id: string | null;
+  total_requests: number;
+  total_tokens: number;
+  total_cost_usd: string;
+}
+
+// v2.1.1 新增 — 依「專案 × 模型」雙維度彙總(對齊後端 ProjectModelStatItem)
+// Decimal 成本以字串傳輸,避免 JS 浮點誤差(沿用既有 stats 慣例)
+export interface StatsByProjectModel {
+  project_uid: string;
+  project_code: string;
+  project_name: string;
+  model: string;
   total_requests: number;
   total_tokens: number;
   total_cost_usd: string;

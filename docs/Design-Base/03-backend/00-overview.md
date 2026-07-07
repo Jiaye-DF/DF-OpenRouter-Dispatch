@@ -4,6 +4,9 @@
 
 > **永遠讀**:本檔為任何後端任務都必遵守的「風格地板」(分層 / 命名 / 型別 / 註解)。子任務專屬規則見對應子檔。
 
+> **變更紀錄**
+> - 2026-07-07:命名 + 型別段新增「禁方法名遮蔽 Python 內建型別 / 函式」規則(基於 fixed.md v2.1 §1 / §4 / §7,`list` 遮蔽第 4 次復發;reflect-report-260707051743 候選 1)。既有 8 repo 的 `list` 方法 **grandfather**,僅規範本日之後新增方法。
+
 ---
 
 ## 分層(永遠遵守)
@@ -28,11 +31,14 @@ api → services → repositories → models
 | 環境變數 | SCREAMING_SNAKE | `JWT_SECRET_KEY` |
 | Pydantic schema | PascalCase + 後綴 | `AccountCreateRequest` / `UserResponse` |
 
+- **禁方法名遮蔽 Python 內建型別 / 函式**(`list` / `dict` / `set` / `type` / `id` / `filter` / `map` …):class 方法名一旦與內建同名,會使該 class scope 內所有 `-> list[...]` 等裸內建標註觸 mypy `valid-type` 假錯並連坐呼叫端(見 fixed.md v2.1 §7)。**新增**的 repository / service 分頁查詢方法一律用 `list_page` / `list_paged`(**禁** `list`)。既有 8 repo 的 `list` 為 grandfather 慣例(2026-07-07 前),遷移走獨立清債 task,不在此強制。
+
 ## 型別(永遠遵守)
 
 - 函式**必**標參數+回傳型別
 - **禁** `Any`(異質容器用 `object`,DB session 用 `AsyncSession`)
 - **禁** `typing.List` / `typing.Dict` → `list[...]` / `dict[...]`
+- 若方法名不得已遮蔽內建型別(grandfather 的 `list` 等),該 class 內的回傳標註**必**用完整限定 `builtins.list[...]` 迴避遮蔽假錯(對齊 fixed.md v2.1 §7);新碼應循上段直接改名避免遮蔽。
 
 ## 註解
 

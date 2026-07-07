@@ -67,3 +67,48 @@
 - **修正**:**刻意破例**——把既有 `pid`(穩定、唯一、遞增)對 **admin-only** 外露為「顯示編號 #pid」,兩頁共用。僅唯讀顯示,不作為連結 / 不可導頁(守判決總覽紅線);非 admin 端不暴露。schema 與型別均加註此為刻意破例並指向本條。**不動 DB**(pid 既有)。
 - **規範參照**:`04-databases/01-identifiers.md`(pid 內部 / uid 對外)、`02-frontend/00-overview.md`(ID 隱藏)
 - **後續**:reflect 候選 — 於 Design-Base `01-identifiers.md` / `02-frontend/00-overview.md` 補「admin 端可用 pid 作唯讀人類可讀參考號(非連結、非對外公開端點)」的明文例外,把本次破例升為正式規則;否則日後 review 易誤判為違規。
+
+## §7 — `UsageLogRepository.list` 方法名遮蔽內建 `list`,新增 `by_project_model` 若沿用 `-> list[...]` 標註即觸 mypy `valid-type` + 連坐 stats 端點(task-420)
+
+- **時間**:2026-07-07T00:00+08:00
+- **commit / PR**:`<pending>`(task-420,orchestrator 統一提交)
+- **影響檔案**:`backend/app/repositories/usage_log.py`(`UsageLogRepository.list` 方法名遮蔽內建 `list`;task-420 新增 `by_project_model`)、連坐 `backend/app/api/v1/stats.py`(6 個彙總端點 `for r in rows` 迭代)
+- **問題**:task-420 acceptance 要求 `mypy app/` 零錯誤。`UsageLogRepository` 內有 `def list(...)` 方法,在 class scope 遮蔽內建 `list`,使同 class 內所有 `-> list[tuple[...]]` 回傳標註被 mypy 解析成「方法 `list` 當型別」→ `valid-type` 錯(既有 `by_department`/`by_model`/`by_project`/`by_user`/`timeseries` 5 法皆已中招,屬 §1/§2/§4 同源既有債);且回傳型別解析失敗會退化為 `list?`,連帶讓 `stats.py` 各端點 `for r in rows` 報 `has no attribute "__iter__"`。若新方法 `by_project_model` 直接沿用 `-> list[...]`,會**再新增 2 個**同類錯誤(repo 標註 + stats 端點迭代)。實測基線 HEAD = 47 錯,沿用寫法 = 49 錯。
+- **根因**:同 §1/§2/§4——`UsageLogRepository.list` 方法名與內建 `list` 型別衝突的既有型別債從未清理;`from __future__ import annotations` 亦無法解(mypy 仍以 class scope 解析標註名)。task-420 範圍可動 `usage_log.py`,但清整個 class 的 `list` 遮蔽(改名 method / 全面改標註)超出本 task scope 且牽動 task-421 共用同檔。
+- **修正**:task-420 新方法 `by_project_model` 的回傳標註改用 `builtins.list[tuple[...]]`(顯式繞過 class scope 的 `list` 遮蔽),使該方法 + 其消費端 `by_project_model_endpoint` **零新增 mypy 錯**;`mypy app/` 總數維持基線 47(未引入新錯)。既有 5 個 sibling 方法/端點的既有錯不在本 task scope,不擅改。已於 import `builtins` 沿用此意圖。
+- **規範參照**:`03-backend/07-testing.md`(acceptance 全綠要求)/ `04-databases/04-sql-safety.md`(本 task 無 raw 拼接,純 ORM)
+- **後續**:reflect 候選 — 此為跨 §1/§2/§4/§7 第 4 次記載「`UsageLogRepository.list` 方法名遮蔽內建 `list`」;已遠超同類升規門檻。建議開獨立清債 task:把 `list` 方法改名(如 `list_paged` / `paginate`),全 class 回傳標註即可回歸 `list[...]`、`stats.py` 連坐錯一併消,並移除本 task 的 `builtins.list` 權宜。task-421 亦動同檔,清債後兩者受惠。
+
+## §8 — 共用 `utils/datetime.ts`(`formatDateTime`)仍未建立,task-422 時序 sheet 時間格式化只能於 `excel.ts` 就地實作(§5 同源復發)
+
+- **時間**:2026-07-07T00:00+08:00
+- **commit / PR**:`<pending>`(task-422,orchestrator 統一提交)
+- **影響檔案**:`frontend/src/lib/utils/datetime.ts`(**仍不存在**,應為共用日期 util 落點);`frontend/src/lib/export/excel.ts`(task-422 範圍檔,就地實作 `formatBucketTaipei`)
+- **問題**:task-422 / propose §C.1 明訂時序 sheet「時間 (UTC+8)」欄「時間以既有 `utils/datetime` 格式化(對齊 `02-frontend/04-datetime.md`)」。但 `frontend/src/lib/utils/` 至今仍僅 `cn.ts` / `format.ts`,**無** `datetime.ts`(`grep formatDateTime` 全倉零命中);§5(task-410)記載的基建缺口尚未被任何 task 補齊。task-422 範圍鎖死四檔(`excel.ts` / `dashboard/page.tsx` / `types/api.ts` / `endpoints.ts`),**不可**新建 `utils/datetime.ts`。
+- **根因**:與 §5 完全同源——Design-Base `04-datetime.md` 規定的共用日期 util 從未落地;v2.1.1 任務切分再次未把「建立 `utils/datetime.ts`」納入任一 task,使需要時間顯示的 task-422 在範圍鎖檔下無共用可用。時序 bucket 為後端以 Asia/Taipei 切出的 naive wall-clock 字串,若丟 `new Date()` 會二次偏移(`04-datetime.md` 明禁)。
+- **修正**:於 `excel.ts` 內就地實作與 `04-datetime.md` 範例**逐字一致**的正規表示式版 `formatBucketTaipei`(切 ISO 字串、**不**用 `new Date` / `toLocaleString` / `timeZone`),符合時區策略地板;已於程式註解標明此為權宜並 cross-ref `04-datetime.md`,待共用 util 落地後改走共用入口。
+- **規範參照**:`02-frontend/04-datetime.md`(共用入口 + 禁 `toLocaleString` / `new Date`)/ `02-frontend/05-components.md § 必抽`(日期格式化必走 `formatDateTime`)
+- **後續**:reflect 候選 — 此為跨 §5(task-410)/§8(task-422)第 2 次記載「共用 `utils/datetime.ts` 缺口迫使前端 task 就地實作日期格式化」。**強烈建議**立即開基建 task 建立 `frontend/src/lib/utils/datetime.ts` 匯出 `formatDateTime`,再把 §5 的 `AiRerunSection.tsx`、本次 `excel.ts` 的就地版、以及 `usage-logs/[uid]/page.tsx:195` 的 `toLocaleString()` 一併改走共用;並於任務切分時,凡涉日期顯示的前端 task 先確認共用 util 已存在,否則把建立 util 納入上游範圍。
+
+## §9 — `UsageLogRepository.get_by_uid` 被 AI 評審管線共用,task-421 不可改其回傳型別,另立 `get_by_uid_with_project` 帶專案欄
+
+- **時間**:2026-07-07T00:00+08:00
+- **commit / PR**:`<pending>`(task-421,orchestrator 統一提交)
+- **影響檔案**:`backend/app/repositories/usage_log.py`(task-421 範圍檔);牽涉 `backend/app/services/ai_model_eval.py`、`ai_model_eval_rerun.py`、`ai_model_eval_rerun_result.py`(**非** task-421 範圍,不可動;AI 評審管線)
+- **問題**:task-421 規格要求「`list()` 與 `get_by_uid()` 改 LEFT JOIN projects、select 補 `Project.code` / `Project.name`」以吐專案欄。但 `get_by_uid(uid) -> UsageLog | None` 同時被 3 個 AI 評審 service 以 `usage_log: UsageLog | None = await usage_repo.get_by_uid(...)` 直用(屬性存取);若把其回傳改為 `tuple[UsageLog, str|None, str|None]` 會:(a) 觸這 3 檔新增 mypy `assignment` 錯 + 執行期屬性存取爆炸;(b) 連坐 AI 評審管線——而 propose-v2.1.1 開宗明義「本版**不**涉及 AI 評審管線」。`list()` 則僅 `usage_logs.py` 單一消費端,可安全改型別。
+- **根因**:`get_by_uid` 是跨功能共用的單列讀取入口(用量明細 + AI 評審取源共用),task 規格未察其被 AI 評審鏈消費,逕要求改其回傳型別,與「不涉評審管線」的版本邊界相衝突。
+- **修正**:`list()` 依規格改 LEFT JOIN 回傳 `builtins.list[tuple[UsageLog, str|None, str|None]]`(僅 `usage_logs.py` 消費,無連坐);`get_by_uid` **維持原型別不動**,另立 `get_by_uid_with_project(uid) -> tuple[UsageLog, str|None, str|None] | None`(LEFT JOIN 版)供明細端點 `get_usage_log` 使用。達成規格意圖(明細帶專案三欄、保留 NULL 專案列)且零連坐 AI 評審管線。已於新方法 docstring 標明並 cross-ref 本條。回傳標註沿用 §7 的 `builtins.list` 繞過 class scope `list` 遮蔽。`mypy app/` 對 3 個範圍檔零新增錯(基線 6 個既有 `usage_log.py` 錯僅行號位移)。
+- **規範參照**:`03-backend/00-overview.md § 分層`(repository 封裝查詢)/ `03-backend/07-testing.md`(acceptance 全綠;既有債不連坐)
+- **後續**:reflect 候選 — (1) 若日後要統一,清債 task 可把 `get_by_uid` 與 `get_by_uid_with_project` 收斂(或讓 AI 評審 service 改用 `[0]` 解包),但須與「評審管線不隨用量 task 動」的版本邊界一併評估;(2) 任務切分時,凡要求改「共用 repository 讀取方法」回傳型別者,應先盤點其全部消費端,避免跨功能連坐。
+
+## §10 — 共用 `resolve_filters` 對「非-admin 且無部門」未防守,usage-logs 明細會外露跨部門 PII(scan AD-001)
+
+- **時間**:2026-07-07T05:03+08:00
+- **commit / PR**:`<pending>`(scan 收口修正,orchestrator 提交)
+- **影響檔案**:`backend/app/api/v1/_scope_filters.py`(修正落點);放大點 `backend/app/api/v1/usage_logs.py:35,69,76`;連帶保護 `backend/app/api/v1/stats.py`(6 個 stats 端點共用)
+- **問題**:task-420 抽出的共用 `resolve_filters` 對非-admin 回傳 `actor.department_uid` 作為部門鎖。但 `users.department_uid` 為 `nullable=True`(`app/models/user.py:71-73`)、`Actor.department_uid` 亦 `UUID | None`。若一個**非-admin 使用者無所屬部門**(dept=None):列表 `repo.list(department_uid=None)` **不加部門 WHERE** → 看到全平台用量;明細 `usage_logs.py:76` 的 `if dept is not None and ...` 守衛因 `dept is None` **整段跳過** → 可開任一部門明細,而明細含 `request_content`/`response_summary`(**PII 原文**)。此邏輯漏洞在 stats 端點已潛在(只吐彙總數字),v2.1.1 首次把含 PII 原文的 usage-logs 接上同一函式,後果升級為跨部門 PII 外露。
+- **根因**:`resolve_filters` 把「非-admin 必隸屬部門」當隱含前提,未顯式防守 `department_uid IS NULL` 的邊界;而 `92-project-permission.md § 4` 只寫「User 看自身部門」,未規範「非-admin 但無部門」的行為,規範缺口使實作退化為「無過濾」的最寬鬆解。
+- **修正**:於 `resolve_filters` 非-admin 分支補「`actor.department_uid is None → raise AppError("forbidden", 403)`」防線(3 行),一次保護 stats 與 usage-logs;非-admin 無部門一律 403,不退化為無過濾。新增測試:`tests/api/test_scope_filters.py`(共用函式 5 案:admin 直通 / 非-admin 鎖部門 / 跨部門 403 / 無部門 403)+ `tests/api/test_usage_logs.py`(端點 2 案:無部門取列表/明細 → 403)。`pytest` 22 passed、`ruff` 全綠、`_scope_filters.py` mypy 零錯(stats.py 既有 `list` 遮蔽債 §7 非本次引入)。
+  - **前端層(defense-in-depth + UX,user 2026-07-07 追加)**:非-admin 且無部門者,`Sidebar.tsx` 以 `memberNeedsDepartment` 旗標**整條隱藏**用量紀錄入口、`RouteGuard.tsx` 以 `MEMBER_DEPARTMENT_REQUIRED_PREFIXES` 對 `/usage-logs` 直接導航**導回 /dashboard**,避免點進後端 403 壞頁。後端 403 仍為權限地板,前端僅為避免壞頁與雜訊(對齊 `92-project-permission.md § 7`:前端隱藏為 UX 提示,不取代後端把關)。
+- **規範參照**:`03-backend/02-auth.md`(權限收斂於 Dependency)/ `03-backend/92-project-permission.md § 4`(自身部門邊界)
+- **後續**:reflect 候選 — 建議於 `92-project-permission.md § 4` 補明文:「非-admin 且 `department_uid` 為 NULL → 一律拒絕管理端資料查詢(403),不得回退為無過濾」,把此防線升為 Design-Base 規則(見 scan 報告 260707050320 第 7 章第 1 項)。

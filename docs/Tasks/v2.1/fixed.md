@@ -100,3 +100,14 @@
 - **修正**:`list()` 依規格改 LEFT JOIN 回傳 `builtins.list[tuple[UsageLog, str|None, str|None]]`(僅 `usage_logs.py` 消費,無連坐);`get_by_uid` **維持原型別不動**,另立 `get_by_uid_with_project(uid) -> tuple[UsageLog, str|None, str|None] | None`(LEFT JOIN 版)供明細端點 `get_usage_log` 使用。達成規格意圖(明細帶專案三欄、保留 NULL 專案列)且零連坐 AI 評審管線。已於新方法 docstring 標明並 cross-ref 本條。回傳標註沿用 §7 的 `builtins.list` 繞過 class scope `list` 遮蔽。`mypy app/` 對 3 個範圍檔零新增錯(基線 6 個既有 `usage_log.py` 錯僅行號位移)。
 - **規範參照**:`03-backend/00-overview.md § 分層`(repository 封裝查詢)/ `03-backend/07-testing.md`(acceptance 全綠;既有債不連坐)
 - **後續**:reflect 候選 — (1) 若日後要統一,清債 task 可把 `get_by_uid` 與 `get_by_uid_with_project` 收斂(或讓 AI 評審 service 改用 `[0]` 解包),但須與「評審管線不隨用量 task 動」的版本邊界一併評估;(2) 任務切分時,凡要求改「共用 repository 讀取方法」回傳型別者,應先盤點其全部消費端,避免跨功能連坐。
+
+## §10 — 共用 `resolve_filters` 對「非-admin 且無部門」未防守,usage-logs 明細會外露跨部門 PII(scan AD-001)
+
+- **時間**:2026-07-07T05:03+08:00
+- **commit / PR**:`<pending>`(scan 收口修正,orchestrator 提交)
+- **影響檔案**:`backend/app/api/v1/_scope_filters.py`(修正落點);放大點 `backend/app/api/v1/usage_logs.py:35,69,76`;連帶保護 `backend/app/api/v1/stats.py`(6 個 stats 端點共用)
+- **問題**:task-420 抽出的共用 `resolve_filters` 對非-admin 回傳 `actor.department_uid` 作為部門鎖。但 `users.department_uid` 為 `nullable=True`(`app/models/user.py:71-73`)、`Actor.department_uid` 亦 `UUID | None`。若一個**非-admin 使用者無所屬部門**(dept=None):列表 `repo.list(department_uid=None)` **不加部門 WHERE** → 看到全平台用量;明細 `usage_logs.py:76` 的 `if dept is not None and ...` 守衛因 `dept is None` **整段跳過** → 可開任一部門明細,而明細含 `request_content`/`response_summary`(**PII 原文**)。此邏輯漏洞在 stats 端點已潛在(只吐彙總數字),v2.1.1 首次把含 PII 原文的 usage-logs 接上同一函式,後果升級為跨部門 PII 外露。
+- **根因**:`resolve_filters` 把「非-admin 必隸屬部門」當隱含前提,未顯式防守 `department_uid IS NULL` 的邊界;而 `92-project-permission.md § 4` 只寫「User 看自身部門」,未規範「非-admin 但無部門」的行為,規範缺口使實作退化為「無過濾」的最寬鬆解。
+- **修正**:於 `resolve_filters` 非-admin 分支補「`actor.department_uid is None → raise AppError("forbidden", 403)`」防線(3 行),一次保護 stats 與 usage-logs;非-admin 無部門一律 403,不退化為無過濾。新增測試:`tests/api/test_scope_filters.py`(共用函式 5 案:admin 直通 / 非-admin 鎖部門 / 跨部門 403 / 無部門 403)+ `tests/api/test_usage_logs.py`(端點 2 案:無部門取列表/明細 → 403)。`pytest` 22 passed、`ruff` 全綠、`_scope_filters.py` mypy 零錯(stats.py 既有 `list` 遮蔽債 §7 非本次引入)。
+- **規範參照**:`03-backend/02-auth.md`(權限收斂於 Dependency)/ `03-backend/92-project-permission.md § 4`(自身部門邊界)
+- **後續**:reflect 候選 — 建議於 `92-project-permission.md § 4` 補明文:「非-admin 且 `department_uid` 為 NULL → 一律拒絕管理端資料查詢(403),不得回退為無過濾」,把此防線升為 Design-Base 規則(見 scan 報告 260707050320 第 7 章第 1 項)。

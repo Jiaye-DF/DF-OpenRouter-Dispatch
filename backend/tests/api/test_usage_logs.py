@@ -74,6 +74,11 @@ def _member(dept: UUID) -> Actor:
     )
 
 
+def _member_no_dept() -> Actor:
+    """非-admin 但無所屬部門(department_uid=None);用於 AD-001 空部門防線測試。"""
+    return Actor(user_uid=uuid4(), account="u", username="無部門使用者", role="user")
+
+
 def _fake_log(*, department_uid: UUID | None, project_uid: UUID | None = None, **over):
     """回傳有 UsageLog 全欄位的 SimpleNamespace,供 model_validate(from_attributes) 讀。"""
     base = dict(
@@ -214,6 +219,16 @@ async def test_non_admin_list_other_department_returns_403(monkeypatch):
     assert resp.status_code == 403
 
 
+async def test_non_admin_without_department_list_returns_403(monkeypatch):
+    # AD-001:非-admin 且無部門 → 不得退化為無過濾看全平台,應 403。
+    rows = [(_fake_log(department_uid=uuid4(), project_uid=uuid4()), "PRJ-Z", "專案Z")]
+    async with _make_client(
+        monkeypatch, _member_no_dept(), list_rows=rows, list_total=1
+    ) as client:
+        resp = await client.get("/api/v1/usage-logs")
+    assert resp.status_code == 403
+
+
 # --- 明細 ---
 
 
@@ -256,3 +271,11 @@ async def test_detail_not_found_returns_404(monkeypatch):
     async with _make_client(monkeypatch, _admin(), detail_row=None) as client:
         resp = await client.get(f"/api/v1/usage-logs/{uuid4()}")
     assert resp.status_code == 404
+
+
+async def test_non_admin_without_department_detail_returns_403(monkeypatch):
+    # AD-001:非-admin 且無部門開明細 → 403(在 resolve_filters 即擋下,不觸 PII 外露)。
+    row = (_fake_log(department_uid=uuid4(), project_uid=uuid4()), "PRJ-N", "專案N")
+    async with _make_client(monkeypatch, _member_no_dept(), detail_row=row) as client:
+        resp = await client.get(f"/api/v1/usage-logs/{uuid4()}")
+    assert resp.status_code == 403

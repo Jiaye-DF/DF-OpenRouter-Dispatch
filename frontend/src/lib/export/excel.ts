@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { formatDateTime } from "@/lib/utils/datetime";
 import { toUSDNumber } from "@/lib/utils/format";
 import type {
   StatsByDepartment,
@@ -12,14 +13,6 @@ import type {
 
 // 6 位小數的 Excel 數字格式(USD 統一規則)
 const USD_FORMAT = "$0.000000";
-
-// 時序桶為後端以 Asia/Taipei 切出的 naive wall-clock 字串(UTC+8),
-// 直接以字串切片格式化,禁丟 new Date() 二次偏移(對齊 02-frontend/04-datetime.md)。
-function formatBucketTaipei(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
-  return m ? `${m[1]}/${m[2]}/${m[3]} ${m[4]}:${m[5]}:${m[6]}` : iso;
-}
 
 interface SheetSpec {
   name: string;
@@ -171,7 +164,7 @@ export function exportDashboardToExcel(
     name: "時序",
     header: ["時間 (UTC+8)", "請求數", "Tokens", "成本 (USD)"],
     rows: (data.timeseries ?? []).map((t) => [
-      formatBucketTaipei(t.bucket),
+      formatDateTime(t.bucket),
       t.total_requests,
       t.total_tokens,
       toUSDNumber(t.total_cost_usd),

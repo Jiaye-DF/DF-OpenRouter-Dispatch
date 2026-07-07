@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AiAnalysisSection } from "./AiAnalysisSection";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
+import { formatDateTime } from "@/lib/utils/datetime";
 import { formatUSD } from "@/lib/utils/format";
 import { useAppSelector } from "@/store/hooks";
 import type { UsageLogDetail } from "@/types/api";
@@ -179,7 +180,7 @@ export default function UsageLogDetailPage() {
               <Field label="編號" value={<span className="font-mono">#{log.pid}</span>} />
               <Field
                 label="時間"
-                value={new Date(log.created_at).toLocaleString()}
+                value={formatDateTime(log.created_at)}
               />
               <Field
                 label="專案"

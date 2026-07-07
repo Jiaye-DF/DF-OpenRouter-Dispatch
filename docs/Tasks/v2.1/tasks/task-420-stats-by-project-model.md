@@ -1,7 +1,7 @@
 ---
 id: task-420
 title: 後端 stats/by-project-model 端點 + ProjectModelStatItem + repo by_project_model + 抽共用 _resolve_filters
-status: pending
+status: done
 parallel: true
 depends_on: []
 affected_files:

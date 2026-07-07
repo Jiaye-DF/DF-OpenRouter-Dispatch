@@ -1,8 +1,9 @@
+import builtins
 from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import String, case, cast, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.department import Department
@@ -248,6 +249,53 @@ class UsageLogRepository:
             .group_by(
                 UsageLog.project_uid, Project.code, Project.name, Project.description
             )
+        )
+        stmt = self._apply_filters(
+            stmt,
+            department_uid=department_uid,
+            project_uid=project_uid,
+            user_uid=user_uid,
+            model=None,
+            from_time=from_time,
+            to_time=to_time,
+            status=None,
+        )
+        rows = (await self.db.execute(stmt)).all()
+        return [
+            (r[0], r[1], r[2], r[3], int(r[4]), int(r[5]), Decimal(r[6]))
+            for r in rows
+        ]
+
+    async def by_project_model(
+        self,
+        *,
+        department_uid: UUID | None,
+        project_uid: UUID | None = None,
+        user_uid: UUID | None = None,
+        from_time: datetime | None,
+        to_time: datetime | None,
+    ) -> builtins.list[tuple[UUID, str, str, str, int, int, Decimal]]:
+        """依「專案 × 模型」彙總;歷史 project_uid 為 NULL 的紀錄不出現(JOIN 內連線)。
+
+        排序:專案代碼升冪、同專案內模型花費(cost_usd)由大到小。
+        """
+        cost_sum = func.coalesce(func.sum(UsageLog.cost_usd), 0)
+        stmt = (
+            select(
+                UsageLog.project_uid,
+                Project.code,
+                Project.name,
+                UsageLog.model,
+                func.count(UsageLog.pid),
+                func.coalesce(func.sum(UsageLog.total_tokens), 0),
+                cost_sum,
+            )
+            .select_from(UsageLog)
+            .join(Project, Project.project_uid == UsageLog.project_uid)
+            .group_by(
+                UsageLog.project_uid, Project.code, Project.name, UsageLog.model
+            )
+            .order_by(Project.code.asc(), cost_sum.desc())
         )
         stmt = self._apply_filters(
             stmt,

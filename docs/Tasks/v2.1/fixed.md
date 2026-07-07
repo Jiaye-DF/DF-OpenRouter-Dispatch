@@ -67,3 +67,14 @@
 - **修正**:**刻意破例**——把既有 `pid`(穩定、唯一、遞增)對 **admin-only** 外露為「顯示編號 #pid」,兩頁共用。僅唯讀顯示,不作為連結 / 不可導頁(守判決總覽紅線);非 admin 端不暴露。schema 與型別均加註此為刻意破例並指向本條。**不動 DB**(pid 既有)。
 - **規範參照**:`04-databases/01-identifiers.md`(pid 內部 / uid 對外)、`02-frontend/00-overview.md`(ID 隱藏)
 - **後續**:reflect 候選 — 於 Design-Base `01-identifiers.md` / `02-frontend/00-overview.md` 補「admin 端可用 pid 作唯讀人類可讀參考號(非連結、非對外公開端點)」的明文例外,把本次破例升為正式規則;否則日後 review 易誤判為違規。
+
+## §7 — `UsageLogRepository.list` 方法名遮蔽內建 `list`,新增 `by_project_model` 若沿用 `-> list[...]` 標註即觸 mypy `valid-type` + 連坐 stats 端點(task-420)
+
+- **時間**:2026-07-07T00:00+08:00
+- **commit / PR**:`<pending>`(task-420,orchestrator 統一提交)
+- **影響檔案**:`backend/app/repositories/usage_log.py`(`UsageLogRepository.list` 方法名遮蔽內建 `list`;task-420 新增 `by_project_model`)、連坐 `backend/app/api/v1/stats.py`(6 個彙總端點 `for r in rows` 迭代)
+- **問題**:task-420 acceptance 要求 `mypy app/` 零錯誤。`UsageLogRepository` 內有 `def list(...)` 方法,在 class scope 遮蔽內建 `list`,使同 class 內所有 `-> list[tuple[...]]` 回傳標註被 mypy 解析成「方法 `list` 當型別」→ `valid-type` 錯(既有 `by_department`/`by_model`/`by_project`/`by_user`/`timeseries` 5 法皆已中招,屬 §1/§2/§4 同源既有債);且回傳型別解析失敗會退化為 `list?`,連帶讓 `stats.py` 各端點 `for r in rows` 報 `has no attribute "__iter__"`。若新方法 `by_project_model` 直接沿用 `-> list[...]`,會**再新增 2 個**同類錯誤(repo 標註 + stats 端點迭代)。實測基線 HEAD = 47 錯,沿用寫法 = 49 錯。
+- **根因**:同 §1/§2/§4——`UsageLogRepository.list` 方法名與內建 `list` 型別衝突的既有型別債從未清理;`from __future__ import annotations` 亦無法解(mypy 仍以 class scope 解析標註名)。task-420 範圍可動 `usage_log.py`,但清整個 class 的 `list` 遮蔽(改名 method / 全面改標註)超出本 task scope 且牽動 task-421 共用同檔。
+- **修正**:task-420 新方法 `by_project_model` 的回傳標註改用 `builtins.list[tuple[...]]`(顯式繞過 class scope 的 `list` 遮蔽),使該方法 + 其消費端 `by_project_model_endpoint` **零新增 mypy 錯**;`mypy app/` 總數維持基線 47(未引入新錯)。既有 5 個 sibling 方法/端點的既有錯不在本 task scope,不擅改。已於 import `builtins` 沿用此意圖。
+- **規範參照**:`03-backend/07-testing.md`(acceptance 全綠要求)/ `04-databases/04-sql-safety.md`(本 task 無 raw 拼接,純 ORM)
+- **後續**:reflect 候選 — 此為跨 §1/§2/§4/§7 第 4 次記載「`UsageLogRepository.list` 方法名遮蔽內建 `list`」;已遠超同類升規門檻。建議開獨立清債 task:把 `list` 方法改名(如 `list_paged` / `paginate`),全 class 回傳標註即可回歸 `list[...]`、`stats.py` 連坐錯一併消,並移除本 task 的 `builtins.list` 權宜。task-421 亦動同檔,清債後兩者受惠。

@@ -275,6 +275,18 @@ export interface StatsByUser {
   total_cost_usd: string;
 }
 
+// v2.1.1 新增 — 依「專案 × 模型」雙維度彙總(對齊後端 ProjectModelStatItem)
+// Decimal 成本以字串傳輸,避免 JS 浮點誤差(沿用既有 stats 慣例)
+export interface StatsByProjectModel {
+  project_uid: string;
+  project_code: string;
+  project_name: string;
+  model: string;
+  total_requests: number;
+  total_tokens: number;
+  total_cost_usd: string;
+}
+
 // v1.5 新增 — 使用者下拉精簡欄位
 export interface UserDropdownItem {
   user_uid: string;

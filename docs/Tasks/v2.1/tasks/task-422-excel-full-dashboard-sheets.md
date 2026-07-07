@@ -1,7 +1,7 @@
 ---
 id: task-422
 title: 前端 Excel 補 4 sheet(總覽/專案×模型/依模型/時序)+ 儀表板下載串接 + types/endpoints
-status: pending
+status: done
 parallel: true
 depends_on: [task-420]
 affected_files:

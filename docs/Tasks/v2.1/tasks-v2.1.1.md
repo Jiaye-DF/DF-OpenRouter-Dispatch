@@ -28,8 +28,8 @@
 | # | 標題 | 狀態 | 並行 | 依賴 | 影響檔案 |
 | --- | --- | --- | --- | --- | --- |
 | 420 | 後端:`stats/by-project-model` 端點 + `ProjectModelStatItem` + repo `by_project_model` + 抽共用 `_resolve_filters` | done | ✓ | — | `backend/app/api/v1/stats.py`、`backend/app/api/v1/_scope_filters.py`(新)、`backend/app/schemas/stats.py`、`backend/app/repositories/usage_log.py`、`backend/tests/api/test_stats.py`、`backend/tests/repositories/test_usage_log_stats.py` |
-| 421 | 後端:usage-logs 授權放寬 + 部門鎖 + `project_uid` 篩選 + JOIN projects 吐專案欄 + schema | pending | ✗ | 420 | `backend/app/api/v1/usage_logs.py`、`backend/app/schemas/usage_log.py`、`backend/app/repositories/usage_log.py`、`backend/tests/api/test_usage_logs.py` |
-| 422 | 前端:Excel 補 4 sheet + 儀表板下載串接 + types/endpoints | pending | ✓ | 420 | `frontend/src/lib/export/excel.ts`、`frontend/src/app/(main)/dashboard/page.tsx`、`frontend/src/types/api.ts`、`frontend/src/lib/api/endpoints.ts` |
+| 421 | 後端:usage-logs 授權放寬 + 部門鎖 + `project_uid` 篩選 + JOIN projects 吐專案欄 + schema | done | ✗ | 420 | `backend/app/api/v1/usage_logs.py`、`backend/app/schemas/usage_log.py`、`backend/app/repositories/usage_log.py`、`backend/tests/api/test_usage_logs.py` |
+| 422 | 前端:Excel 補 4 sheet + 儀表板下載串接 + types/endpoints | done | ✓ | 420 | `frontend/src/lib/export/excel.ts`、`frontend/src/app/(main)/dashboard/page.tsx`、`frontend/src/types/api.ts`、`frontend/src/lib/api/endpoints.ts` |
 | 423 | 前端:用量記錄 專案欄 + 專案 Combobox 篩選 + 明細專案欄 + RouteGuard/Sidebar 放行 | pending | ✗ | 421, 422 | `frontend/src/app/(main)/usage-logs/page.tsx`、`frontend/src/app/(main)/usage-logs/[uid]/page.tsx`、`frontend/src/components/layout/RouteGuard.tsx`、`frontend/src/components/layout/Sidebar.tsx`、`frontend/src/types/api.ts` |
 
 ## 執行流程(multi-agent)

@@ -1,7 +1,7 @@
 ---
 id: task-421
 title: 後端 usage-logs 授權放寬 + 部門鎖 + project_uid 篩選 + JOIN projects 吐專案欄 + schema
-status: pending
+status: done
 parallel: false
 depends_on: [task-420]
 affected_files:

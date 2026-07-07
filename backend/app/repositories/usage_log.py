@@ -26,6 +26,28 @@ class UsageLogRepository:
         )
         return (await self.db.execute(stmt)).scalar_one_or_none()
 
+    async def get_by_uid_with_project(
+        self, usage_log_uid: UUID
+    ) -> tuple[UsageLog, str | None, str | None] | None:
+        """單筆用量 + 所屬專案(LEFT JOIN projects,保留 project_uid IS NULL 的歷史列)。
+
+        另立方法而不改 get_by_uid:後者被 AI 評審管線(ai_model_eval*)以
+        `UsageLog | None` 直用,改其回傳型別會連坐 AI 評審鏈(v2.1.1 明訂不涉評審管線)。
+        見 docs/Tasks/v2.1/fixed.md §8。
+        """
+        stmt = (
+            select(UsageLog, Project.code, Project.name)
+            .join(Project, Project.project_uid == UsageLog.project_uid, isouter=True)
+            .where(
+                UsageLog.usage_log_uid == usage_log_uid,
+                UsageLog.is_deleted.is_(False),
+            )
+        )
+        row = (await self.db.execute(stmt)).first()
+        if row is None:
+            return None
+        return row[0], row[1], row[2]
+
     # --- 查詢 ---
 
     def _apply_filters(
@@ -78,8 +100,12 @@ class UsageLogRepository:
         used_tools: bool | None = None,
         pid: int | None = None,
         order: str = "desc",
-    ) -> tuple[list[UsageLog], int]:
-        stmt = select(UsageLog)
+    ) -> tuple[builtins.list[tuple[UsageLog, str | None, str | None]], int]:
+        # LEFT JOIN projects:每筆帶所屬專案 code/name;歷史 project_uid IS NULL 的列仍保留
+        # (三欄回 None)。回傳 (UsageLog, project_code, project_name) tuple 供 router 組 schema。
+        stmt = select(UsageLog, Project.code, Project.name).join(
+            Project, Project.project_uid == UsageLog.project_uid, isouter=True
+        )
         stmt = self._apply_filters(
             stmt,
             department_uid=department_uid,
@@ -107,7 +133,8 @@ class UsageLogRepository:
         # 編號(pid)排序:預設 desc(大→小);order="asc" 改小→大。
         order_by = UsageLog.pid.asc() if order == "asc" else UsageLog.pid.desc()
         stmt = stmt.order_by(order_by).offset((page - 1) * size).limit(size)
-        items = list((await self.db.execute(stmt)).scalars().all())
+        rows = (await self.db.execute(stmt)).all()
+        items = [(r[0], r[1], r[2]) for r in rows]
         total = int((await self.db.execute(count_stmt)).scalar_one())
         return items, total
 

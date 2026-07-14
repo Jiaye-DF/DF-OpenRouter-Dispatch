@@ -348,6 +348,88 @@ const FILE_EXAMPLE = `{
   ]
 }`;
 
+// 多輪對話(messages)Request 範例 —— v2.1.2
+const MESSAGES_EXAMPLE = `{
+  "model": "google/gemini-2.5-flash",
+  "messages": [
+    { "role": "system", "content": "你是客服助理,回答一律使用繁體中文。" },
+    { "role": "user", "content": "上次說到哪?" },
+    { "role": "assistant", "content": "說到出貨進度。" },
+    { "role": "user", "content": [
+      { "type": "text", "text": "看一下這張圖與檔案,幫我確認狀態" },
+      { "type": "image_url", "image_url": { "url": "data:image/png;base64,iVBORw0KGgo..." } },
+      { "type": "file", "file": { "filename": "出貨單.pdf", "file_data": "data:application/pdf;base64,JVBERi0..." } }
+    ] }
+  ]
+}`;
+
+// 生成參數 Request 範例 —— v2.1.2(json_object 結構化輸出)
+const GENPARAMS_EXAMPLE = `{
+  "model": "google/gemini-2.5-flash",
+  "text": "抽取:『7/20 前交付 100 件到台中廠』的日期、數量、地點,以 JSON 回覆(鍵:date, qty, location)",
+  "temperature": 0.2,
+  "max_tokens": 256,
+  "response_format": { "type": "json_object" }
+}`;
+
+// 多輪對話範例 —— curl
+const CURL_MESSAGES_EXAMPLE = `curl -X POST '${CHAT_URL}' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \\
+  -H 'X-User-Token: <admin 發放的 User Token>' \\
+  -H 'X-Project-Code: 53299897503322112' \\
+  -d '{
+    "model": "google/gemini-2.5-flash",
+    "messages": [
+      { "role": "system", "content": "你是客服助理,回答一律使用繁體中文。" },
+      { "role": "user", "content": "我上週訂的貨到哪了?" },
+      { "role": "assistant", "content": "請提供訂單編號,我幫您查詢。" },
+      { "role": "user", "content": "訂單編號是 A12345" }
+    ],
+    "temperature": 0.3
+  }'`;
+
+// 多輪對話範例 —— Python
+const PYTHON_MESSAGES_EXAMPLE = `import httpx
+
+API_URL = "${CHAT_URL}"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "<admin 發放的 User Token>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
+
+def chat_messages(model: str, messages: list[dict], temperature: float | None = None) -> str:
+    payload = {"model": model, "messages": messages}
+    if temperature is not None:      # 未帶就不放進 body,走模型預設
+        payload["temperature"] = temperature
+    resp = httpx.post(
+        API_URL,
+        headers={
+            "X-SDK-Key": SDK_KEY,
+            "X-User-Token": USER_TOKEN,
+            "X-Project-Code": PROJECT_CODE,
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=60,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if not body["success"]:
+        raise RuntimeError(f"{body['code']} {body['detail']}")
+    return body["data"]
+
+if __name__ == "__main__":
+    history = [
+        {"role": "system", "content": "你是客服助理,回答一律使用繁體中文。"},
+        {"role": "user", "content": "我上週訂的貨到哪了?"},
+        {"role": "assistant", "content": "請提供訂單編號,我幫您查詢。"},
+        {"role": "user", "content": "訂單編號是 A12345"},
+    ]
+    answer = chat_messages("google/gemini-2.5-flash", history, temperature=0.3)
+    print(answer)
+    # 下一輪:把模型回覆 append 回 history 再呼叫,即可延續對話
+    # history.append({"role": "assistant", "content": answer})`;
+
 const RESPONSE_EXAMPLE = `{
   "success": true,
   "code": 200,
@@ -388,6 +470,7 @@ const EXAMPLE_TABS = [
   { value: "basic", label: "基本對話" },
   { value: "websearch", label: "Web 搜尋（即時匯率）" },
   { value: "file", label: "檔案上傳（PDF）" },
+  { value: "messages", label: "多輪對話（messages）" },
 ] as const;
 
 type ExampleTab = (typeof EXAMPLE_TABS)[number]["value"];
@@ -591,7 +674,31 @@ export default function UserGuidePage() {
                   <TD className="font-mono">tools</TD>
                   <TD>object[]</TD>
                   <TD>否</TD>
-                  <TD>工具清單,格式同 OpenAI <code>tools</code> 規格,原樣轉發給下游。<strong>目前僅支援 OpenRouter server 端內建工具</strong>(如 web search,見下方範例);會回 <code>tool_calls</code> 的 function calling 尚未開放</TD>
+                  <TD>工具清單,格式同 OpenAI <code>tools</code> 規格,原樣轉發給下游。<strong>目前僅支援 OpenRouter server 端內建工具</strong>(如 web search,見下方範例);會回 <code>tool_calls</code> 的 function calling 尚未開放。<strong>單輪與 messages 兩種模式皆可搭配</strong></TD>
+                </TR>
+                <TR>
+                  <TD className="font-mono">messages</TD>
+                  <TD>object[]</TD>
+                  <TD>否</TD>
+                  <TD><strong>多輪對話模式</strong>:OpenAI 風格 <code>{`{ role, content }`}</code> 訊息陣列(system prompt / 對話歷史)。與 <code>text</code> / <code>images</code> / <code>files</code> <strong>擇一使用</strong>,同時帶回 <code>400</code>。詳見下方<strong>多輪對話(messages)與生成參數</strong></TD>
+                </TR>
+                <TR>
+                  <TD className="font-mono">temperature</TD>
+                  <TD>number</TD>
+                  <TD>否</TD>
+                  <TD>取樣隨機性,<code>0</code>–<code>2</code>;越低越穩定、越高越發散。未帶則用模型預設值</TD>
+                </TR>
+                <TR>
+                  <TD className="font-mono">max_tokens</TD>
+                  <TD>integer</TD>
+                  <TD>否</TD>
+                  <TD>回覆長度上限(token 數),<code>≥ 1</code>;未帶則用模型預設值</TD>
+                </TR>
+                <TR>
+                  <TD className="font-mono">response_format</TD>
+                  <TD>object</TD>
+                  <TD>否</TD>
+                  <TD>結構化輸出:<code>{`{"type":"json_object"}`}</code>(回覆保證為合法 JSON)或 <code>{`{"type":"json_schema","json_schema":{...}}`}</code>(指定 schema)。未帶則為一般文字回覆</TD>
                 </TR>
               </TBody>
             </Table>
@@ -654,6 +761,63 @@ export default function UserGuidePage() {
             </p>
           </div>
           */}
+        </Section>
+
+        <Section id="messages" title="多輪對話(messages)與生成參數">
+          <p>
+            自 <strong>v2.1.2</strong> 起,除了單輪的 <code>text / images / files</code>,也可以直接帶 OpenAI 風格的 <code>messages</code> 陣列——
+            自行組 <strong>system prompt、多輪對話歷史與角色設定</strong>,適合對話記憶、客服機器人等進階串接;
+            並可搭配三個<strong>生成參數</strong>控制回覆行為。
+          </p>
+
+          <p className="font-medium">messages 使用規則</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li><strong>擇一使用</strong>:<code>messages</code> 與 <code>text</code> / <code>images</code> / <code>files</code> <strong>互斥</strong>,同時帶回 <code>400</code>;<code>messages: []</code>(空陣列)也回 <code>400</code>。</li>
+            <li><strong>role 白名單</strong>:每則訊息的 <code>role</code> 只接受 <code>system</code> / <code>user</code> / <code>assistant</code>(<code>tool</code> 角色尚未開放)。</li>
+            <li><strong>content 兩種寫法</strong>:純文字字串;或 parts 陣列——型別只接受 <code>text</code> / <code>image_url</code> / <code>file</code>(能力與單輪模式相同,影片同樣不支援)。</li>
+            <li><strong>則數不設上限</strong>:以所選模型的 context window 為自然上限(全部訊息都計入 token),超過由模型端回錯誤。</li>
+            <li><code>tools</code>(如 web search)兩種模式皆可搭配;回應格式<strong>不變</strong>,仍為統一格式的純文字 <code>data</code>。</li>
+            <li>對話歷史由<strong>呼叫端自行保存與帶入</strong>,平台不儲存 session;messages 內容會原樣寫入用量紀錄供稽核(檔案僅記檔名),請勿夾帶敏感個資。</li>
+          </ul>
+
+          <p className="font-medium mt-2">多輪對話 Request 範例:</p>
+          <CodeBlock language="JSON" code={MESSAGES_EXAMPLE} />
+
+          <p className="font-medium mt-2">生成參數(單輪與 messages 模式皆可帶)</p>
+          <div className="overflow-x-auto">
+            <Table>
+              <THead>
+                <TR>
+                  <TH>參數</TH>
+                  <TH>值域</TH>
+                  <TH>用途</TH>
+                </TR>
+              </THead>
+              <TBody>
+                <TR>
+                  <TD className="font-mono">temperature</TD>
+                  <TD><code>0</code> – <code>2</code></TD>
+                  <TD className="text-muted-foreground">控制隨機性:偏低(如 <code>0.2</code>)適合抽取 / 分類等要穩定的任務;偏高適合創意生成</TD>
+                </TR>
+                <TR>
+                  <TD className="font-mono">max_tokens</TD>
+                  <TD><code>≥ 1</code></TD>
+                  <TD className="text-muted-foreground">限制回覆長度上限,控制成本與回覆篇幅</TD>
+                </TR>
+                <TR>
+                  <TD className="font-mono">response_format</TD>
+                  <TD><code>json_object</code> / <code>json_schema</code></TD>
+                  <TD className="text-muted-foreground"><code>{`{"type":"json_object"}`}</code> 讓回覆保證為合法 JSON 字串(prompt 中請同時明確要求輸出 JSON);<code>{`{"type":"json_schema","json_schema":{...}}`}</code> 可進一步指定結構</TD>
+                </TR>
+              </TBody>
+            </Table>
+          </div>
+          <CodeBlock language="JSON" code={GENPARAMS_EXAMPLE} />
+          <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+            <li>三個參數<strong>未帶就不會送給模型</strong>,一律走模型預設值;超出值域(如 <code>temperature: 2.5</code>)回 <code>400</code>。</li>
+            <li>其餘 OpenAI 生成參數(<code>top_p</code> / <code>stop</code> / <code>frequency_penalty</code> 等)<strong>不開放</strong>,帶了會被拒收,請勿嘗試。</li>
+            <li>有帶的生成參數會一併寫入用量紀錄,方便事後追溯呼叫條件。</li>
+          </ul>
         </Section>
 
         <Section id="response" title="Response 格式">
@@ -724,6 +888,19 @@ export default function UserGuidePage() {
               <CodeBlock language="python" code={PYTHON_FILE_EXAMPLE} />
             </>
           )}
+          {exampleTab === "messages" && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                帶 <code>messages</code> 陣列自組 system prompt 與對話歷史(與 <code>text/images/files</code> 擇一);
+                此例同時示範 <code>temperature</code> 生成參數。詳細規則見上方
+                <strong>多輪對話(messages)與生成參數</strong>。
+              </p>
+              <p className="font-medium">curl</p>
+              <CodeBlock language="bash" code={CURL_MESSAGES_EXAMPLE} />
+              <p className="font-medium">Python (httpx)</p>
+              <CodeBlock language="python" code={PYTHON_MESSAGES_EXAMPLE} />
+            </>
+          )}
         </Section>
 
         <Section id="stream" title="串流回應(SSE)">
@@ -737,7 +914,7 @@ export default function UserGuidePage() {
           />
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
             <li>
-              Header 與 Request Body <strong>與 <code>/model/chat</code> 完全相同</strong>(<code>model</code> / <code>text</code> / <code>images</code> / <code>files</code> / <code>tools</code>);
+              Header 與 Request Body <strong>與 <code>/model/chat</code> 完全相同</strong>(<code>model</code> / <code>text</code> / <code>images</code> / <code>files</code> / <code>tools</code>,v2.1.2 起亦含 <code>messages</code> 多輪與 <code>temperature</code> / <code>max_tokens</code> / <code>response_format</code> 生成參數);
               <strong>不需</strong>額外帶 <code>stream</code> 欄位,端點本身即代表串流。
             </li>
             <li>

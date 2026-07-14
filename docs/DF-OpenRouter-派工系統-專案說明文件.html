@@ -668,44 +668,52 @@ flowchart LR
           <div class="desc">基礎多租戶框架：本地登入、部門 / 專案組織、OpenRouter 代理端點、SDK 雙因子認證、用量記錄與儀表板。</div>
         </div>
         <div class="tl-item">
-          <div class="ver">v1.1–1.2 · 模型管理 + 多 provider</div>
-          <div class="desc">白名單升級為 DB 驅動（分級 / 餘額同步）；支援地端 OpenAI-compatible 模型與 Key 級速率限制，端點收斂為 <code>/model/chat</code>。</div>
+          <div class="ver">v1.1 · 模型管理與同步</div>
+          <div class="desc">白名單升級為 DB 驅動；模型分級、OpenRouter 餘額同步。</div>
         </div>
         <div class="tl-item">
-          <div class="ver">v1.3–1.4 · SSO 與穩定化</div>
-          <div class="desc">整合 DF-SSO（OIDC 登入 + back-channel logout）；部署結構與 UX 穩定化修正。</div>
+          <div class="ver">v1.2 · 多 provider + 速率限制</div>
+          <div class="desc">支援地端 OpenAI-compatible 模型；Key 級速率限制；端點收斂為 <code>/model/chat</code>。</div>
         </div>
         <div class="tl-item">
-          <div class="ver">v1.5–1.6 · 專案維度</div>
-          <div class="desc">「專案」（<code>project_uid</code>）串入代理鏈與稽核，儀表板三層篩選；管理動線整合（部門 → 專案 → 使用者 → 金鑰）。</div>
+          <div class="ver">v1.3 · DF-SSO 單一登入</div>
+          <div class="desc">整合公司中央認證（OIDC + back-channel logout），保留本地帳密作離線除錯。</div>
         </div>
         <div class="tl-item">
-          <div class="ver">v1.7–1.8 · 串流與檔案</div>
-          <div class="desc">新增 <code>/model/chat/stream</code>（SSE 打字機效果）；聊天請求支援 <code>files</code>（PDF 等，用量紀錄僅存檔名）。</div>
+          <div class="ver">v1.4 · 部署與 UX 穩定化</div>
+          <div class="desc">環境變數重整、healthcheck、多網域 Email 等維護修正。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.5 · 專案維度串接</div>
+          <div class="desc">「專案」（<code>project_uid</code>）串入代理鏈與稽核；儀表板部門 / 專案 / 使用者三層篩選。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.6 · 管理動線整合</div>
+          <div class="desc">SDK Key 整合進部門頁，理順部門 → 專案 → 使用者 → 金鑰動線；開放 <code>tools</code> 透傳（web search）。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.7 · 串流回應（SSE）</div>
+          <div class="desc">新增 <code>/model/chat/stream</code>，即時逐字回傳，failover 邏輯沿用。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.8 · 檔案上傳</div>
+          <div class="desc">聊天請求支援 <code>files</code>（PDF 等）；用量紀錄僅存檔名不存內容。</div>
         </div>
         <div class="tl-item milestone">
-          <div class="ver">v1.9–1.10 <span class="badge green">申請自動化</span></div>
-          <div class="desc">申請表單 + 生命週期 + 規則路由 + <span class="hl">AI（Claude）欄位驗證自動開通</span> + 憑證通知信，線下審核完全數位化；申請欄位下拉化防呆。</div>
+          <div class="ver">v1.9 <span class="badge green">申請自動化</span></div>
+          <div class="desc">申請表單 + 生命週期 + 規則路由 + <span class="hl">AI（Claude）欄位驗證自動開通</span> + 憑證通知信，線下審核完全數位化。</div>
+        </div>
+        <div class="tl-item">
+          <div class="ver">v1.10 · 申請欄位下拉化</div>
+          <div class="desc">負責人 Combobox 選取、信箱自動帶入，從輸入端防呆。</div>
         </div>
         <div class="tl-item milestone">
-          <div class="ver">v2.0.0 <span class="badge green">AI 模型評審地基</span></div>
-          <div class="desc">AI 評審資料表 + 判別模型設定 + 「AI 分析」頁；以 <span class="hl">taskiq + Redis</span> 導入背景任務基建。</div>
-        </div>
-        <div class="tl-item">
-          <div class="ver">v2.0.1–2.0.3 · 判別管線與展示</div>
-          <div class="desc">背景三評審打分管線（評估每筆呼叫的候選模型適配度）；DB 自我說明（<code>table_catalog</code> + COMMENT）；用量明細內嵌評審摘要。</div>
+          <div class="ver">v2.0 <span class="badge green">AI 模型評審</span></div>
+          <div class="desc">以 <span class="hl">taskiq + Redis</span> 建背景任務基建，導入 <span class="hl">AI 模型適配評審</span>：三評審打分管線評估每筆呼叫的候選模型並彙整推薦（.1）、DB 自我說明字典（.2）、用量明細內嵌評審摘要（.3）。</div>
         </div>
         <div class="tl-item milestone">
-          <div class="ver">v2.1.0 <span class="badge green">真實重跑 + 對比裁決</span></div>
-          <div class="desc">對 AI 推薦模型<span class="hl">真實重跑</span>，盲化對比裁決（<span class="hl">建議維持 / 改用 / 平手</span>）+ 成本差；「AI 判決總覽」頁並排真實輸出。</div>
-        </div>
-        <div class="tl-item">
-          <div class="ver">v2.1.1 · 成本可視化下放（2026-07-07）</div>
-          <div class="desc">Excel 匯出鏡射儀表板全維度（含<span class="hl">專案 × 模型花費明細</span>）；用量紀錄<span class="hl">下放一般使用者查看自身部門</span>，新增專案欄與篩選;修補無部門帳號的越權查詢。</div>
-        </div>
-        <div class="tl-item">
-          <div class="ver">v2.1.2 · 多輪對話直傳 + 帳號一鍵斷權（2026-07-14）</div>
-          <div class="desc">Chat API 開放 <code>messages[]</code> <span class="hl">多輪對話直傳</span>（白名單透傳，與單輪互斥）與 <code>temperature</code> / <code>max_tokens</code> / <code>response_format</code> 三<span class="hl">生成參數</span>，明細頁分角色渲染；使用者<span class="hl">停用即撤銷全部 Token</span>（一鍵斷權，重新啟用需重發）。</div>
+          <div class="ver">v2.1 <span class="badge green">真實重跑 + 對比裁決</span>（2026-06 → 07）</div>
+          <div class="desc">對 AI 推薦模型<span class="hl">真實重跑</span>，盲化對比裁決（<span class="hl">建議維持 / 改用 / 平手</span>）+ 成本差，「AI 判決總覽」頁並排真實輸出（.0）；<span class="hl">成本可視化下放</span>：Excel 全維度匯出、用量紀錄開放一般使用者看自身部門（.1）；Chat API 開放 <code>messages[]</code> <span class="hl">多輪對話直傳</span>與三生成參數、使用者<span class="hl">停用即撤銷全部 Token</span> 一鍵斷權（.2）。</div>
         </div>
       </div>
     </section>

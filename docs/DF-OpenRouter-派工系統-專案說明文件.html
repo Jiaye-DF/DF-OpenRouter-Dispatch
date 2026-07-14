@@ -668,72 +668,44 @@ flowchart LR
           <div class="desc">基礎多租戶框架：本地登入、部門 / 專案組織、OpenRouter 代理端點、SDK 雙因子認證、用量記錄與儀表板。</div>
         </div>
         <div class="tl-item">
-          <div class="ver">v1.1 · 模型管理與同步</div>
-          <div class="desc">白名單由環境變數升級為 DB 驅動；模型分級、OpenRouter 餘額同步、手動觸發同步機制。</div>
+          <div class="ver">v1.1–1.2 · 模型管理 + 多 provider</div>
+          <div class="desc">白名單升級為 DB 驅動（分級 / 餘額同步）；支援地端 OpenAI-compatible 模型與 Key 級速率限制，端點收斂為 <code>/model/chat</code>。</div>
         </div>
         <div class="tl-item">
-          <div class="ver">v1.2 · 多 provider + 速率限制</div>
-          <div class="desc">支援企業地端 OpenAI-compatible 模型；Key 級速率限制；代理端點收斂為統一 <code>/model/chat</code>。</div>
+          <div class="ver">v1.3–1.4 · SSO 與穩定化</div>
+          <div class="desc">整合 DF-SSO（OIDC 登入 + back-channel logout）；部署結構與 UX 穩定化修正。</div>
         </div>
         <div class="tl-item">
-          <div class="ver">v1.3 · DF-SSO 單一登入</div>
-          <div class="desc">整合公司中央認證，支援 OIDC 登入與 back-channel logout，保留本地帳密作離線除錯。</div>
+          <div class="ver">v1.5–1.6 · 專案維度</div>
+          <div class="desc">「專案」（<code>project_uid</code>）串入代理鏈與稽核，儀表板三層篩選；管理動線整合（部門 → 專案 → 使用者 → 金鑰）。</div>
         </div>
         <div class="tl-item">
-          <div class="ver">v1.4 · 部署與 UX 維護</div>
-          <div class="desc">環境變數結構重整、SSO 姓名顯示、Postgres healthcheck、多網域 Email 支援等穩定化修正。</div>
-        </div>
-        <div class="tl-item">
-          <div class="ver">v1.5 · 專案維度串接</div>
-          <div class="desc">「專案」串入代理鏈與稽核（<code>project_uid</code>）；儀表板擴展為部門 / 專案 / 使用者三層篩選。</div>
-        </div>
-        <div class="tl-item">
-          <div class="ver">v1.6 · 管理動線整合</div>
-          <div class="desc">SDK Key 管理整合進部門頁（行展開）；理順部門 → 專案 → 使用者 → 金鑰的線性設定動線。</div>
-        </div>
-        <div class="tl-item">
-          <div class="ver">v1.7 · 串流回應（SSE）</div>
-          <div class="desc">新增 <code>/model/chat/stream</code>，Server-Sent Events 即時回傳，呈現打字機效果，failover 邏輯沿用。</div>
-        </div>
-        <div class="tl-item">
-          <div class="ver">v1.8 · 檔案上傳</div>
-          <div class="desc">聊天請求新增 <code>files</code> 欄位支援 PDF 等文件；用量紀錄僅存檔名（法務考量，不存內容）。</div>
+          <div class="ver">v1.7–1.8 · 串流與檔案</div>
+          <div class="desc">新增 <code>/model/chat/stream</code>（SSE 打字機效果）；聊天請求支援 <code>files</code>（PDF 等，用量紀錄僅存檔名）。</div>
         </div>
         <div class="tl-item milestone">
-          <div class="ver">v1.9.0–1.9.2 <span class="badge green">核心創新</span></div>
-          <div class="desc">申請表單 + 5 態生命週期 + 規則路由 + <span class="hl">AI（Claude）欄位驗證自動開通</span> + Microsoft Graph 憑證通知信。將線下審核<span class="hl">完全數位化、智慧化</span>。</div>
-        </div>
-        <div class="tl-item">
-          <div class="ver">v1.10 · 申請欄位下拉化</div>
-          <div class="desc">負責人改為 Combobox 選取現有成員、信箱自動帶入唯讀，從輸入端降低人工配對落空。</div>
+          <div class="ver">v1.9–1.10 <span class="badge green">申請自動化</span></div>
+          <div class="desc">申請表單 + 生命週期 + 規則路由 + <span class="hl">AI（Claude）欄位驗證自動開通</span> + 憑證通知信，線下審核完全數位化；申請欄位下拉化防呆。</div>
         </div>
         <div class="tl-item milestone">
           <div class="ver">v2.0.0 <span class="badge green">AI 模型評審地基</span></div>
-          <div class="desc">新增三張 <code>ai_</code> 表 + 判別模型設定 CRUD + 「AI 分析」前端頁；以 <span class="hl">taskiq + Redis</span> 導入背景任務基建，為模型適配評審鋪底。</div>
+          <div class="desc">AI 評審資料表 + 判別模型設定 + 「AI 分析」頁；以 <span class="hl">taskiq + Redis</span> 導入背景任務基建。</div>
         </div>
         <div class="tl-item">
-          <div class="ver">v2.0.1 · 判別管線</div>
-          <div class="desc">背景三評審打分管線：對每筆呼叫由多位 AI 評審評估候選模型適配度並彙整推薦（taskiq worker 執行）。</div>
-        </div>
-        <div class="tl-item">
-          <div class="ver">v2.0.2 · 資料庫自我說明</div>
-          <div class="desc">新增 <code>table_catalog</code> 字典表 + 全表 / 欄位 COMMENT + schema parity 校驗，讓 DB 結構可自我描述、利於稽核與交接。</div>
-        </div>
-        <div class="tl-item">
-          <div class="ver">v2.0.3 · 評審結果顯示</div>
-          <div class="desc">用量明細頁內嵌 AI 分析基礎摘要（評審推薦與吻合度），讀取層 derive 不動 DB。</div>
+          <div class="ver">v2.0.1–2.0.3 · 判別管線與展示</div>
+          <div class="desc">背景三評審打分管線（評估每筆呼叫的候選模型適配度）；DB 自我說明（<code>table_catalog</code> + COMMENT）；用量明細內嵌評審摘要。</div>
         </div>
         <div class="tl-item milestone">
           <div class="ver">v2.1.0 <span class="badge green">真實重跑 + 對比裁決</span></div>
-          <div class="desc">對 AI 推薦模型做<span class="hl">真實重跑</span>，以盲化「對比裁決」判定推薦輸出 vs 原輸出孰優（<span class="hl">建議維持 / 改用 / 平手</span>）+ 成本差；獨立「AI 判決總覽」admin 頁依用量紀錄分組並排真實輸出、可依編號排序 / 搜尋。</div>
+          <div class="desc">對 AI 推薦模型<span class="hl">真實重跑</span>，盲化對比裁決（<span class="hl">建議維持 / 改用 / 平手</span>）+ 成本差；「AI 判決總覽」頁並排真實輸出。</div>
         </div>
         <div class="tl-item">
           <div class="ver">v2.1.1 · 成本可視化下放（2026-07-07）</div>
-          <div class="desc">下載 Excel 升級為<span class="hl">儀表板全維度鏡射</span>：除部門 / 專案 / 使用者外，新增總覽 KPI、<span class="hl">專案 × 模型花費明細</span>、依模型、時序共 4 張工作表，每個專案花費可再依模型拆解（新增彙總端點 <code>/api/v1/stats/by-project-model</code>）。用量紀錄（列表 + 明細）<span class="hl">下放給一般使用者查看自身部門</span>成本，列表新增「所屬專案」欄與可搜尋專案篩選；<span class="hl">安全修補</span>:無所屬部門的非管理員一律 403,杜絕跨部門用量越權。</div>
+          <div class="desc">Excel 匯出鏡射儀表板全維度（含<span class="hl">專案 × 模型花費明細</span>）；用量紀錄<span class="hl">下放一般使用者查看自身部門</span>，新增專案欄與篩選;修補無部門帳號的越權查詢。</div>
         </div>
         <div class="tl-item">
           <div class="ver">v2.1.2 · 多輪對話直傳 + 帳號一鍵斷權（2026-07-14）</div>
-          <div class="desc">Chat API 開放 OpenAI 風格 <code>messages[]</code> <span class="hl">多輪對話直傳</span>（system prompt / 對話歷史，role 與 content parts 白名單驗證後透傳，與單輪 <code>text/images/files</code> 互斥），並開放 <code>temperature</code> / <code>max_tokens</code> / <code>response_format</code> 三個<span class="hl">生成參數</span>（其餘參數維持不開放）；用量明細頁依角色分段渲染多輪內容。使用者管理頁新增<span class="hl">停用 / 啟用開關</span>：停用即<span class="hl">撤銷該使用者全部 Token</span>（SDK 呼叫、登入、既有 session 全面失效），重新啟用需重新發 Token，admin 不可停用自己。</div>
+          <div class="desc">Chat API 開放 <code>messages[]</code> <span class="hl">多輪對話直傳</span>（白名單透傳，與單輪互斥）與 <code>temperature</code> / <code>max_tokens</code> / <code>response_format</code> 三<span class="hl">生成參數</span>，明細頁分角色渲染；使用者<span class="hl">停用即撤銷全部 Token</span>（一鍵斷權，重新啟用需重發）。</div>
         </div>
       </div>
     </section>

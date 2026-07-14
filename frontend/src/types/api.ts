@@ -136,6 +136,16 @@ export interface User {
   updated_at: string;
 }
 
+// 使用者更新 payload(PATCH /users/{uid};v2.1.2 停用/啟用開關送 is_active)
+export interface UserPatch {
+  role?: "admin" | "user";
+  username?: string;
+  department_uid?: string | null;
+  employee_id?: string | null;
+  email?: string;
+  is_active?: boolean;
+}
+
 // OpenRouter Key（只顯示 last4 + prefix）
 export interface OpenRouterKey {
   openrouter_key_uid: string;

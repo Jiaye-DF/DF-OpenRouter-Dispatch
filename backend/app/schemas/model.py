@@ -1,9 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ChatFile(BaseModel):
@@ -18,14 +18,97 @@ class ChatFile(BaseModel):
     file_data: str = Field(min_length=1)
 
 
+class ChatTextPart(BaseModel):
+    """messages 直傳模式的 `text` content part(OpenRouter/OpenAI 風格)。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["text"]
+    text: str
+
+
+class ChatImageUrl(BaseModel):
+    """`image_url` part 的內層物件;白名單只收 `url`(與單輪 `images` 能力對齊)。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=1)
+
+
+class ChatImagePart(BaseModel):
+    """messages 直傳模式的 `image_url` content part。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["image_url"]
+    image_url: ChatImageUrl
+
+
+class ChatFilePart(BaseModel):
+    """messages 直傳模式的 `file` content part;形狀對齊既有 `ChatFile`。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["file"]
+    file: ChatFile
+
+
+# content parts 白名單:只收 text / image_url / file(與單輪能力集對齊;
+# video 等其他 type 一律驗證失敗,對齊 50-openrouter.md § 6.1)。
+ChatContentPart = Annotated[
+    ChatTextPart | ChatImagePart | ChatFilePart,
+    Field(discriminator="type"),
+]
+
+
+class ChatMessage(BaseModel):
+    """messages 直傳模式的單則訊息(v2.1.2,對齊 50-openrouter.md § 6.1)。
+
+    - `role`:白名單只收 `system` / `user` / `assistant`;`tool` role 與
+      `tool_calls` 回傳鏈本版不開放。
+    - `content`:字串或 content parts 陣列(白名單見 `ChatContentPart`)。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["system", "user", "assistant"]
+    content: str | list[ChatContentPart]
+
+
+class ResponseFormat(BaseModel):
+    """生成參數 `response_format` 的型別化白名單 schema(v2.1.2,禁 raw dict)。
+
+    - `type="json_object"`:不得帶 `json_schema`。
+    - `type="json_schema"`:必帶 `json_schema` 物件(原樣透傳下游)。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["json_object", "json_schema"]
+    json_schema: dict[str, object] | None = None
+
+    @model_validator(mode="after")
+    def _validate_json_schema_presence(self) -> Self:
+        if self.type == "json_schema" and self.json_schema is None:
+            raise ValueError("type 為 json_schema 時必須提供 json_schema 物件")
+        if self.type == "json_object" and self.json_schema is not None:
+            raise ValueError("type 為 json_object 時不可提供 json_schema 物件")
+        return self
+
+
 class ChatRequest(BaseModel):
     """Chat 代理的請求 body。
 
-    輸入刻意收斂為「純文字 / 多模態 + 可選工具」,不暴露 OpenAI 全部欄位:
+    輸入收斂為白名單參數,不暴露 OpenAI 全部欄位(對齊 50-openrouter.md § 5 / § 6):
 
-    - `text` / `images` / `files`:組成單一 user 訊息的多模態內容。
+    - 內容模式**互斥擇一**(同時帶 → 400):
+      - 單輪模式:`text` / `images` / `files` 組成單一 user 訊息的多模態內容。
+      - messages 直傳模式(v2.1.2):`messages` 自帶多輪對話 / system prompt /
+        assistant 歷史,白名單驗證後原樣透傳。
     - `videos`:本版本不支援,送出即回 400(僅佔位,待未來版本)。
-    - `tools`:見下方欄位說明。
+    - `tools`:見下方欄位說明;兩種內容模式皆可搭配。
+    - 生成參數(v2.1.2):`temperature` / `max_tokens` / `response_format` 三項,
+      兩種內容模式皆可帶;未帶(None)不注入 payload,走模型預設值。
     """
 
     model: str = Field(min_length=1, max_length=128)
@@ -38,6 +121,29 @@ class ChatRequest(BaseModel):
     # 注意:本版本僅支援「server 端工具」(回應仍為純文字);尚未開放會回
     # tool_calls 的 function calling。
     tools: list[dict[str, Any]] | None = None
+    # messages 直傳模式(v2.1.2):與 text/images/files 互斥;不設應用層筆數上限
+    # (模型 context window 為自然上限,對齊 propose v2.1.2 §D.2)。
+    messages: list[ChatMessage] | None = None
+    # 生成參數三欄(v2.1.2,§D.7);值域對齊 OpenAI/OpenRouter 慣例。
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    max_tokens: int | None = Field(default=None, ge=1)
+    response_format: ResponseFormat | None = None
+
+    @model_validator(mode="after")
+    def _validate_messages_mode(self) -> Self:
+        """messages 直傳模式的互斥驗證(對齊 50-openrouter.md § 6.1)。"""
+        if self.messages is None:
+            return self
+        if len(self.messages) == 0:
+            raise ValueError("messages 不可為空陣列")
+        conflicts = [
+            name
+            for name, value in (("text", self.text), ("images", self.images), ("files", self.files))
+            if value
+        ]
+        if conflicts:
+            raise ValueError(f"messages 與 {'/'.join(conflicts)} 互斥,擇一提供")
+        return self
 
 
 class ChatResponse(BaseModel):

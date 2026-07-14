@@ -731,6 +731,10 @@ flowchart LR
           <div class="ver">v2.1.1 · 成本可視化下放（2026-07-07）</div>
           <div class="desc">下載 Excel 升級為<span class="hl">儀表板全維度鏡射</span>：除部門 / 專案 / 使用者外，新增總覽 KPI、<span class="hl">專案 × 模型花費明細</span>、依模型、時序共 4 張工作表，每個專案花費可再依模型拆解（新增彙總端點 <code>/api/v1/stats/by-project-model</code>）。用量紀錄（列表 + 明細）<span class="hl">下放給一般使用者查看自身部門</span>成本，列表新增「所屬專案」欄與可搜尋專案篩選；<span class="hl">安全修補</span>:無所屬部門的非管理員一律 403,杜絕跨部門用量越權。</div>
         </div>
+        <div class="tl-item">
+          <div class="ver">v2.1.2 · 多輪對話直傳 + 帳號一鍵斷權（2026-07-14）</div>
+          <div class="desc">Chat API 開放 OpenAI 風格 <code>messages[]</code> <span class="hl">多輪對話直傳</span>（system prompt / 對話歷史，role 與 content parts 白名單驗證後透傳，與單輪 <code>text/images/files</code> 互斥），並開放 <code>temperature</code> / <code>max_tokens</code> / <code>response_format</code> 三個<span class="hl">生成參數</span>（其餘參數維持不開放）；用量明細頁依角色分段渲染多輪內容。使用者管理頁新增<span class="hl">停用 / 啟用開關</span>：停用即<span class="hl">撤銷該使用者全部 Token</span>（SDK 呼叫、登入、既有 session 全面失效），重新啟用需重新發 Token，admin 不可停用自己。</div>
+        </div>
       </div>
     </section>
 
@@ -971,7 +975,11 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
             <tr><td><code>text</code></td><td>string</td><td>否</td><td>使用者輸入文字</td></tr>
             <tr><td><code>images</code></td><td>string[]</td><td>否</td><td>圖片 URL 或 <code>data:image/...;base64,...</code></td></tr>
             <tr><td><code>files</code></td><td>object[]</td><td>否</td><td>PDF 等檔案；僅檔名寫入用量紀錄，內容不留存（法務考量）</td></tr>
-            <tr><td><code>tools</code></td><td>object[]</td><td>否</td><td>原樣轉發；目前僅支援 OpenRouter server 端工具（如 web search）</td></tr>
+            <tr><td><code>tools</code></td><td>object[]</td><td>否</td><td>原樣轉發；目前僅支援 OpenRouter server 端工具（如 web search）；兩種內容模式皆可搭配</td></tr>
+            <tr><td><code>messages</code></td><td>object[]</td><td>否</td><td><strong>多輪對話模式（v2.1.2）</strong>：OpenAI 風格 <code>{role, content}</code> 陣列（role 限 <code>system/user/assistant</code>；content 為字串或 <code>text/image_url/file</code> parts）。與 <code>text/images/files</code> <strong>擇一</strong>，同時帶回 400；則數不設上限（模型 context window 為自然上限）</td></tr>
+            <tr><td><code>temperature</code></td><td>number</td><td>否</td><td>取樣隨機性 0–2（v2.1.2）；未帶走模型預設</td></tr>
+            <tr><td><code>max_tokens</code></td><td>integer</td><td>否</td><td>回覆長度上限 ≥1（v2.1.2）；未帶走模型預設</td></tr>
+            <tr><td><code>response_format</code></td><td>object</td><td>否</td><td>結構化輸出（v2.1.2）：<code>{"type":"json_object"}</code> 或 <code>{"type":"json_schema","json_schema":{...}}</code>；其餘生成參數（top_p / stop 等）不開放</td></tr>
           </tbody>
         </table>
       </div>
@@ -1021,7 +1029,7 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
           <thead><tr><th>分類</th><th>路徑前綴</th><th>說明</th></tr></thead>
           <tbody>
             <tr><td>認證</td><td><code>/api/v1/auth/*</code></td><td>本地登入、Refresh、登出、改密；另有 DF-SSO OIDC 流程</td></tr>
-            <tr><td>使用者</td><td><code>/api/v1/users/*</code></td><td>admin CRUD + User Token 產生 / 撤銷</td></tr>
+            <tr><td>使用者</td><td><code>/api/v1/users/*</code></td><td>admin CRUD + User Token 產生 / 撤銷;停用使用者即撤銷其全部 Token（v2.1.2，不可停用自己）</td></tr>
             <tr><td>組織</td><td><code>/api/v1/departments/*</code>、<code>/api/v1/projects/*</code></td><td>部門、專案管理</td></tr>
             <tr><td>OpenRouter Key</td><td><code>/api/v1/openrouter-keys/*</code></td><td>部門層級 Key 管理（加密保管）</td></tr>
             <tr><td>SDK Key</td><td><code>/api/v1/sdk-keys/*</code></td><td>SDK 金鑰管理</td></tr>
@@ -1029,8 +1037,8 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
             <tr><td>用量與統計</td><td><code>/api/v1/usage-logs/*</code>、<code>/api/v1/stats/*</code>、<code>/api/v1/stats/by-project-model</code></td><td>用量查詢、依部門 / 專案 / 使用者 / 專案 × 模型（v2.1.1）彙總。<code>usage-logs</code> 回應帶所屬專案、列表支援 <code>project_uid</code> 篩選;admin 見全部、一般使用者鎖自身部門(v2.1.1,無所屬部門者拒絕)</td></tr>
             <tr><td>申請開通</td><td><code>/api/v1/applications/*</code></td><td>API Key 申請表單送出 / 檢視 / 生命週期流轉</td></tr>
             <tr><td>AI 分析（v2.0–2.1，admin）</td><td><code>/api/v1/ai-eval/judge-settings</code>、<code>/ai-eval/evaluations/by-usage-log/{uid}</code>、<code>/ai-eval/reruns</code></td><td>判別模型設定；依用量紀錄取評審結果；跨 log AI 判決總覽（分組分頁 + 編號排序 / 搜尋）</td></tr>
-            <tr><td>代理（非串流）</td><td><code>/api/v1/model/chat</code></td><td>SDK 呼叫模型（canonical）</td></tr>
-            <tr><td>代理（串流）</td><td><code>/api/v1/model/chat/stream</code></td><td>SSE 串流回應</td></tr>
+            <tr><td>代理（非串流）</td><td><code>/api/v1/model/chat</code></td><td>SDK 呼叫模型（canonical）;v2.1.2 起支援 <code>messages</code> 多輪直傳與 <code>temperature</code> / <code>max_tokens</code> / <code>response_format</code> 生成參數</td></tr>
+            <tr><td>代理（串流）</td><td><code>/api/v1/model/chat/stream</code></td><td>SSE 串流回應（request body 與非串流完全相同）</td></tr>
           </tbody>
         </table>
       </div>

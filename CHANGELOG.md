@@ -10,6 +10,17 @@
 
 ---
 
+## [v2.1.2] — 2026-07-14
+
+### 新增(Added)
+- Chat API(`/api/v1/model/chat`、`/model/chat/stream`)開放 **`messages[]` 多輪對話直傳**:可自帶 system prompt / 對話歷史 / 角色設定(OpenAI 風格 `{role, content}`;role 限 `system/user/assistant`,content 支援字串或 `text/image_url/file` parts);與單輪 `text/images/files` **擇一**(同時帶回 400),則數不設上限(模型 context window 為自然上限)。
+- 開放三個**生成參數**:`temperature`(0–2)、`max_tokens`(≥1)、`response_format`(`json_object` / `json_schema`,結構化輸出);單輪與 messages 模式皆可帶,未帶走模型預設;其餘生成參數(top_p / stop 等)維持不開放。
+- 使用者管理頁新增**停用 / 啟用開關**:停用即撤銷該使用者**全部 Token**(SDK 呼叫、登入、既有 session 全面失效),重新啟用需重新產生 Token;admin 不可停用自己。
+- 用量紀錄明細頁支援 messages 模式**分角色渲染**(系統提示 / 使用者 / 助理),有帶的生成參數一併顯示。
+
+### 變更(Changed)
+- 舊 client(只帶 `text/images/files`)行為與 v2.1.1 **完全一致**,無需任何調整。
+
 ## [v2.1.1] — 2026-07-07
 
 ### 新增(Added)

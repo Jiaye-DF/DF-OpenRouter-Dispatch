@@ -162,7 +162,7 @@ npm run type-check && npm run lint
 | 金鑰 | `/openrouter-keys/*`、`/sdk-keys/*`、`/internal-keys/*` | OpenRouter / SDK / 內部 LLM 金鑰 |
 | 模型 | `/models/*`、`/allowed/models`、`/model-tiers/*` | 模型主檔同步、白名單、分級 |
 | 用量 | `/usage-logs/*`、`/stats/*`（含 `/stats/by-project-model`） | 用量查詢、彙總（依部門 / 模型 / 專案 / 使用者 / 時序 / **專案×模型**）。admin 看全部;一般使用者鎖**自身部門**（v2.1.1）。`/usage-logs` 回應帶所屬專案、列表支援專案篩選 |
-| **代理** | `/model/chat` | SDK 呼叫入口（依模型 provider 自動分流；舊 `/model/openrouter/chat` 已 deprecated） |
+| **代理** | `/model/chat`、`/model/chat/stream` | SDK 呼叫入口（依模型 provider 自動分流；舊 `/model/openrouter/chat` 已 deprecated）。v2.1.2 起支援 `messages` 多輪對話（與單輪 `text`/`images`/`files` 互斥）與 `temperature` / `max_tokens` / `response_format` 生成參數（未帶走模型預設），契約詳見 [docs/INTEGRATION.md](docs/INTEGRATION.md) |
 | 申請單 | `/api-key-requests/*` | API Key 申請生命週期（見下） |
 | **AI 分析** | `/ai-eval/judge-settings`、`/ai-eval/evaluations/by-usage-log/{uid}`、`/ai-eval/reruns` | 判別模型設定；依用量紀錄取評審結果；跨 log AI 判決總覽（分組分頁 + 編號排序/搜尋）。admin only（v2.0–2.1，見 §12） |
 | 健康 | `/health` | 健康檢查 |

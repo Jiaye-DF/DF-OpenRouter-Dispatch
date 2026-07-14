@@ -35,7 +35,9 @@ async def _chat_handler(
     把 HTTP 層的依賴拆解後轉交 service 層 `run_chat`,本身不含商業邏輯。
 
     Args:
-        body: 已驗證的請求 body(model / text / images / files / videos / tools)。
+        body: 已驗證的請求 body(model / text / images / files / videos / tools;
+            v2.1.2 起另含 messages 直傳模式與生成參數 temperature / max_tokens /
+            response_format,互斥 / 白名單驗證均由 `ChatRequest` schema 層完成)。
         caller: 由 SDK Key 解析出的呼叫者身分(department / project / user uid),
             用於白名單、速率限制歸戶與 usage_logs 記帳。
         db: 本次 request 的 DB session。
@@ -56,6 +58,10 @@ async def _chat_handler(
         videos=body.videos,
         tools=body.tools,
         files=[f.model_dump() for f in body.files] if body.files else None,
+        messages=body.messages,
+        temperature=body.temperature,
+        max_tokens=body.max_tokens,
+        response_format=body.response_format,
     )
     return success_response(data=data, detail="success")
 
@@ -109,6 +115,10 @@ async def chat_stream(
         videos=body.videos,
         tools=body.tools,
         files=[f.model_dump() for f in body.files] if body.files else None,
+        messages=body.messages,
+        temperature=body.temperature,
+        max_tokens=body.max_tokens,
+        response_format=body.response_format,
     )
 
     # 先 prime 一次:開串流前的 AppError 於此拋出,由 exception handler 轉 ApiResponse

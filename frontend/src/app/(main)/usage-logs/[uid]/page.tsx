@@ -14,10 +14,62 @@ import { API_ENDPOINTS } from "@/lib/api/endpoints";
 import { formatDateTime } from "@/lib/utils/datetime";
 import { formatUSD } from "@/lib/utils/format";
 import { useAppSelector } from "@/store/hooks";
-import type { UsageLogDetail } from "@/types/api";
+import type { UsageLogDetail, UsageRequestContent } from "@/types/api";
 
 // 用量紀錄單筆詳情頁:顯示使用者實際傳入內容(Input,含圖片)與模型完整回覆(Output)。
 // base64 圖片在前端轉成 Blob/object URL 後渲染,避免巨大 data URI 直接塞進 DOM。
+// v2.1.2(task-434):request_content 支援雙內容模式——舊單輪 {text, images, ...}
+// 渲染不變;messages 直傳模式依 role 分段渲染(形狀判別,不做資料遷移)。
+
+// ── task-434 區域型別:messages 模式 request_content(v2.1.2)──
+// types/api.ts 由 task-437 持鎖,本頁以區域型別做形狀判別(以 messages 鍵有無分流);
+// 後端快照確切形狀見 backend/app/services/proxy.py `_build_request_log` / `_snapshot_message`。
+
+interface RequestTextPart {
+  type: "text";
+  text: string;
+}
+
+interface RequestImagePart {
+  type: "image_url";
+  image_url: { url: string };
+}
+
+// file part 快照僅保留檔名(不留存檔案內容,法務考量;對齊 propose v2.1.2 §D.4)
+interface RequestFilePart {
+  type: "file";
+  file: { filename: string };
+}
+
+type RequestMessagePart = RequestTextPart | RequestImagePart | RequestFilePart;
+
+interface RequestMessage {
+  role: "system" | "user" | "assistant";
+  content: string | RequestMessagePart[];
+}
+
+// 生成參數(v2.1.2 §D.7):兩種內容模式皆可能出現;後端「有帶才寫入」快照,不會為 null
+interface RequestGenerationParams {
+  temperature?: number;
+  max_tokens?: number;
+  response_format?: {
+    type: "json_object" | "json_schema";
+    json_schema?: Record<string, unknown>;
+  };
+}
+
+interface MessagesRequestContent extends RequestGenerationParams {
+  model?: string;
+  messages: RequestMessage[];
+  tools?: Record<string, unknown>[];
+}
+
+type SingleTurnRequestContent = UsageRequestContent & RequestGenerationParams;
+type RequestContent = SingleTurnRequestContent | MessagesRequestContent;
+
+function isMessagesRequest(req: RequestContent): req is MessagesRequestContent {
+  return Array.isArray((req as MessagesRequestContent).messages);
+}
 
 function dataUriToBlob(dataUri: string): Blob | null {
   const m = /^data:([^;]+);base64,(.*)$/s.exec(dataUri);
@@ -103,6 +155,131 @@ function ImageItem({ src, index }: { src: string; index: number }) {
   );
 }
 
+// role → 視覺區辨(Badge 變體 + 中文說明);後端 role 走 Literal 白名單,僅此三種
+const ROLE_META: Record<
+  RequestMessage["role"],
+  { label: string; variant: "warning" | "default" | "success" }
+> = {
+  system: { label: "系統提示", variant: "warning" },
+  user: { label: "使用者", variant: "default" },
+  assistant: { label: "助理", variant: "success" },
+};
+
+// 單則 message 的 content:字串直接顯示;parts 陣列依型別呈現
+// (text 文字 / image_url 縮圖沿用 ImageItem / file 檔名)。
+function MessageContent({
+  content,
+}: {
+  content: string | RequestMessagePart[];
+}) {
+  if (typeof content === "string") {
+    return content ? (
+      <pre className="whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/40 p-3 text-sm">
+        {content}
+      </pre>
+    ) : (
+      <span className="text-sm text-muted-foreground">(無內容)</span>
+    );
+  }
+
+  let imageIndex = 0;
+  return (
+    <div className="flex flex-col gap-2">
+      {content.map((part, i) => {
+        if (part.type === "text") {
+          return (
+            <pre
+              key={i}
+              className="whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/40 p-3 text-sm"
+            >
+              {part.text}
+            </pre>
+          );
+        }
+        if (part.type === "image_url") {
+          const idx = imageIndex;
+          imageIndex += 1;
+          return <ImageItem key={i} src={part.image_url.url} index={idx} />;
+        }
+        return (
+          <div
+            key={i}
+            className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
+          >
+            <span className="text-muted-foreground">檔案(僅保留檔名):</span>{" "}
+            <span className="font-mono break-all">{part.file.filename}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// messages 模式:單則訊息區塊(role Badge 標頭 + content)
+function MessageBlock({ message }: { message: RequestMessage }) {
+  const meta = ROLE_META[message.role];
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+      <div className="flex items-center gap-2">
+        <Badge variant={meta.variant} className="font-mono">
+          {message.role}
+        </Badge>
+        <span className="text-sm text-muted-foreground">{meta.label}</span>
+      </div>
+      <MessageContent content={message.content} />
+    </div>
+  );
+}
+
+// tools 快照(兩種內容模式共用同一呈現)
+function ToolsView({ tools }: { tools: Record<string, unknown>[] }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-sm text-muted-foreground">工具(tools)</span>
+      <pre className="overflow-x-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-sm">
+        {JSON.stringify(tools, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
+// 生成參數(v2.1.2):有帶才顯示;舊紀錄無這些鍵 → 不渲染(視覺不變)
+function GenerationParamsView({ req }: { req: RequestGenerationParams }) {
+  const hasAny =
+    req.temperature !== undefined ||
+    req.max_tokens !== undefined ||
+    req.response_format !== undefined;
+  if (!hasAny) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-sm text-muted-foreground">生成參數</span>
+      <div className="flex flex-wrap gap-2">
+        {req.temperature !== undefined && (
+          <Badge variant="secondary" className="font-mono">
+            temperature: {req.temperature}
+          </Badge>
+        )}
+        {req.max_tokens !== undefined && (
+          <Badge variant="secondary" className="font-mono">
+            max_tokens: {req.max_tokens.toLocaleString()}
+          </Badge>
+        )}
+        {req.response_format && (
+          <Badge variant="secondary" className="font-mono">
+            response_format: {req.response_format.type}
+          </Badge>
+        )}
+      </div>
+      {req.response_format?.type === "json_schema" &&
+        req.response_format.json_schema && (
+          <pre className="overflow-x-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-sm">
+            {JSON.stringify(req.response_format.json_schema, null, 2)}
+          </pre>
+        )}
+    </div>
+  );
+}
+
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
@@ -136,7 +313,9 @@ export default function UsageLogDetailPage() {
       .finally(() => setLoading(false));
   }, [uid]);
 
-  const req = log?.request_content ?? null;
+  // request_content 雙內容模式(task-434):API 型別為單輪快照,messages 模式
+  // 以區域型別 + 形狀判別(isMessagesRequest)分流,舊單輪紀錄渲染路徑不變。
+  const req: RequestContent | null = log?.request_content ?? null;
   const resp = log?.response_summary ?? null;
   // v1.6.2 起 output_text 為完整回覆;舊紀錄僅有截斷的 first_text。
   const outputText = resp?.output_text ?? resp?.first_text ?? "";
@@ -241,6 +420,27 @@ export default function UsageLogDetailPage() {
             <Card>
               <CardContent className="flex flex-col gap-4 pt-6">
                 {req ? (
+                  isMessagesRequest(req) ? (
+                    // messages 直傳模式(v2.1.2):依 role 分段渲染多輪內容
+                    <>
+                      <div className="flex flex-col gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          多輪對話(messages,共 {req.messages.length} 則)
+                        </span>
+                        <div className="flex flex-col gap-3">
+                          {req.messages.map((msg, i) => (
+                            <MessageBlock key={i} message={msg} />
+                          ))}
+                        </div>
+                      </div>
+
+                      {req.tools && req.tools.length > 0 && (
+                        <ToolsView tools={req.tools} />
+                      )}
+
+                      <GenerationParamsView req={req} />
+                    </>
+                  ) : (
                   <>
                     <div className="flex flex-col gap-1">
                       <span className="text-sm text-muted-foreground">文字</span>
@@ -254,14 +454,7 @@ export default function UsageLogDetailPage() {
                     </div>
 
                     {req.tools && req.tools.length > 0 && (
-                      <div className="flex flex-col gap-1">
-                        <span className="text-sm text-muted-foreground">
-                          工具(tools)
-                        </span>
-                        <pre className="overflow-x-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-sm">
-                          {JSON.stringify(req.tools, null, 2)}
-                        </pre>
-                      </div>
+                      <ToolsView tools={req.tools} />
                     )}
 
                     {req.images && req.images.length > 0 && (
@@ -294,7 +487,10 @@ export default function UsageLogDetailPage() {
                         </ul>
                       </div>
                     )}
+
+                    <GenerationParamsView req={req} />
                   </>
+                  )
                 ) : (
                   <span className="text-sm text-muted-foreground">
                     此紀錄無請求內容(可能為歷史紀錄或白名單拒絕情境)

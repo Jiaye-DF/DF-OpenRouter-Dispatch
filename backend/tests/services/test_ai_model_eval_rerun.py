@@ -121,7 +121,12 @@ async def _add_usage_log(
     *,
     model: str,
     cost_usd: Decimal | None,
+    request_content: dict | None = None,
 ) -> UUID:
+    """建一筆 usage_log;`request_content` 不給則用單輪快照(v1.2 形狀)。
+
+    messages 直傳快照(v2.1.2 形狀)由呼叫端顯式帶入,用於鎖住雙形狀的重跑行為。
+    """
     uid = _new_uid()
     session.add(
         UsageLog(
@@ -129,7 +134,8 @@ async def _add_usage_log(
             model=model,
             status="success",
             cost_usd=cost_usd if cost_usd is not None else Decimal("0"),
-            request_content={"model": model, "text": "幫我把這段會議記錄整理成重點"},
+            request_content=request_content
+            or {"model": model, "text": "幫我把這段會議記錄整理成重點"},
             response_summary={"output_text": "原模型輸出:重點如下 1...2...3"},
         )
     )
@@ -192,16 +198,21 @@ async def _seed(
     recommends: list[str | None],
     original_cost: Decimal | None = Decimal("0.002000"),
     extra_models: list[str] | None = None,
+    request_content: dict | None = None,
 ) -> _Seed:
     """建原模型 + 3 裁判模型 + 1 usage_log + 1 父評審 + 3 候選(各帶 recommends[i])。
 
     `recommends[i]` 為第 i 個裁判的推薦 model_key(None=未推薦)。所有 model_key 帶 uuid
     後綴避免撞 dev DB 全域 UNIQUE。`extra_models` 為需建入 models 白名單的 challenger key
-    (供反查 model_uid;不建則 challenger model_uid 留 None)。
+    (供反查 model_uid;不建則 challenger model_uid 留 None)。`request_content` 可覆寫
+    usage_log 的輸入快照形狀(不給 = 單輪)。
     """
     original_model = _uniq("openai/gpt-orig")
     log_uid = await _add_usage_log(
-        session, model=original_model, cost_usd=original_cost
+        session,
+        model=original_model,
+        cost_usd=original_cost,
+        request_content=request_content,
     )
     eval_uid = await _add_parent(
         session, usage_log_uid=log_uid, original_model=original_model
@@ -294,6 +305,62 @@ async def _get_parent(session: AsyncSession, eval_uid: UUID) -> AiModelEvaluatio
             )
         )
     ).scalar_one()
+
+
+# --- (0) 雙快照形狀:messages 直傳的 log 必須整段重放,不可送空 prompt --------
+
+
+@respx.mock(base_url=_OR_BASE_URL)
+async def test_messages_snapshot_replays_conversation_not_empty_prompt(
+    respx_mock, db_session: AsyncSession, monkeypatch
+) -> None:
+    """回歸(v2.1.2 缺陷):messages 快照無 `text` 鍵,challenger 過去被送出
+
+    `[{"role":"user","content":""}]` —— 真實計費呼叫一個空 prompt,後續 A/B 裁決失去意義。
+    """
+    _patch_settings(monkeypatch, discriminator=False)
+    challenger = _uniq("anthropic/claude-haiku")
+    seed = await _seed(
+        db_session,
+        recommends=[challenger, None, None],
+        extra_models=[challenger],
+        request_content={
+            "model": "openai/gpt-4o",
+            "messages": [
+                {"role": "system", "content": "你是會議記錄助理"},
+                {"role": "user", "content": "幫我把這段會議記錄整理成重點"},
+                {"role": "assistant", "content": "好的,重點如下…"},
+                {"role": "user", "content": "第三點再展開"},
+            ],
+        },
+    )
+
+    route = respx_mock.post("/chat/completions").mock(
+        side_effect=lambda req: _challenger_response(
+            "challenger 輸出", cost=0.001, total_tokens=30
+        )
+    )
+
+    client = _make_client()
+    await svc.rerun_evaluation(seed.eval_uid, db=db_session, client=client)
+    await client._client.aclose()
+
+    assert route.call_count == 1
+    sent = json.loads(route.calls[0].request.content)
+    assert [m["role"] for m in sent["messages"]] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert sent["messages"][0]["content"] == "你是會議記錄助理"
+    assert sent["messages"][-1]["content"] == "第三點再展開"
+    # 絕不可退化成單一則空 user 訊息
+    assert sent["messages"] != [{"role": "user", "content": ""}]
+
+    reruns = await _list_reruns(db_session, seed.eval_uid)
+    assert len(reruns) == 1
+    assert reruns[0].status == "success"
 
 
 # --- (a) 三裁判推薦同模型 → 去重一筆 ---------------------------------------

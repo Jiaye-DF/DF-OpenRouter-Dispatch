@@ -52,6 +52,7 @@ from app.schemas.ai_model_eval_rerun_result import (
     RerunStats,
     RerunUsageLogInfo,
 )
+from app.services import request_snapshot
 
 logger = get_logger(__name__)
 
@@ -99,16 +100,12 @@ def _output_text_of(response_summary: dict[str, Any] | None) -> str | None:
 
 
 def _input_text_of(request_content: dict[str, Any] | None) -> str | None:
-    """從 `request_content` 取任務輸入原文(`text` 欄;對齊 usage-log 明細 / rerun service 慣例)。
+    """從 `request_content` 取任務輸入原文(雙快照形狀,見 `request_snapshot`)。
 
-    request_content 為 NULL / 缺 `text` / 非字串 / 空字串 → None。
+    單輪快照 → `text` 欄;messages 直傳快照 → **最後一則 user 訊息**的文字。
+    request_content 為 NULL / 無任何文字 → None。
     """
-    if not request_content:
-        return None
-    text = request_content.get("text")
-    if isinstance(text, str) and text:
-        return text
-    return None
+    return request_snapshot.input_text_of(request_content)
 
 
 def _to_usage_log_info(usage_log: UsageLog | None) -> RerunUsageLogInfo | None:
@@ -134,9 +131,7 @@ def _to_usage_log_info(usage_log: UsageLog | None) -> RerunUsageLogInfo | None:
     )
 
 
-def _to_recommendation(
-    row: AiModelEvalRerun, recommended_by: str | None
-) -> RerunRecommendation:
+def _to_recommendation(row: AiModelEvalRerun, recommended_by: str | None) -> RerunRecommendation:
     """`AiModelEvalRerun`(ORM 列)→ `RerunRecommendation`(對外);金額 / 分數 Decimal→str。
 
     `recommended_by` 由 caller 從 candidate 反查 derive 後傳入(推薦此模型的評審 key;查不到 None)。
@@ -240,12 +235,8 @@ async def build_rerun_overview(
             return None
         cand_map = judge_by_eval.get(row.ai_evaluation_uid)
         if cand_map is None:
-            candidates = await eval_repo.list_candidates_with_judge(
-                row.ai_evaluation_uid
-            )
-            cand_map = {
-                cand.ai_candidate_uid: cand.judge_model_key for cand in candidates
-            }
+            candidates = await eval_repo.list_candidates_with_judge(row.ai_evaluation_uid)
+            cand_map = {cand.ai_candidate_uid: cand.judge_model_key for cand in candidates}
             judge_by_eval[row.ai_evaluation_uid] = cand_map
         return cand_map.get(row.ai_candidate_uid)
 
@@ -264,9 +255,7 @@ async def build_rerun_overview(
         )
         # 同一 row 順手組 usage_log 基礎資訊(供 Dialog 顯示;row 為 None → None)。
         usage_log_info = _to_usage_log_info(usage_log)
-        recommendations = [
-            _to_recommendation(r, await _recommended_by(r)) for r in group_rows
-        ]
+        recommendations = [_to_recommendation(r, await _recommended_by(r)) for r in group_rows]
         items.append(
             RerunGroup(
                 usage_log_uid=log_uid,
@@ -291,6 +280,4 @@ async def build_rerun_overview(
         stats.total_recommendations,
     )
 
-    return RerunOverviewPage(
-        items=items, total=total, page=page, size=size, stats=stats
-    )
+    return RerunOverviewPage(items=items, total=total, page=page, size=size, stats=stats)

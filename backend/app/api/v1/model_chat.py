@@ -7,7 +7,7 @@
 """
 
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -22,6 +22,29 @@ router = APIRouter(prefix="/model", tags=["model-chat"])
 deprecated_router = APIRouter(prefix="/model/openrouter", tags=["model-chat (deprecated)"])
 
 ClientFactoryDep = Annotated[ChatClientFactory, Depends(get_chat_client_factory)]
+
+
+def _chat_kwargs(body: ChatRequest, caller: SdkCallerDep) -> dict[str, Any]:
+    """把已驗證的 body + caller 攤成 `run_chat` / `run_chat_stream` 的共用 kwargs。
+
+    兩個 service fn 的簽章一致,非串流 / 串流 / deprecated alias 三條路徑共用同一份轉發,
+    新增 ChatRequest 欄位時只需改這裡一處(避免漏改導致某條路徑靜默丟參數)。
+    """
+    return {
+        "department_uid": caller.department_uid,
+        "project_uid": caller.project_uid,
+        "user_uid": caller.user_uid,
+        "model": body.model,
+        "text": body.text,
+        "images": body.images,
+        "videos": body.videos,
+        "tools": body.tools,
+        "files": [f.model_dump() for f in body.files] if body.files else None,
+        "messages": body.messages,
+        "temperature": body.temperature,
+        "max_tokens": body.max_tokens,
+        "response_format": body.response_format,
+    }
 
 
 async def _chat_handler(
@@ -46,23 +69,7 @@ async def _chat_handler(
     Returns:
         包成統一格式的成功回應,data 為模型回應的純文字內容。
     """
-    data = await run_chat(
-        db,
-        client_factory=client_factory,
-        department_uid=caller.department_uid,
-        project_uid=caller.project_uid,
-        user_uid=caller.user_uid,
-        model=body.model,
-        text=body.text,
-        images=body.images,
-        videos=body.videos,
-        tools=body.tools,
-        files=[f.model_dump() for f in body.files] if body.files else None,
-        messages=body.messages,
-        temperature=body.temperature,
-        max_tokens=body.max_tokens,
-        response_format=body.response_format,
-    )
+    data = await run_chat(db, client_factory=client_factory, **_chat_kwargs(body, caller))
     return success_response(data=data, detail="success")
 
 
@@ -103,23 +110,7 @@ async def chat_stream(
 
     參數意義同 `_chat_handler`(body / caller / db / client_factory)。
     """
-    agen = run_chat_stream(
-        db,
-        client_factory=client_factory,
-        department_uid=caller.department_uid,
-        project_uid=caller.project_uid,
-        user_uid=caller.user_uid,
-        model=body.model,
-        text=body.text,
-        images=body.images,
-        videos=body.videos,
-        tools=body.tools,
-        files=[f.model_dump() for f in body.files] if body.files else None,
-        messages=body.messages,
-        temperature=body.temperature,
-        max_tokens=body.max_tokens,
-        response_format=body.response_format,
-    )
+    agen = run_chat_stream(db, client_factory=client_factory, **_chat_kwargs(body, caller))
 
     # 先 prime 一次:開串流前的 AppError 於此拋出,由 exception handler 轉 ApiResponse
     # (此時尚未送出 200 與 SSE);成功取得第一個 chunk 後才真正開啟串流。

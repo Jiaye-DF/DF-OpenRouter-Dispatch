@@ -219,14 +219,72 @@ export interface UsageLog {
   created_at: string;
 }
 
-// 用量紀錄請求快照(寫入時的使用者原始輸入)
-export interface UsageRequestContent {
+// ── 用量紀錄請求快照(寫入時的使用者原始輸入)──
+// v2.1.2 起有兩種形狀(後端 proxy `_build_request_log`):單輪 {text, images, files} /
+// messages 直傳 {messages}。舊紀錄一律為單輪形狀,故讀取端以 isMessagesRequest() 分流。
+
+export interface RequestTextPart {
+  type: "text";
+  text: string;
+}
+
+export interface RequestImagePart {
+  type: "image_url";
+  image_url: { url: string };
+}
+
+// file part 快照僅保留檔名(不留存檔案內容,法務考量)
+export interface RequestFilePart {
+  type: "file";
+  file: { filename: string };
+}
+
+export type RequestMessagePart =
+  | RequestTextPart
+  | RequestImagePart
+  | RequestFilePart;
+
+export interface RequestMessage {
+  role: "system" | "user" | "assistant";
+  content: string | RequestMessagePart[];
+}
+
+// 生成參數(v2.1.2):兩種內容模式皆可能出現;後端「有帶才寫入」快照,不會為 null
+export interface RequestGenerationParams {
+  temperature?: number;
+  max_tokens?: number;
+  response_format?: {
+    type: "json_object" | "json_schema";
+    json_schema?: Record<string, unknown>;
+  };
+}
+
+// 單輪快照(v1.2 起;舊紀錄皆為此形狀)
+export interface SingleTurnRequestContent extends RequestGenerationParams {
   model?: string;
   text?: string | null;
   images?: string[];
   // 上傳檔案僅保留檔名(不留存檔案內容,法務考量)
   files?: string[];
   tools?: Record<string, unknown>[];
+}
+
+// messages 直傳快照(v2.1.2 起;無 text / images 鍵)
+export interface MessagesRequestContent extends RequestGenerationParams {
+  model?: string;
+  messages: RequestMessage[];
+  tools?: Record<string, unknown>[];
+}
+
+export type UsageRequestContent =
+  | SingleTurnRequestContent
+  | MessagesRequestContent;
+
+// 形狀判別:messages 鍵有無 → 決定渲染路徑(後端不做資料遷移,舊紀錄永遠是單輪形狀)
+export function isMessagesRequest(
+  req: UsageRequestContent
+): req is MessagesRequestContent {
+  return Array.isArray((req as MessagesRequestContent).messages);
 }
 
 // 用量紀錄回應摘要(v1.6.2 起 output_text 為完整回覆;舊紀錄僅有截斷的 first_text)

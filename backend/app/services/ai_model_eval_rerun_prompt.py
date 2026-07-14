@@ -21,6 +21,10 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from app.schemas.ai_model_eval import DiscriminatorOutput
+
+# 「使用者輸入」區塊的渲染與 build_judge_prompt 完全共用(原為逐字複製的第二份實作;
+# v2.1.2 開放 messages 直傳後兩份都得改,故收斂為單一實作)。該實作已支援雙快照形狀。
+from app.services.ai_model_eval_prompt import _render_input
 from app.services.llm_json import extract_first_json_object
 
 # 遮罩 hook 型別:吃一段文字、回遮罩後文字。預設 identity(本版不遮罩,見模組 docstring)。
@@ -51,28 +55,6 @@ _OUTPUT_SCHEMA_HINT = json.dumps(
     },
     ensure_ascii=False,
 )
-
-
-def _render_input(request_content: Mapping[str, Any], text_masker: TextMasker) -> str:
-    """把使用者原輸入(request_content 原文)渲染成可讀的「使用者輸入」區塊。
-
-    request_content 形狀同 proxy `_build_request_log`:{model, text, images, tools, files}。
-    此處**不**帶入 `model` 欄(盲化:不揭露任何模型名);text 過遮罩 hook。
-    """
-    text = request_content.get("text")
-    masked_text = text_masker(text) if isinstance(text, str) else ""
-    images = request_content.get("images") or []
-    tools = request_content.get("tools") or []
-    files = request_content.get("files") or []
-
-    lines: list[str] = [f"文字輸入:\n{masked_text}" if masked_text else "文字輸入:(無)"]
-    if images:
-        lines.append(f"圖片數量:{len(images)}")
-    if tools:
-        lines.append(f"使用工具:{json.dumps(tools, ensure_ascii=False)}")
-    if files:
-        lines.append(f"附帶檔案數量:{len(files)}")
-    return "\n".join(lines)
 
 
 def build_discriminator_prompt(

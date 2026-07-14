@@ -16,6 +16,7 @@ const MESSAGES: Record<string, string> = {
   user_no_department: "此使用者尚未指派部門，請先指派後再操作。",
   user_department_missing: "此使用者指派的部門不存在，請先修正。",
   user_requires_identity: "請輸入員工編號與 Email。",
+  cannot_disable_self: "無法停用自己的帳號,請改由其他管理者操作。",
 
   // 一般
   not_found: "找不到指定資源。",

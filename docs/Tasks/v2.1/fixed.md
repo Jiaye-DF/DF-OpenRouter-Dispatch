@@ -112,3 +112,25 @@
   - **前端層(defense-in-depth + UX,user 2026-07-07 追加)**:非-admin 且無部門者,`Sidebar.tsx` 以 `memberNeedsDepartment` 旗標**整條隱藏**用量紀錄入口、`RouteGuard.tsx` 以 `MEMBER_DEPARTMENT_REQUIRED_PREFIXES` 對 `/usage-logs` 直接導航**導回 /dashboard**,避免點進後端 403 壞頁。後端 403 仍為權限地板,前端僅為避免壞頁與雜訊(對齊 `92-project-permission.md § 7`:前端隱藏為 UX 提示,不取代後端把關)。
 - **規範參照**:`03-backend/02-auth.md`(權限收斂於 Dependency)/ `03-backend/92-project-permission.md § 4`(自身部門邊界)
 - **後續**:reflect 候選 — 建議於 `92-project-permission.md § 4` 補明文:「非-admin 且 `department_uid` 為 NULL → 一律拒絕管理端資料查詢(403),不得回退為無過濾」,把此防線升為 Design-Base 規則(見 scan 報告 260707050320 第 7 章第 1 項)。
+
+## §11 — `07-testing.md` 要求「真 DB 整合測試」但專案無任何測試 DB 基建,v2.1.2 新測試(task-436/433)只能沿既有 mock 慣例
+
+- **時間**:2026-07-14T00:00+08:00
+- **commit / PR**:`<pending>`(v2.1.2,orchestrator 統一提交)
+- **影響檔案**:`backend/tests/`(conftest 只注入 env,無 testcontainers / aiosqlite / 測試 DB fixture);本次新增 `tests/api/test_users_disable.py`、`tests/api/test_model_chat_messages.py`、`tests/schemas/test_chat_request_messages.py`、`tests/services/test_proxy_messages.py`
+- **問題**:Design-Base `03-backend/07-testing.md` 要求 DB 整合測試走真實測試 DB;但專案現況**零測試 DB 基建**,既有 api 測試全為「repository 層以 in-memory 替身 monkeypatch、service 與驗證鏈走真實碼」的 mock 風格(如 `test_usage_logs.py`)。v2.1.2 四個新測試檔依 task 明示「參考既有寫法」,沿用同慣例(共 94 個新案例,service / 驗證鏈 / schema 層皆真實碼,僅 repository 替身)。
+- **根因**:規範先行(07-testing.md 定了真 DB 地板)但基建 task 從未落地(pyproject 無 testcontainers 等依賴),與 §5/§8「utils/datetime.ts 規範有、基建無」同型:規範與基建脫節,後續 task 在範圍鎖檔下只能沿既有慣例。
+- **修正**:v2.1.2 各 task 依現況慣例撰寫測試並於回報中揭露落差,不擅自引入新測試依賴(超出各 task affected_files)。
+- **規範參照**:`03-backend/07-testing.md`
+- **後續**:reflect 候選 — (1) 開基建 task 建立測試 DB fixture(testcontainers-postgres 或 compose 測試庫),把高風險鏈路(token 撤銷雙表、usage_logs 快照)升級為真 DB 整合測試;(2) 或修訂 `07-testing.md` 承認「repository 替身 + 真實 service/驗證鏈」為合規測試層級,消除規範與現況的持續落差(已跨多版本存在)。
+
+## §12 — mypy 既有債連坐於 v2.1.2 再現(task-432/433/436 以 git stash 比對 baseline 佐證零新增)——§1/§2/§4/§7 同源第 5+ 次
+
+- **時間**:2026-07-14T00:00+08:00
+- **commit / PR**:`<pending>`(v2.1.2,orchestrator 統一提交)
+- **影響檔案**:`backend/app/services/proxy.py`(follow-imports 17 錯)、`backend/app/api/v1/users.py`(45 錯)——**皆為既有 baseline**,非本版檔案自身錯誤
+- **問題**:v2.1.2 三個後端 task 的 acceptance 均含 mypy 全綠;實跑均命中既有債(repository `list` 遮蔽、`Result.rowcount`、seqlog 缺 stub 等 §1/§2/§4/§7 已記載同源)。各 worker 以 `git stash` 比對 HEAD baseline **逐條相同、零新增**後維持原樣回報。
+- **根因**:同 §1/§2/§4/§7;清債 task 至今未開。
+- **修正**:各 task 以「baseline 比對零新增」取代「整包全綠」作為實質驗收;範圍外檔一律不動。
+- **規範參照**:`03-backend/07-testing.md`
+- **後續**:reflect 候選 — 同類條目已跨 §1/§2/§4/§7/§12 五度出現,**遠超升規門檻**;強烈建議本版收尾後立即開清債 task(`list` 改名 + `Result.rowcount` 替代寫法 + seqlog mypy override),並於 Design-Base 明文「mypy acceptance = 本 task 變更檔零錯 + 全倉不高於 baseline」。

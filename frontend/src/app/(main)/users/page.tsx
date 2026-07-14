@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import {
   Dialog,
@@ -23,9 +24,10 @@ import { FilterChip } from "@/components/ui/FilterChip";
 import { PageHint } from "@/components/common/PageHint";
 import { useDialog } from "@/lib/dialog";
 import { useConfirm } from "@/components/common/ConfirmDialog";
+import { useToast } from "@/components/ui/toaster";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
-import type { Department, Paginated, User } from "@/types/api";
+import type { Department, Paginated, User, UserPatch } from "@/types/api";
 import { useAppSelector } from "@/store/hooks";
 
 // 僅 admin 可見：使用者管理
@@ -83,9 +85,12 @@ type Mode =
   | null;
 
 export default function UsersPage() {
-  const role = useAppSelector((s) => s.auth.actor?.role);
+  const actor = useAppSelector((s) => s.auth.actor);
+  const role = actor?.role;
+  const myUid = actor?.user_uid;
   const { showDialog } = useDialog();
   const { confirm } = useConfirm();
+  const { toast } = useToast();
 
   const [items, setItems] = React.useState<User[]>([]);
   const [depts, setDepts] = React.useState<Department[]>([]);
@@ -413,6 +418,70 @@ export default function UsersPage() {
     }
   };
 
+  // 停用/啟用切換:確認後 PATCH { is_active };停用 = 後端同步撤銷全部 Token(task-436)
+  const onToggleActive = async (user: User) => {
+    const next = !user.is_active;
+    const ok = await confirm(
+      next
+        ? {
+            title: `啟用 ${user.username}`,
+            message: (
+              <span>
+                將重新啟用 <b>{user.username}</b>,恢復登入資格。
+                <br />
+                <span className="text-muted-foreground text-sm">
+                  停用時已撤銷的 Token <strong>不會恢復</strong>
+                  ,需重新「產生 Token」才能恢復 SDK 呼叫。
+                </span>
+              </span>
+            ),
+            destructive: false,
+            confirmText: "啟用",
+          }
+        : {
+            title: `停用 ${user.username}`,
+            message: (
+              <span>
+                停用後將撤銷 <b>{user.username}</b> 的<strong>全部 Token</strong>
+                ,SDK 呼叫與登入<strong>即刻失效</strong>。
+                <br />
+                <span className="text-muted-foreground text-sm">
+                  撤銷不可逆;日後重新啟用也不會恢復原 Token,需重新產生並交付。
+                </span>
+              </span>
+            ),
+            destructive: true,
+            confirmText: "停用並撤銷 Token",
+          }
+    );
+    if (!ok) return;
+    setSaving(true);
+    try {
+      const payload: UserPatch = { is_active: next };
+      await apiClient.patch<{ tokens_revoked?: boolean }>(
+        API_ENDPOINTS.userById(user.user_uid),
+        payload
+      );
+      await load();
+      toast(
+        next
+          ? `已啟用 ${user.username}`
+          : `已停用 ${user.username},其全部 Token 已撤銷`,
+        "success"
+      );
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showDialog({
+          type: "error",
+          title: next ? "啟用失敗" : "停用失敗",
+          message: err.localizedDetail,
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const totalPages = Math.max(1, Math.ceil(total / size));
 
   return (
@@ -579,9 +648,28 @@ export default function UsersPage() {
                     <TD>{deptName(u.department_uid)}</TD>
                     <TD className="text-muted-foreground">{u.email ?? "-"}</TD>
                     <TD>
-                      <Badge variant={u.is_active ? "success" : "secondary"}>
-                        {u.is_active ? "啟用" : "停用"}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={u.is_active}
+                          disabled={u.user_uid === myUid || saving}
+                          aria-label={
+                            u.is_active
+                              ? `停用 ${u.username}`
+                              : `啟用 ${u.username}`
+                          }
+                          title={
+                            u.user_uid === myUid
+                              ? "無法停用自己"
+                              : u.is_active
+                                ? "停用此使用者(撤銷其全部 Token)"
+                                : "啟用此使用者"
+                          }
+                          onCheckedChange={() => onToggleActive(u)}
+                        />
+                        <Badge variant={u.is_active ? "success" : "secondary"}>
+                          {u.is_active ? "啟用" : "停用"}
+                        </Badge>
+                      </div>
                     </TD>
                   </TR>
                 ))}

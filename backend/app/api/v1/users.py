@@ -168,16 +168,29 @@ async def update_user(
     # 撤銷走 service(同時處理浮水印表與 user_tokens 表);新 token 待下次發放時依新身分產生。
     snapshot = (user.username, user.employee_id, user.email, user.department_uid)
     fields = body.model_dump(exclude_unset=True)
+    # 防呆:admin 不可停用自己,避免把自己鎖死(propose v2.1.2 §D.5)。
+    if fields.get("is_active") is False and user.user_uid == admin.user_uid:
+        raise AppError("cannot_disable_self", code=400)
+    was_active = user.is_active
     for k, v in fields.items():
         setattr(user, k, v)
     await db.flush()
+    # 停用(true → false)→ 主動撤銷全部 User Token(雙表:落地標記 + 浮水印);
+    # 重新啟用(false → true)不觸發任何 token 動作,需 admin 重新產生(§D.3)。
+    # 重複停用時 was_active 已為 False,不重複撤銷(冪等)。
+    deactivated = was_active and fields.get("is_active") is False
+    profile_changed = snapshot != (
+        user.username,
+        user.employee_id,
+        user.email,
+        user.department_uid,
+    )
     tokens_revoked = False
-    if (
-        snapshot
-        != (user.username, user.employee_id, user.email, user.department_uid)
-    ):
+    if deactivated or profile_changed:
         await user_token_service.revoke_tokens(
-            db, user_uid=user.user_uid, reason="user_profile_changed"
+            db,
+            user_uid=user.user_uid,
+            reason="user_disabled" if deactivated else "user_profile_changed",
         )
         tokens_revoked = True
     await write_audit(

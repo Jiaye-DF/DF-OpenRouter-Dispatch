@@ -73,6 +73,12 @@ JSON body 欄位如下:
 | `files` | object[] | 否 | 上傳檔案(如 PDF)陣列,每筆為 `{ "filename": string, "file_data": string }`;`file_data` 為 `data:application/pdf;base64,...` 或可公開存取的遠端 URL,見 §5.3。**用量紀錄僅保留 `filename`,不留存檔案內容** |
 | `videos` | string[] | 否 | 暫不支援,送出即回 `400 feature_not_supported` |
 | `tools` | object[] | 否 | 工具清單,格式同 OpenAI `tools` 規格,原樣透傳給下游。**目前僅支援 OpenRouter server 端內建工具**(如 web search,見 §5.2);會回 `tool_calls` 的 function calling 尚未開放 |
+| `messages` | object[] | 否 | **多輪對話訊息陣列**(v2.1.2),每筆為 `{ "role": string, "content": string \| object[] }`。`role` 只收 `system` / `user` / `assistant`;`content` 為字串或 content parts 陣列(只收 `text` / `image_url` / `file` 三種 type)。**與 `text` / `images` / `files` 互斥**(同時帶回 `400`);不可為空陣列;無應用層筆數上限(模型 context window 為自然上限)。見 §5.4 |
+| `temperature` | number | 否 | 生成隨機性,值域 **0–2**(v2.1.2);未帶 → 不注入,走**模型預設值**。見 §5.5 |
+| `max_tokens` | integer | 否 | 回覆最大 token 數,**≥ 1**(v2.1.2);未帶 → 不注入,走**模型預設值**。見 §5.5 |
+| `response_format` | object | 否 | 回覆格式(v2.1.2),`type` 只收 `json_object` / `json_schema`;`json_schema` 型別**必帶** `json_schema` 物件、`json_object` **不可帶**;未帶 → 不注入,走**模型預設**。見 §5.5 |
+
+> v2.1.2 起內容支援兩種模式,**互斥擇一**:單輪模式(`text` / `images` / `files`,舊 client 行為完全不變)或多輪 `messages` 直傳模式(§5.4);`tools` 與生成參數(`temperature` / `max_tokens` / `response_format`,§5.5)**兩種模式皆可搭配**。
 
 可用的 `model` 清單由管理員集中維護。你可隨時查詢已啟用的模型清單(見下方 §5.1),從中複製 `model_key` 填入此欄位;若呼叫時收到 `403 model_forbidden`,請向管理員確認該模型是否已啟用。
 
@@ -138,6 +144,49 @@ GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/allowed/models
 - `file_data` 可填 **base64 data URL**(`data:application/pdf;base64,...`)或**可公開存取的遠端 URL**(如 `https://example.com/doc.pdf`)。
 - 檔案解析由 OpenRouter 處理:模型原生支援檔案輸入時直接傳入,否則由 OpenRouter 解析後再送模型;解析 / 額外 token 可能由 OpenRouter 計費,一併反映在用量統計。
 - **隱私**:用量紀錄**僅保留 `filename`,不留存 `file_data`(檔案內容)**;與圖片不同(圖片內容會留存供稽核預覽),請放心附上文件,但仍請避免在 `filename` 夾帶敏感資訊。
+
+### 5.4 多輪對話(`messages` 直傳模式,v2.1.2)
+
+帶 `messages` 即可自帶**完整多輪對話**——system prompt、user / assistant 歷史——取代單輪的 `text` / `images` / `files`,支撐對話記憶、角色設定等進階串接情境。三個入口(`/model/chat`、`/model/chat/stream`、deprecated `/model/openrouter/chat`)request body 完全相同;成功回應格式**不變**(§6,`data` 仍為模型回應的純文字)。
+
+```json
+{
+  "model": "openai/gpt-4o-mini",
+  "messages": [
+    { "role": "system", "content": "你是客服助理" },
+    { "role": "user", "content": "上次說到哪?" },
+    { "role": "assistant", "content": "說到出貨進度。" },
+    { "role": "user", "content": [
+      { "type": "text", "text": "看一下這張圖與檔案" },
+      { "type": "image_url", "image_url": { "url": "data:image/png;base64,..." } },
+      { "type": "file", "file": { "filename": "report.pdf", "file_data": "data:application/pdf;base64,..." } }
+    ] }
+  ]
+}
+```
+
+規則:
+
+- **互斥**:`messages` 與 `text` / `images` / `files` **擇一**;同時帶回 `400`(detail 例:`Value error, messages 與 text 互斥,擇一提供`),不做隱式合併。
+- **role 白名單**:只收 `system` / `user` / `assistant`;`tool` role 與 `tool_calls` 回傳鏈**不開放**。
+- **content 形狀**:字串,或 parts 陣列——type 只收 `text` / `image_url`(內層 `{ "url": ... }`,值同 §5 `images`)/ `file`(內層同 §5.3 的 `{ "filename", "file_data" }`);`video` 仍不支援。
+- **不可為空陣列**(回 `400`);**無應用層筆數上限**,模型 context window 為自然上限,超限由 OpenRouter 回錯誤。
+- `tools`(§5.2)可照常搭配。
+- **隱私**:用量紀錄快照 `messages` 原樣保留(含 base64 圖片,供稽核);file part 僅記 `filename`、不留存 `file_data`(同 §5.3)。
+
+### 5.5 生成參數(`temperature` / `max_tokens` / `response_format`,v2.1.2)
+
+三個生成參數**單輪與 messages 模式皆可帶**(與內容模式正交);**未帶即走模型預設值**(後端不注入該欄位)。
+
+| 參數 | 值域 / 形狀 | 用途 |
+| --- | --- | --- |
+| `temperature` | number,`0`–`2` | 控制生成隨機性(低 = 穩定、高 = 發散) |
+| `max_tokens` | integer,`≥ 1` | 回覆最大 token 數(控制長度與成本;上限交由模型把關) |
+| `response_format` | `{ "type": "json_object" }` 或 `{ "type": "json_schema", "json_schema": { ... } }` | 結構化輸出:`json_object` 讓模型回**合法 JSON 字串**;`json_schema` 依你附上的 schema 物件輸出 |
+
+- 超出值域 / `type` 非白名單 → `400`(見 §9)。
+- `response_format` 為 `json_object` 時**不可**帶 `json_schema` 物件;為 `json_schema` 時**必帶**。使用 `json_object` 時請在 prompt 中明確要求回 JSON(部分模型的要求)。
+- **其餘生成參數(`top_p` / `stop` / `frequency_penalty` / `presence_penalty` / `seed` / `logit_bias` 等)一律不開放**,帶了也不會透傳給模型,請勿嘗試;如有需求請向管理員提出。
 
 <!--
 本段「本地模型」目前停用,等實際導入企業內部模型再開啟。
@@ -367,6 +416,95 @@ if __name__ == "__main__":
 
 > 隱私:用量紀錄**僅保留 `filename`,不留存檔案內容**(見 §5.3 / §10);請避免在 `filename` 夾帶敏感資訊。
 
+### 多輪對話(messages,含 system prompt 與對話歷史)
+
+帶 `messages` 自帶完整多輪對話(規則見 §5.4);**與 `text` / `images` / `files` 互斥**,回應仍為純文字。
+
+```bash
+curl -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat' \
+  -H 'Content-Type: application/json' \
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \
+  -H 'X-User-Token: <admin 發放的 User Token>' \
+  -H 'X-Project-Code: 53299897503322112' \
+  -d '{
+    "model": "openai/gpt-4o-mini",
+    "messages": [
+      { "role": "system", "content": "你是客服助理,回答一律使用繁體中文。" },
+      { "role": "user", "content": "上次說到哪?" },
+      { "role": "assistant", "content": "說到出貨進度。" },
+      { "role": "user", "content": "好,幫我總結一下目前狀態。" }
+    ]
+  }'
+```
+
+**Python(多輪歷史 + parts 混合:文字 / 圖片 / 檔案)**:
+
+```python
+import httpx
+
+API_URL = "https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "<admin 發放的 User Token>"
+PROJECT_CODE = "<admin 後台「專案管理」頁複製的代碼>"
+
+def chat_messages(model: str, messages: list[dict]) -> str:
+    resp = httpx.post(
+        API_URL,
+        headers={
+            "X-SDK-Key": SDK_KEY,
+            "X-User-Token": USER_TOKEN,
+            "X-Project-Code": PROJECT_CODE,
+            "Content-Type": "application/json",
+        },
+        # messages 與 text / images / files 互斥,擇一提供
+        json={"model": model, "messages": messages},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if not body["success"]:
+        raise RuntimeError(f"{body['code']} {body['detail']}")
+    return body["data"]
+
+if __name__ == "__main__":
+    history = [
+        {"role": "system", "content": "你是客服助理,回答一律使用繁體中文。"},
+        {"role": "user", "content": "上次說到哪?"},
+        {"role": "assistant", "content": "說到出貨進度。"},
+        # content 也可以是 parts 陣列(text / image_url / file 混合,見 §5.4)
+        {"role": "user", "content": [
+            {"type": "text", "text": "看一下這張圖與檔案,總結目前狀態"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo..."}},
+            {"type": "file", "file": {
+                "filename": "report.pdf",
+                "file_data": "data:application/pdf;base64,JVBERi0xLjcK...",
+            }},
+        ]},
+    ]
+    print(chat_messages("openai/gpt-4o-mini", history))
+```
+
+### 生成參數與結構化輸出(temperature / max_tokens / response_format)
+
+帶生成參數控制隨機性與回覆長度;`response_format: {"type": "json_object"}` 讓模型回**合法 JSON 字串**(規則見 §5.5;單輪與 messages 模式皆可帶,未帶走模型預設)。
+
+```bash
+curl -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat' \
+  -H 'Content-Type: application/json' \
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \
+  -H 'X-User-Token: <admin 發放的 User Token>' \
+  -H 'X-Project-Code: 53299897503322112' \
+  -d '{
+    "model": "openai/gpt-4o-mini",
+    "text": "列出台灣三大城市與人口,回傳 JSON,鍵為 cities(陣列,每筆含 name 與 population)",
+    "temperature": 0.2,
+    "max_tokens": 256,
+    "response_format": { "type": "json_object" }
+  }'
+```
+
+> 回應仍是 §6 的統一格式,`data` 為字串——但內容是合法 JSON,可直接 `json.loads(body["data"])` 解析。`json_object` 模式下 prompt 需明確要求回 JSON。
+
 ---
 
 ## 8. 串流(SSE)回應
@@ -377,7 +515,7 @@ if __name__ == "__main__":
 POST https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat/stream
 ```
 
-- 認證 Header(`X-SDK-Key` / `X-User-Token` / `X-Project-Code`)與 Request Body 欄位**與 §4 / §5 的 `/model/chat` 完全相同**;端點本身即代表串流,**不需**在 body 加 `stream` 欄位。
+- 認證 Header(`X-SDK-Key` / `X-User-Token` / `X-Project-Code`)與 Request Body 欄位**與 §4 / §5 的 `/model/chat` 完全相同**——v2.1.2 起亦包含 `messages` 多輪模式(§5.4)與 `temperature` / `max_tokens` / `response_format` 生成參數(§5.5),互斥與值域規則一致;端點本身即代表串流,**不需**在 body 加 `stream` 欄位。
 - **本版本串流僅支援 `provider=openrouter` 的模型**;其餘(如未來的本地模型)呼叫串流端點會回 `400 feature_not_supported`。
 - `videos` 仍不支援,送出即回 `400 feature_not_supported`。
 
@@ -487,6 +625,7 @@ if __name__ == "__main__":
 | HTTP | detail | 說明 / 建議處理 |
 | --- | --- | --- |
 | 400 | `feature_not_supported` | 請求帶了不支援的欄位(目前 videos 暫不支援) |
+| 400 | (具體驗證訊息,見下) | Request body 驗證失敗(v2.1.2 起含 messages / 生成參數):`messages` 與 `text`/`images`/`files` 同時帶、`messages` 空陣列、role / content parts / `response_format.type` 非白名單、`temperature` / `max_tokens` 超出值域;`data` 為 `null` |
 | 400 | `project_code_required` | 未帶 `X-Project-Code` header(v1.5+ 必填) |
 | 400 | `project_invalid` | `X-Project-Code` 對應專案不存在 / 已停用 / 不屬於 SDK Key 的部門 |
 | 401 | `unauthorized` | SDK Key 或 User Token 無效 / 已被撤銷 / 兩者不屬同一部門 |
@@ -498,6 +637,16 @@ if __name__ == "__main__":
 | 500 | `provider_misconfigured` | 僅 internal 模型:該模型後端設定不完整,請聯絡管理員 |
 | 502 | `internal_unavailable` | 僅 internal 模型:內部模型服務暫時不可用,稍後再試 |
 | 500 | `操作失敗` | 後端異常,請聯絡管理員並提供時間點 |
+
+**400 驗證錯誤的 `detail` 直接指出錯誤欄位**(仍為 §6 統一格式,`data` 恆為 `null`),實例:
+
+- `messages` 與單輪欄位互斥:`Value error, messages 與 text 互斥,擇一提供`
+- `messages` 空陣列:`Value error, messages 不可為空陣列`
+- `role` 非白名單:`欄位 messages.0.role Input should be 'system', 'user' or 'assistant'`
+- `temperature` 越界:`欄位 temperature Input should be less than or equal to 2`
+- `response_format.type` 非白名單:`欄位 response_format.type Input should be 'json_object' or 'json_schema'`
+
+> 憑證缺失 / 無效時**一律先回 `401 unauthorized`**(認證先於 body 驗證),不會走到上述 400。
 
 ---
 

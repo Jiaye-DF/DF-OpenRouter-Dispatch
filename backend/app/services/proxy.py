@@ -44,6 +44,7 @@ from app.models.model import Model
 from app.models.usage_log import UsageLog
 from app.repositories.internal_key import InternalKeyRepository
 from app.repositories.openrouter_key import OpenRouterKeyRepository
+from app.schemas.model import ChatMessage, ResponseFormat
 from app.services.internal_key import decrypt_key as decrypt_internal_key
 from app.services.openrouter_key import decrypt_key
 from app.services.rate_limit import RateLimitExceeded, get_limiter
@@ -97,35 +98,82 @@ def _rewrite_request(
     images: list[str] | None,
     tools: list[dict[str, Any]] | None = None,
     files: list[dict[str, str]] | None = None,
+    messages: list[ChatMessage] | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    response_format: ResponseFormat | None = None,
 ) -> dict[str, Any]:
-    """把精簡輸入重組為 OpenAI-compatible 的 `/chat/completions` payload。
+    """組出 OpenAI-compatible 的 `/chat/completions` payload(雙內容模式,v2.1.2)。
 
-    刻意「從頭建構」而非 pass-through:SDK 使用者只給 text / images / files / tools,
-    其餘 OpenAI 欄位(temperature / response_format 等)一律不開放。
+    對齊修訂後 50-openrouter.md § 5 / § 6.1 / § 6.2:輸入**僅開放白名單參數**,
+    其餘 OpenAI 欄位(top_p / stop / penalties 等)一律不開放;兩種內容模式互斥擇一
+    (互斥驗證已由 `ChatRequest` schema 層完成,本 fn 不重複驗證):
 
-    - text / images / files 合併為單一 user 訊息的多模態 content;皆空時補一個
-      空白 text block,確保 messages 不為空。
-    - files 為 OpenRouter `file` content part(如 PDF);file_data 為 data URL 或遠端 URL。
+    - **單輪模式(預設)**:text / images / files 合併為單一 user 訊息的多模態
+      content;皆空時補一個空白 text block,確保 messages 不為空。files 為
+      OpenRouter `file` content part(如 PDF);file_data 為 data URL 或遠端 URL。
+      組裝邏輯與 v2.1.1 完全一致(舊 client 行為不變)。
+    - **messages 直傳模式(v2.1.2)**:呼叫端自帶多輪 `messages[]`(schema 白名單
+      驗證後的型別化物件),`model_dump(exclude_none=True)` 後**原樣透傳**、不重組。
+
+    兩模式共用的附掛欄位:
+
     - tools 有值才放進 payload(格式同 OpenAI tools 規格,原樣透傳給下游)。
+    - 生成參數 `temperature` / `max_tokens` / `response_format` 有帶(非 None)才
+      注入;None 一律不出現在 payload(走模型預設值)。`response_format` 以型別化
+      物件 dump 展開,禁 raw dict 透傳。
     """
-    content: list[dict[str, Any]] = []
-    if text:
-        content.append({"type": "text", "text": text})
-    for img in images or []:
-        content.append({"type": "image_url", "image_url": {"url": img}})
-    for f in files or []:
-        content.append(
-            {"type": "file", "file": {"filename": f["filename"], "file_data": f["file_data"]}}
-        )
-    if not content:
-        content.append({"type": "text", "text": ""})
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": [{"role": "user", "content": content}],
-    }
+    payload: dict[str, Any]
+    if messages is not None:
+        # messages 直傳模式:schema 驗證後原樣透傳,不重組。
+        payload = {
+            "model": model,
+            "messages": [m.model_dump(exclude_none=True) for m in messages],
+        }
+    else:
+        content: list[dict[str, Any]] = []
+        if text:
+            content.append({"type": "text", "text": text})
+        for img in images or []:
+            content.append({"type": "image_url", "image_url": {"url": img}})
+        for f in files or []:
+            content.append(
+                {"type": "file", "file": {"filename": f["filename"], "file_data": f["file_data"]}}
+            )
+        if not content:
+            content.append({"type": "text", "text": ""})
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": content}],
+        }
     if tools:
         payload["tools"] = tools
+    if temperature is not None:
+        payload["temperature"] = temperature
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
+    if response_format is not None:
+        payload["response_format"] = response_format.model_dump(exclude_none=True)
     return payload
+
+
+def _snapshot_message(message: ChatMessage) -> dict[str, Any]:
+    """把單則 ChatMessage 轉成 usage_logs 快照用 dict(file part 僅留檔名)。
+
+    content 為字串或非 file part(text / image_url)時原樣保留(image_url 含
+    base64 原樣入 JSONB,與單輪模式 `images` 一致,對齊 propose v2.1.2 §D.4);
+    file part 仿單輪模式**只記 `filename` 不記 `file_data`**(法務考量)。
+    """
+    dumped = message.model_dump(exclude_none=True)
+    content = dumped.get("content")
+    if isinstance(content, list):
+        dumped["content"] = [
+            {"type": "file", "file": {"filename": part["file"]["filename"]}}
+            if part.get("type") == "file"
+            else part
+            for part in content
+        ]
+    return dumped
 
 
 def _build_request_log(
@@ -134,20 +182,41 @@ def _build_request_log(
     images: list[str] | None,
     tools: list[dict[str, Any]] | None = None,
     files: list[dict[str, str]] | None = None,
+    messages: list[ChatMessage] | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    response_format: ResponseFormat | None = None,
 ) -> dict[str, Any]:
-    """組出寫入 usage_logs.request_content 的請求快照。
+    """組出寫入 usage_logs.request_content 的請求快照(雙內容模式,v2.1.2)。
 
-    與 `_rewrite_request` 分開:這裡保留使用者「原始輸入語意」(text / images /
-    tools)供 dashboard 檢視,而非下游實際送出的 messages 結構。tools 有值才記。
+    與 `_rewrite_request` 分開:這裡保留使用者「原始輸入語意」供 dashboard 檢視,
+    而非下游實際送出的 payload 結構。tools 有值才記。
 
-    files 刻意**只記錄檔名**(`filename`)、不記 `file_data`:避免將使用者上傳的
-    檔案內容留存於系統(法務考量)。
+    - 單輪模式:`{model, text, images}`(+ tools / files),結構與 v2.1.1 一致。
+      files 刻意**只記錄檔名**(`filename`)、不記 `file_data`:避免將使用者上傳的
+      檔案內容留存於系統(法務考量)。
+    - messages 直傳模式:`{model, messages: <原樣快照>}`;file part 同樣僅記檔名,
+      image_url part 原樣保留(見 `_snapshot_message`)。
+    - 生成參數(兩模式皆同):有帶的 `temperature` / `max_tokens` /
+      `response_format` 一併記入,供用量明細追溯呼叫條件;未帶不出現(不記 None)。
     """
-    log: dict[str, Any] = {"model": model, "text": text, "images": list(images or [])}
-    if tools:
-        log["tools"] = tools
-    if files:
-        log["files"] = [f["filename"] for f in files]
+    log: dict[str, Any]
+    if messages is not None:
+        log = {"model": model, "messages": [_snapshot_message(m) for m in messages]}
+        if tools:
+            log["tools"] = tools
+    else:
+        log = {"model": model, "text": text, "images": list(images or [])}
+        if tools:
+            log["tools"] = tools
+        if files:
+            log["files"] = [f["filename"] for f in files]
+    if temperature is not None:
+        log["temperature"] = temperature
+    if max_tokens is not None:
+        log["max_tokens"] = max_tokens
+    if response_format is not None:
+        log["response_format"] = response_format.model_dump(exclude_none=True)
     return log
 
 
@@ -387,6 +456,10 @@ async def run_chat(
     videos: list[str] | None,
     tools: list[dict[str, Any]] | None = None,
     files: list[dict[str, str]] | None = None,
+    messages: list[ChatMessage] | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    response_format: ResponseFormat | None = None,
 ) -> str:
     """依 model.provider 分流到對應路徑;白名單檢查由本 fn 統一執行。
 
@@ -396,6 +469,10 @@ async def run_chat(
     `tools` 直接透傳給下游(格式同 OpenAI tools 規格);OpenRouter 內建工具
     (如 `openrouter:web_search`)由 OpenRouter server 端執行,最終回應仍為純文字。
 
+    v2.1.2 起支援 messages 直傳模式與生成參數(payload 組裝見 `_rewrite_request`);
+    互斥 / 白名單驗證已由 `ChatRequest` schema 層完成,本 fn 不重複驗證。
+    internal provider 的 payload 結構相同,messages 模式自然支援。
+
     Args:
         db: 本次 request 的 DB session。
         client_factory: 產生 OpenRouter / internal HTTP client 的工廠。
@@ -403,11 +480,16 @@ async def run_chat(
         project_uid: 呼叫者所屬專案 uid。
         user_uid: 呼叫者使用者 uid。
         model: 使用者指定的 model_key(須通過白名單)。
-        text: 使用者文字輸入,可為 None。
-        images: 圖片 URL / data URI 清單,可為 None。
+        text: 使用者文字輸入,可為 None(單輪模式)。
+        images: 圖片 URL / data URI 清單,可為 None(單輪模式)。
         videos: 影片清單;本版本不支援,非空即回 400。
         tools: 可選工具清單,原樣透傳給下游;目前僅支援 server 端工具。
         files: 上傳檔案清單(filename / file_data),如 PDF;用量紀錄僅留檔名。
+        messages: messages 直傳模式的多輪訊息(與 text/images/files 互斥);
+            schema 驗證後原樣透傳;用量紀錄 file part 僅留檔名。
+        temperature: 生成溫度(0-2);None 不注入 payload,走模型預設。
+        max_tokens: 回覆 token 上限(≥1);None 不注入 payload,走模型預設。
+        response_format: 型別化回覆格式(json_object / json_schema);None 不注入。
 
     Returns:
         模型回應的純文字內容。
@@ -420,8 +502,28 @@ async def run_chat(
         raise AppError("feature_not_supported", code=400)
     model_row = await _check_model_whitelist(db, model)
 
-    payload = _rewrite_request(model, text, images, tools, files)
-    request_log = _build_request_log(model, text, images, tools, files)
+    payload = _rewrite_request(
+        model,
+        text,
+        images,
+        tools,
+        files,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        response_format=response_format,
+    )
+    request_log = _build_request_log(
+        model,
+        text,
+        images,
+        tools,
+        files,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        response_format=response_format,
+    )
 
     if model_row.provider == "internal":
         return await _run_chat_internal(
@@ -861,6 +963,10 @@ async def run_chat_stream(
     videos: list[str] | None,
     tools: list[dict[str, Any]] | None = None,
     files: list[dict[str, str]] | None = None,
+    messages: list[ChatMessage] | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    response_format: ResponseFormat | None = None,
 ) -> AsyncIterator[str]:
     """串流版 chat 代理(v1.7;僅 OpenRouter)。
 
@@ -870,6 +976,9 @@ async def run_chat_stream(
 
     本版本串流**僅支援** provider=openrouter;internal 模型回 400 feature_not_supported。
 
+    v2.1.2 起支援 messages 直傳模式與生成參數,payload 組裝與 `run_chat` 共用
+    `_rewrite_request`(串流僅多 `stream` / `stream_options` 注入,現況不變)。
+
     Args:
         db: 本次 request 的 DB session。
         client_factory: HTTP client 工廠。
@@ -877,11 +986,16 @@ async def run_chat_stream(
         project_uid: 呼叫者專案 uid。
         user_uid: 呼叫者使用者 uid。
         model: 使用者指定的 model_key(須通過白名單)。
-        text: 文字輸入,可為 None。
-        images: 圖片 URL / data URI 清單,可為 None。
+        text: 文字輸入,可為 None(單輪模式)。
+        images: 圖片 URL / data URI 清單,可為 None(單輪模式)。
         videos: 影片清單;本版本不支援,非空即 400。
         tools: 可選工具清單,原樣透傳。
         files: 上傳檔案清單(filename / file_data),如 PDF;用量紀錄僅留檔名。
+        messages: messages 直傳模式的多輪訊息(與 text/images/files 互斥);
+            schema 驗證後原樣透傳;用量紀錄 file part 僅留檔名。
+        temperature: 生成溫度(0-2);None 不注入 payload,走模型預設。
+        max_tokens: 回覆 token 上限(≥1);None 不注入 payload,走模型預設。
+        response_format: 型別化回覆格式(json_object / json_schema);None 不注入。
 
     Yields:
         OpenRouter SSE 字串(已含換行框架),可直接寫入 text/event-stream 回應。
@@ -898,11 +1012,31 @@ async def run_chat_stream(
         # 本版本串流僅支援 OpenRouter;internal 串流留待後續版本。
         raise AppError("feature_not_supported", code=400)
 
-    payload = _rewrite_request(model, text, images, tools, files)
+    payload = _rewrite_request(
+        model,
+        text,
+        images,
+        tools,
+        files,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        response_format=response_format,
+    )
     payload["stream"] = True
     # 確保最後一個 chunk 帶 usage,供記帳;對 SDK 為 OpenAI 標準欄位,透明無害。
     payload["stream_options"] = {"include_usage": True}
-    request_log = _build_request_log(model, text, images, tools, files)
+    request_log = _build_request_log(
+        model,
+        text,
+        images,
+        tools,
+        files,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        response_format=response_format,
+    )
 
     async for chunk in _stream_openrouter(
         db,

@@ -127,6 +127,7 @@
     <a href="#credentials">取得憑證</a>
     <a href="#endpoint">端點與 Header</a>
     <a href="#request">Request Body</a>
+    <a href="#messages">多輪對話與生成參數</a>
     <a href="#response">Response 格式</a>
     <a href="#examples">完整範例</a>
     <a href="#stream">串流回應(SSE)</a>
@@ -216,7 +217,11 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
             <tr><td class="mono">images</td><td>string[]</td><td>否</td><td>圖片 URL 或 <code>data:image/...;base64,...</code> 字串陣列</td></tr>
             <tr><td class="mono">files</td><td>object[]</td><td>否</td><td>上傳檔案(如 PDF),每筆為 <code>{ "filename": "報表.pdf", "file_data": "..." }</code>;<code>file_data</code> 可為 <code>data:application/pdf;base64,...</code> 或可公開存取的遠端 URL。<strong>僅檔名會寫入用量紀錄,檔案內容不留存</strong>(法務考量),且是否支援讀取取決於該模型本身的多模態能力</td></tr>
             <tr><td class="mono">videos</td><td>string[]</td><td>否</td><td>暫不支援,送出即回 <code>400 feature_not_supported</code></td></tr>
-            <tr><td class="mono">tools</td><td>object[]</td><td>否</td><td>工具清單,格式同 OpenAI <code>tools</code> 規格,原樣轉發給下游。<strong>目前僅支援 OpenRouter server 端內建工具</strong>(如 web search,見下方範例);會回 <code>tool_calls</code> 的 function calling 尚未開放</td></tr>
+            <tr><td class="mono">tools</td><td>object[]</td><td>否</td><td>工具清單,格式同 OpenAI <code>tools</code> 規格,原樣轉發給下游。<strong>目前僅支援 OpenRouter server 端內建工具</strong>(如 web search,見下方範例);會回 <code>tool_calls</code> 的 function calling 尚未開放。<strong>單輪與 messages 兩種模式皆可搭配</strong></td></tr>
+            <tr><td class="mono">messages</td><td>object[]</td><td>否</td><td><strong>多輪對話模式</strong>:OpenAI 風格 <code>{ role, content }</code> 訊息陣列(system prompt / 對話歷史)。與 <code>text</code> / <code>images</code> / <code>files</code> <strong>擇一使用</strong>,同時帶回 <code>400</code>。詳見<a class="link" href="#messages">多輪對話與生成參數</a></td></tr>
+            <tr><td class="mono">temperature</td><td>number</td><td>否</td><td>取樣隨機性,<code>0</code>–<code>2</code>;越低越穩定、越高越發散。未帶則用模型預設值</td></tr>
+            <tr><td class="mono">max_tokens</td><td>integer</td><td>否</td><td>回覆長度上限(token 數),<code>≥ 1</code>;未帶則用模型預設值</td></tr>
+            <tr><td class="mono">response_format</td><td>object</td><td>否</td><td>結構化輸出:<code>{"type":"json_object"}</code>(回覆保證為合法 JSON)或 <code>{"type":"json_schema","json_schema":{...}}</code>(指定 schema)。未帶則為一般文字回覆</td></tr>
           </tbody>
         </table>
       </div>
@@ -290,6 +295,71 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
     </div>
   </section>
 
+  <!-- 多輪對話與生成參數 -->
+  <section id="messages">
+    <h2>多輪對話(messages)與生成參數</h2>
+    <div class="card">
+      <p>自 <strong>v2.1.2</strong> 起,除了單輪的 <code>text / images / files</code>,也可以直接帶 OpenAI 風格的 <code>messages</code> 陣列——自行組 <strong>system prompt、多輪對話歷史與角色設定</strong>,適合對話記憶、客服機器人等進階串接;並可搭配三個<strong>生成參數</strong>控制回覆行為。</p>
+
+      <p class="fw">messages 使用規則</p>
+      <ul>
+        <li><strong>擇一使用</strong>:<code>messages</code> 與 <code>text</code> / <code>images</code> / <code>files</code> <strong>互斥</strong>,同時帶回 <code>400</code>;<code>messages: []</code>(空陣列)也回 <code>400</code>。</li>
+        <li><strong>role 白名單</strong>:每則訊息的 <code>role</code> 只接受 <code>system</code> / <code>user</code> / <code>assistant</code>(<code>tool</code> 角色尚未開放)。</li>
+        <li><strong>content 兩種寫法</strong>:純文字字串;或 parts 陣列——型別只接受 <code>text</code> / <code>image_url</code> / <code>file</code>(能力與單輪模式相同,影片同樣不支援)。</li>
+        <li><strong>則數不設上限</strong>:以所選模型的 context window 為自然上限(全部訊息都計入 token),超過由模型端回錯誤。</li>
+        <li><code>tools</code>(如 web search)兩種模式皆可搭配;回應格式<strong>不變</strong>,仍為統一格式的純文字 <code>data</code>。</li>
+        <li>對話歷史由<strong>呼叫端自行保存與帶入</strong>,平台不儲存 session;messages 內容會原樣寫入用量紀錄供稽核(檔案僅記檔名),請勿夾帶敏感個資。</li>
+      </ul>
+
+      <p class="fw">多輪對話 Request 範例:</p>
+      <div class="codeblock">
+        <div class="lang">JSON</div>
+        <button class="copy-btn" data-copy>複製</button>
+        <pre><code>{
+  "model": "google/gemini-2.5-flash",
+  "messages": [
+    { "role": "system", "content": "你是客服助理,回答一律使用繁體中文。" },
+    { "role": "user", "content": "上次說到哪?" },
+    { "role": "assistant", "content": "說到出貨進度。" },
+    { "role": "user", "content": [
+      { "type": "text", "text": "看一下這張圖與檔案,幫我確認狀態" },
+      { "type": "image_url", "image_url": { "url": "data:image/png;base64,iVBORw0KGgo..." } },
+      { "type": "file", "file": { "filename": "出貨單.pdf", "file_data": "data:application/pdf;base64,JVBERi0..." } }
+    ] }
+  ]
+}</code></pre>
+      </div>
+
+      <p class="fw">生成參數(單輪與 messages 模式皆可帶)</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>參數</th><th>值域</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">temperature</td><td><code>0</code> – <code>2</code></td><td class="muted">控制隨機性:偏低(如 <code>0.2</code>)適合抽取 / 分類等要穩定的任務;偏高適合創意生成</td></tr>
+            <tr><td class="mono">max_tokens</td><td><code>≥ 1</code></td><td class="muted">限制回覆長度上限,控制成本與回覆篇幅</td></tr>
+            <tr><td class="mono">response_format</td><td><code>json_object</code> / <code>json_schema</code></td><td class="muted"><code>{"type":"json_object"}</code> 讓回覆保證為合法 JSON 字串(prompt 中請同時明確要求輸出 JSON);<code>{"type":"json_schema","json_schema":{...}}</code> 可進一步指定結構</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="codeblock">
+        <div class="lang">JSON</div>
+        <button class="copy-btn" data-copy>複製</button>
+        <pre><code>{
+  "model": "google/gemini-2.5-flash",
+  "text": "抽取:『7/20 前交付 100 件到台中廠』的日期、數量、地點,以 JSON 回覆(鍵:date, qty, location)",
+  "temperature": 0.2,
+  "max_tokens": 256,
+  "response_format": { "type": "json_object" }
+}</code></pre>
+      </div>
+      <ul class="small muted">
+        <li>三個參數<strong>未帶就不會送給模型</strong>,一律走模型預設值;超出值域(如 <code>temperature: 2.5</code>)回 <code>400</code>。</li>
+        <li>其餘 OpenAI 生成參數(<code>top_p</code> / <code>stop</code> / <code>frequency_penalty</code> 等)<strong>不開放</strong>,帶了會被拒收,請勿嘗試。</li>
+        <li>有帶的生成參數會一併寫入用量紀錄,方便事後追溯呼叫條件。</li>
+      </ul>
+    </div>
+  </section>
+
   <!-- Response 格式 -->
   <section id="response">
     <h2>Response 格式</h2>
@@ -332,6 +402,7 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
       <div class="tabs">
         <button class="tab-btn active" data-tab="basic">基本對話</button>
         <button class="tab-btn" data-tab="websearch">Web 搜尋（即時匯率）</button>
+        <button class="tab-btn" data-tab="messages">多輪對話（messages）</button>
       </div>
 
       <div class="tab-panel" data-tab="basic">
@@ -443,6 +514,73 @@ if __name__ == "__main__":
     print(answer)</code></pre>
         </div>
       </div>
+      <div class="tab-panel hidden" data-tab="messages">
+        <p class="small muted">帶 <code>messages</code> 陣列自組 system prompt 與對話歷史(與 <code>text/images/files</code> 擇一);此例同時示範 <code>temperature</code> 生成參數。詳細規則見<a class="link" href="#messages">多輪對話與生成參數</a>。</p>
+        <p class="fw">curl</p>
+        <div class="codeblock">
+          <div class="lang">bash</div>
+          <button class="copy-btn" data-copy>複製</button>
+          <pre><code>curl -X POST 'https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat' \
+  -H 'Content-Type: application/json' \
+  -H 'X-SDK-Key: ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' \
+  -H 'X-User-Token: &lt;admin 發放的 User Token&gt;' \
+  -H 'X-Project-Code: 53299897503322112' \
+  -d '{
+    "model": "google/gemini-2.5-flash",
+    "messages": [
+      { "role": "system", "content": "你是客服助理,回答一律使用繁體中文。" },
+      { "role": "user", "content": "我上週訂的貨到哪了?" },
+      { "role": "assistant", "content": "請提供訂單編號,我幫您查詢。" },
+      { "role": "user", "content": "訂單編號是 A12345" }
+    ],
+    "temperature": 0.3
+  }'</code></pre>
+        </div>
+        <p class="fw">Python (httpx)</p>
+        <div class="codeblock">
+          <div class="lang">python</div>
+          <button class="copy-btn" data-copy>複製</button>
+          <pre><code>import httpx
+
+API_URL = "https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/model/chat"
+SDK_KEY = "ordsk_xxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+USER_TOKEN = "&lt;admin 發放的 User Token&gt;"
+PROJECT_CODE = "&lt;admin 後台「專案管理」頁複製的代碼&gt;"
+
+def chat_messages(model: str, messages: list[dict], temperature: float | None = None) -&gt; str:
+    payload = {"model": model, "messages": messages}
+    if temperature is not None:      # 未帶就不放進 body,走模型預設
+        payload["temperature"] = temperature
+    resp = httpx.post(
+        API_URL,
+        headers={
+            "X-SDK-Key": SDK_KEY,
+            "X-User-Token": USER_TOKEN,
+            "X-Project-Code": PROJECT_CODE,
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=60,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if not body["success"]:
+        raise RuntimeError(f"{body['code']} {body['detail']}")
+    return body["data"]
+
+if __name__ == "__main__":
+    history = [
+        {"role": "system", "content": "你是客服助理,回答一律使用繁體中文。"},
+        {"role": "user", "content": "我上週訂的貨到哪了?"},
+        {"role": "assistant", "content": "請提供訂單編號,我幫您查詢。"},
+        {"role": "user", "content": "訂單編號是 A12345"},
+    ]
+    answer = chat_messages("google/gemini-2.5-flash", history, temperature=0.3)
+    print(answer)
+    # 下一輪:把模型回覆 append 回 history 再呼叫,即可延續對話
+    # history.append({"role": "assistant", "content": answer})</code></pre>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -461,7 +599,7 @@ X-User-Token: &lt;User Token 明文&gt;
 X-Project-Code: &lt;專案代碼&gt;</code></pre>
       </div>
       <ul class="muted">
-        <li>Header 與 Request Body <strong>與 <code>/model/chat</code> 完全相同</strong>(<code>model</code> / <code>text</code> / <code>images</code> / <code>files</code> / <code>tools</code>);<strong>不需</strong>額外帶 <code>stream</code> 欄位,端點本身即代表串流。</li>
+        <li>Header 與 Request Body <strong>與 <code>/model/chat</code> 完全相同</strong>(<code>model</code> / <code>text</code> / <code>images</code> / <code>files</code> / <code>tools</code>,v2.1.2 起亦含 <code>messages</code> 多輪與 <code>temperature</code> / <code>max_tokens</code> / <code>response_format</code> 生成參數);<strong>不需</strong>額外帶 <code>stream</code> 欄位,端點本身即代表串流。</li>
         <li>回應 <code>Content-Type</code> 為 <code>text/event-stream</code>,<strong>不</strong>套用統一 <code>{ success, code, data, detail }</code> 包裝;每筆事件為精簡的 <code>data: {"id":"...","content":"..."}</code>,最後以 <code>data: [DONE]</code> 收尾。文字內容位於 <code>content</code>;OpenRouter 的 <code>provider</code> / <code>cost</code> / <code>usage</code> 等內部欄位<strong>不會</strong>外露。</li>
         <li><strong>開串流前</strong>的錯誤(憑證 / 白名單 / 速率限制等)仍以一般 HTTP 4xx/5xx + <code>{ success:false, … }</code> JSON 回絕,<strong>不</strong>會進入串流;因此程式應先檢查回應的 <code>Content-Type</code> / 狀態碼再決定是否逐塊讀取。</li>
         <li>本端點<strong>僅支援 OpenRouter 模型</strong>;internal 模型呼叫此端點會回 <code>400 feature_not_supported</code>。</li>

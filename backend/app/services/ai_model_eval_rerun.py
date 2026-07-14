@@ -63,6 +63,7 @@ from app.repositories.ai_model_evaluation import (
 from app.repositories.model import ModelRepository
 from app.repositories.usage_log import UsageLogRepository
 from app.schemas.ai_model_eval import DiscriminatorWinner
+from app.services import request_snapshot
 from app.services.ai_model_eval_rerun_prompt import (
     _parse_discriminator_content,
     build_discriminator_prompt,
@@ -236,12 +237,12 @@ async def _run_challenger(
 ) -> _ChallengerOutcome:
     """真實重跑單一 challenger(非串流,內部金鑰,**不**寫 usage_logs);失敗則 raise。
 
-    沿用原 log 輸入快照(text / images / tools / files)組 OpenAI-compatible payload。
+    沿用原 log 輸入快照組 OpenAI-compatible payload:形狀正規化交給
+    `request_snapshot.replay_messages`(單輪僅重放 text;messages 直傳模式整段對話重放,
+    file part 因快照未留 file_data 而剔除)。**不可**直接讀 `text` —— messages 模式沒有
+    該鍵,會變成拿空 prompt 去真實計費呼叫 challenger(v2.1.2 缺陷)。
     """
-    text = request_content.get("text")
-    messages: list[dict[str, Any]] = [
-        {"role": "user", "content": text if isinstance(text, str) else ""}
-    ]
+    messages = request_snapshot.replay_messages(request_content)
     payload: dict[str, Any] = {"model": rerun_model, "messages": messages}
 
     resp, latency_ms = await _chat_with_retry(
@@ -262,9 +263,7 @@ async def _run_challenger(
         total_tokens=_int_or_none(usage, "total_tokens"),
         cost_usd=_extract_cost(usage),
         latency_ms=latency_ms,
-        openrouter_generation_id=(
-            str(resp["id"]) if isinstance(resp.get("id"), str) else None
-        ),
+        openrouter_generation_id=(str(resp["id"]) if isinstance(resp.get("id"), str) else None),
     )
 
 
@@ -287,9 +286,7 @@ async def _run_discriminator(
     映射事後在本 service 還原,prompt 端不知任何模型名(盲化,決議 #7)。失敗則 raise。
     """
     output_a, output_b = (
-        (challenger_output, original_output)
-        if blind_swap
-        else (original_output, challenger_output)
+        (challenger_output, original_output) if blind_swap else (original_output, challenger_output)
     )
     payload = build_discriminator_prompt(
         request_content,
@@ -339,9 +336,7 @@ async def rerun_evaluation(
     settings = get_settings()
     api_key = settings.DEFAULT_OPENROUTER_KEY
     if not api_key:
-        logger.error(
-            "評審重跑略過:未設定內部呼叫金鑰 ai_evaluation_uid=%s", ai_evaluation_uid
-        )
+        logger.error("評審重跑略過:未設定內部呼叫金鑰 ai_evaluation_uid=%s", ai_evaluation_uid)
         raise AppError("評審重跑暫時無法執行", code=503)
 
     eval_repo = AiModelEvaluationRepository(db)
@@ -360,9 +355,7 @@ async def rerun_evaluation(
         )
     ).scalar_one_or_none()
     if parent is None:
-        logger.error(
-            "評審重跑略過:父評審不存在 ai_evaluation_uid=%s", ai_evaluation_uid
-        )
+        logger.error("評審重跑略過:父評審不存在 ai_evaluation_uid=%s", ai_evaluation_uid)
         raise AppError("找不到對應的評審紀錄", code=404)
 
     usage_log = await usage_repo.get_by_uid(parent.usage_log_uid)
@@ -390,8 +383,7 @@ async def rerun_evaluation(
     if not challengers:
         await eval_repo.mark_reran(ai_evaluation_uid, status=1)
         logger.info(
-            "評審重跑:無有效 challenger(全員維持原模型),標終局 status=1 "
-            "ai_evaluation_uid=%s",
+            "評審重跑:無有效 challenger(全員維持原模型),標終局 status=1 ai_evaluation_uid=%s",
             ai_evaluation_uid,
         )
         return
@@ -444,9 +436,7 @@ async def rerun_evaluation(
 
         verdict: _Verdict | None = None
         if discriminator_enabled and ch.judge_model_key:
-            swap = (
-                blind_swap if blind_swap is not None else bool(random.getrandbits(1))
-            )
+            swap = blind_swap if blind_swap is not None else bool(random.getrandbits(1))
             try:
                 verdict = await _run_discriminator(
                     client,
@@ -461,8 +451,7 @@ async def rerun_evaluation(
             except Exception:  # noqa: BLE001
                 # discriminator 失敗 → compare_* 留 NULL,仍寫客觀指標列(不阻斷)。
                 logger.exception(
-                    "評審重跑:discriminator 裁決失敗 ai_evaluation_uid=%s "
-                    "rerun_model=%s judge=%s",
+                    "評審重跑:discriminator 裁決失敗 ai_evaluation_uid=%s rerun_model=%s judge=%s",
                     ai_evaluation_uid,
                     ch.rerun_model,
                     ch.judge_model_key,

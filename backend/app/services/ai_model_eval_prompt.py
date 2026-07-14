@@ -18,6 +18,8 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from app.services import request_snapshot
+
 # 遮罩 hook 型別:吃一段文字、回遮罩後文字。預設 identity(本版不遮罩,見模組 docstring)。
 TextMasker = Callable[[str], str]
 
@@ -41,9 +43,7 @@ _SYSTEM_PROMPT = (
 )
 
 # 意圖枚舉直接寫入 prompt,讓模型回傳值落在固定集合(對齊 schema 的寬鬆解析)。
-_INTENT_ENUM = (
-    "code_generation | qa | summarization | translation | reasoning | extraction | other"
-)
+_INTENT_ENUM = "code_generation | qa | summarization | translation | reasoning | extraction | other"
 
 _OUTPUT_SCHEMA_HINT = json.dumps(
     {
@@ -57,13 +57,49 @@ _OUTPUT_SCHEMA_HINT = json.dumps(
 )
 
 
+def _render_messages_input(request_content: Mapping[str, Any], text_masker: TextMasker) -> str:
+    """messages 直傳模式(v2.1.2)的「使用者輸入」區塊:依序逐則揭露 role + 內容。
+
+    裁判需要看到完整對話脈絡(system prompt / 歷史 assistant 回覆)才能正確評分,
+    因此不摺成單一段文字;每則文字過遮罩 hook,圖片 / 檔案僅揭露數量與檔名。
+    """
+    messages = request_snapshot.messages_of(request_content)
+    lines: list[str] = [f"多輪對話(messages,共 {len(messages)} 則,依序如下):"]
+    for idx, msg in enumerate(messages, start=1):
+        role = str(msg.get("role", ""))
+        label = request_snapshot.ROLE_LABELS.get(role, role)
+        content = msg.get("content")
+        text = request_snapshot.text_of(content)
+        masked_text = text_masker(text) if text else ""
+        header = f"[{idx}] {label}({role}):"
+        lines.append(f"{header}\n{masked_text}" if masked_text else f"{header}(無文字)")
+        n_images = request_snapshot.count_parts(content, "image_url")
+        if n_images:
+            lines.append(f"    圖片數量:{n_images}")
+        n_files = request_snapshot.count_parts(content, "file")
+        if n_files:
+            lines.append(f"    附帶檔案數量:{n_files}")
+
+    tools = request_content.get("tools") or []
+    if tools:
+        lines.append(f"使用工具:{json.dumps(tools, ensure_ascii=False)}")
+    return "\n".join(lines)
+
+
 def _render_input(request_content: Mapping[str, Any], text_masker: TextMasker) -> str:
     """把 usage_logs.request_content 原文渲染成可讀的「使用者輸入」區塊。
 
-    request_content 形狀同 proxy `_build_request_log`:{model, text, images, tools, files}。
+    request_content 有兩種形狀(見 `app.services.request_snapshot`):messages 直傳模式
+    走 `_render_messages_input` 逐則揭露;單輪模式沿用下方 {model, text, images, tools,
+    files} 的既有渲染(輸出逐字不變)。**不可**再直接讀 `text` 就當成全部輸入 —— 那會讓
+    messages 模式的紀錄被判成空輸入(v2.1.2 缺陷)。
+
     此處**不**帶入 `model` 欄(目前模型改由 build_judge_prompt 的「目前使用的模型」獨立區塊
     揭露,避免重複);text 過遮罩 hook。
     """
+    if request_snapshot.is_messages_snapshot(request_content):
+        return _render_messages_input(request_content, text_masker)
+
     text = request_content.get("text")
     masked_text = text_masker(text) if isinstance(text, str) else ""
     images = request_content.get("images") or []
@@ -133,9 +169,7 @@ def build_judge_prompt(
         `temperature=0`:判別為評分/分類任務,壓低取樣隨機性以提升可重現性與裁判間一致性
         (跨 provider / MoE 仍非位元級一致,但變異大幅降低)。
     """
-    current_model = (
-        f"{original_model}(tier: {original_tier})" if original_tier else original_model
-    )
+    current_model = f"{original_model}(tier: {original_tier})" if original_tier else original_model
     user_prompt = (
         f"## 目前模型\n{current_model}\n\n"
         f"## 候選白名單(recommend 僅能選此)\n{_render_candidates(candidate_models)}\n\n"

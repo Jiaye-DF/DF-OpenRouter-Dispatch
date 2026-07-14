@@ -47,9 +47,11 @@ export function DashboardFilters({
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [users, setUsers] = React.useState<UserDropdownItem[]>([]);
 
-  // 部門清單(admin 才需要;non-admin 只看自己,不打)
+  // 部門清單:admin 取全部(供下拉選擇),non-admin 也要打——後端 GET /departments 為
+  // UserDep 且已把 non-admin 限縮成只回自己那一筆(departments.py `only_uid`),正是為此設計。
+  // 先前 non-admin 直接 early return,depts 恆為空 → 下方 find() 必落到「(未指派)」,
+  // 即使該使用者其實有部門。
   React.useEffect(() => {
-    if (!isAdmin) return;
     let cancelled = false;
     (async () => {
       try {
@@ -65,7 +67,7 @@ export function DashboardFilters({
     return () => {
       cancelled = true;
     };
-  }, [isAdmin]);
+  }, []);
 
   // 專案 / 使用者下拉(隨選定的部門變動)
   const filterDept = isAdmin ? value.department_uid : actorDeptUid ?? "";
@@ -103,8 +105,11 @@ export function DashboardFilters({
     });
   };
 
-  const currentDeptName =
-    depts.find((d) => d.department_uid === actorDeptUid)?.name ?? "(未指派)";
+  // 「(未指派)」只保留給真的沒有部門的 actor;有部門但清單未回來 → 顯示佔位符,
+  // 不可把「還沒載到名稱」誤報成「沒有部門」。
+  const currentDeptName = !actorDeptUid
+    ? "(未指派)"
+    : (depts.find((d) => d.department_uid === actorDeptUid)?.name ?? "—");
 
   const INPUT_CLASS =
     "h-10 w-full rounded-xl border border-border bg-background px-3 text-sm " +

@@ -545,3 +545,39 @@ async def test_audit_extra_reflects_disable_and_enable(world: SimpleNamespace):
         assert a.target_uid == world.member.user_uid
     assert disable_audit.extra == {"is_active": False, "tokens_revoked": True}
     assert enable_audit.extra == {"is_active": True, "tokens_revoked": False}
+
+
+# --- NOT NULL 欄位顯式送 null:400,不可打穿 DB 約束變成 500 ---
+
+
+@pytest.mark.parametrize("field", ["is_active", "username", "role"])
+async def test_patch_explicit_null_on_not_null_field_returns_400(
+    world: SimpleNamespace, field: str
+):
+    """回歸:`bool | None` 等 Optional 欄位的 None 語意是「未提供」,非「設為 NULL」。
+
+    顯式 null 過去會被 exclude_unset 保留 → setattr(user, k, None) → flush 時
+    IntegrityError → 500。應於 schema 層擋成 400。
+    """
+    async with _make_client() as client:
+        resp = await client.patch(
+            f"/api/v1/users/{world.member.user_uid}",
+            json={field: None},
+            headers=_session_headers(world.admin.user_uid),
+        )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["success"] is False
+    assert field in resp.json()["detail"]
+
+
+async def test_patch_omitting_field_still_means_no_change(world: SimpleNamespace):
+    """省略欄位(而非送 null)仍是「不更動」——擋 null 不得誤傷正常的部分更新。"""
+    async with _make_client() as client:
+        resp = await client.patch(
+            f"/api/v1/users/{world.member.user_uid}",
+            json={"employee_id": "E999"},
+            headers=_session_headers(world.admin.user_uid),
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["is_active"] is True
+    assert resp.json()["data"]["employee_id"] == "E999"

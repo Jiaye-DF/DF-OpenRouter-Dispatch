@@ -87,7 +87,7 @@ async def get_openrouter_client() -> OpenRouterClient: ...
 ```
 SDK（使用者應用）
   │  Headers:  X-SDK-Key, X-User-Token
-  │  Body:     { model, text, images }
+  │  Body:     { model, text, images }（單輪模式;v2.1.2 起亦可帶 messages[] 直傳,詳 § 5 / § 6.1）
   ▼
 [backend] POST /api/v1/model/chat                    (canonical,v1.2)
           POST /api/v1/model/openrouter/chat         (deprecated alias,行為相同)
@@ -111,8 +111,10 @@ SDK
 
 - v1.2 起代理 canonical path 為 **`POST /api/v1/model/chat`**;所有 provider 共用,後端依 `model_key` 對應的 `models.provider` 自動分流。
 - 舊路徑 `POST /api/v1/model/openrouter/chat` 保留為 **deprecated alias**（內部 forward 到同 handler;Swagger 標 `deprecated: true`),**至少保留至 v1.4**。
-- Request 採**平台簡化 schema**（`{ model, text, images }`,v1.6.1 起可選帶 `tools`),由後端改寫為各 provider 的 chat/completions 格式;目前 OpenRouter 與 Internal 都是 OpenAI-compatible,改寫邏輯一致。
-- 本版本**不**做 OpenAI passthrough;唯一例外是 `tools`(v1.6.1)受控放行,原樣透傳給下游以啟用 OpenRouter server 端內建工具(如 web search);會回 `tool_calls` 的 function calling 尚未開放。後續版本若需擴充新 action,於同 `/model/` 命名空間下新增。
+- Request 內容支援**兩種模式,互斥擇一**(v2.1.2 起;同時帶 → 400):
+  - **單輪模式(預設)**:平台簡化 schema(`{ model, text, images, files }`,v1.6.1 起可選帶 `tools`),由後端改寫為各 provider 的 chat/completions 格式;目前 OpenRouter 與 Internal 都是 OpenAI-compatible,改寫邏輯一致。舊 client 只帶單輪欄位時行為**完全不變**。
+  - **messages 直傳模式(v2.1.2)**:呼叫端自帶 OpenRouter/OpenAI 風格 `messages[]`(多輪對話 / system prompt / assistant 歷史),經**白名單驗證**後透傳給下游(詳 § 6.1)。
+- **不**做 OpenAI passthrough;**僅開放白名單參數**:`tools`(v1.6.1,原樣透傳啟用 OpenRouter server 端內建工具如 web search;會回 `tool_calls` 的 function calling 尚未開放,兩種內容模式皆可搭配)、`messages`(v2.1.2,白名單驗證後透傳)、生成參數 `temperature` / `max_tokens` / `response_format` 三項(v2.1.2,詳 § 6.2);**其餘 OpenAI 欄位(top_p / stop / penalties / seed / logit_bias 等)一律不開放**,schema 層拒收未知欄位、**禁止** dict 原樣透傳。後續版本若需擴充新 action,於同 `/model/` 命名空間下新增。
 - 非代理端點（管理 UI 用）使用 `/api/v1/<resource>`,遵循 [20-backend.md § 3](../03-backend/90-project-backend.md#3-路由與-api-命名)。
 
 ## 6. 請求改寫與欄位過濾
@@ -121,11 +123,37 @@ SDK
 
 | 處理 | 說明 |
 | --- | --- |
-| Schema 展開 | `{ model, text, images }` → `messages:[{role:"user", content:[{type:"text", text}, {type:"image_url", image_url:{url}}]}]` |
+| Schema 展開(單輪模式) | `{ model, text, images }` → `messages:[{role:"user", content:[{type:"text", text}, {type:"image_url", image_url:{url}}]}]`;messages 直傳模式**不**經此展開(見 § 6.1) |
 | 工具透傳(v1.6.1) | `tools` 若有值,原樣加入 payload(`payload["tools"]`)透傳給下游;不驗證格式,格式錯由下游回對應錯誤。僅支援 server 端工具(回應仍為純文字),function calling 未開放 |
 | 白名單檢查 | 依 `models.is_active` DB 查詢（`models WHERE model_key=? AND is_active=TRUE AND is_deleted=FALSE`）；未通過或不存在均回 403 `model_forbidden`,不揭露差異 |
 | 影片輸入 | 本版本**禁止**（`videos` 若出現 → 400 `feature_not_supported`） |
 | 模型別名展開 | 可定義短別名對應 OpenRouter 實際模型字串（本版本不實作） |
+
+### 6.1 messages 直傳模式(v2.1.2)
+
+呼叫端可改帶 `messages[]` 取代單輪欄位,支撐多輪對話 / system prompt / assistant 歷史;**白名單驗證通過後原樣透傳**進 payload(不重組),單輪模式的組裝邏輯**不動**:
+
+| 規則 | 說明 |
+| --- | --- |
+| 互斥 | `messages` 與 `text` / `images` / `files` **擇一**;同時帶 → 400 `invalid_request`;`messages=[]` → 400(不做隱式合併/忽略) |
+| role 白名單 | 只收 `system` / `user` / `assistant`;`tool` role 與 `tool_calls` 回傳鏈**不開放**(進階多輪工具流留待日後) |
+| content parts 白名單 | `content` 為字串或 parts 陣列;parts 只收 `text` / `image_url` / `file`(能力集與單輪模式對齊;`video` 仍 400 `feature_not_supported`) |
+| 筆數上限 | **不設應用層筆數上限**;模型 context window 為自然上限,超限由下游回錯、沿既有錯誤鏈(§ 9)轉失敗回應 |
+| tools | 兩種模式皆可搭配;`used_tools` 推導不變 |
+| 回應 | 不因 messages 模式改變:仍抽純文字回統一 Response,**不**外露 OpenRouter 完整 response 與內部欄位 |
+| internal provider | payload 結構相同,messages 模式自然支援;白名單 / failover 邏輯不動 |
+
+### 6.2 生成參數(v2.1.2)
+
+僅開放下列**三項**生成參數;**兩種內容模式皆可帶**(與內容模式正交),未帶(None)**不注入 payload**、走模型預設值:
+
+| 參數 | 值域 / 形狀 |
+| --- | --- |
+| `temperature` | float,0 ≤ x ≤ 2(對齊 OpenAI/OpenRouter 值域) |
+| `max_tokens` | int,≥ 1;上限交由模型 / 下游把關,不設應用層上限(同 messages 筆數上限精神) |
+| `response_format` | **型別化白名單** schema(**禁** raw dict 透傳):`type` 只收 `json_object` / `json_schema`;`json_schema` 型別時帶 `json_schema` 物件透傳 |
+
+**其餘生成參數(top_p / stop / frequency_penalty / presence_penalty / seed / logit_bias 等)不開放**;越界 / 非白名單格式 → 400。若日後需要開放,另立 propose 先修訂本檔。
 
 Response 回傳給 Client 前：
 
@@ -200,7 +228,7 @@ OpenRouter 原始錯誤**必須**完整寫入後端 Log（含 `X-Request-Id`）�
   - `cost_usd`（USD，取自 OpenRouter `usage`）
   - `latency_ms`
   - `status`（`success` / `error`）、`error_code`
-  - `request_content`（JSONB，**完整**原始 body;base64 影像以原文保留,供管理端分析使用者實際消費模型的方式)
+  - `request_content`（JSONB，**完整**原始 body;base64 影像以原文保留,供管理端分析使用者實際消費模型的方式。messages 直傳模式(v2.1.2)**原樣**快照 `messages`(file part 僅記 `filename` 不記 `file_data`,與單輪模式一致);有帶的生成參數(`temperature` / `max_tokens` / `response_format`)一併入快照供追溯)
   - `response_summary`（JSONB，首段文字 ≤ 500 字 + `usage`）
   - `created_at`
 - 寫入**必須**於 response 回給 Client **之後**執行（`BackgroundTasks` 或 `asyncio.create_task`），避免拖慢呼叫。

@@ -121,8 +121,9 @@ class RerunGroup(BaseModel):
     - `original_model`:原模型 key(denormalize,並排顯示)。
     - `original_output_text`:原模型**真實輸出原文**(取自 `usage_logs.response_summary.output_text`;
       歷史 log 未存快照 → `None`,前端顯示「無原始輸出快照」)。
-    - `original_input_text`:該筆呼叫的「任務輸入」原文(取自 `usage_logs.request_content.text`;
-      與 usage-log 明細頁慣例同)。request_content 為 NULL / 無 text / 非字串 → `None`。
+    - `original_input_text`:該筆呼叫的「任務輸入」原文(取自 `usage_logs.request_content`,
+      經 `request_snapshot.input_text_of` 正規化:單輪快照取 `text`、messages 直傳快照取
+      **最後一則 user 訊息**的文字)。request_content 為 NULL / 無任何文字 → `None`。
     - `original_cost_usd`:原呼叫成本(USD);**Decimal → 字串**(`str | None`)。
     - `evaluated_at`:該組最新一筆推薦模型的重跑執行時間(供排序 / 顯示;無列 → `None`)。
     - `usage_log_info`:對應那筆用量紀錄的基礎資訊(供 Dialog 顯示;該筆 usage_log

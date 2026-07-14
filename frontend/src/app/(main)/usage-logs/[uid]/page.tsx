@@ -14,62 +14,20 @@ import { API_ENDPOINTS } from "@/lib/api/endpoints";
 import { formatDateTime } from "@/lib/utils/datetime";
 import { formatUSD } from "@/lib/utils/format";
 import { useAppSelector } from "@/store/hooks";
-import type { UsageLogDetail, UsageRequestContent } from "@/types/api";
+import { isMessagesRequest } from "@/types/api";
+import type {
+  RequestGenerationParams,
+  RequestMessage,
+  RequestMessagePart,
+  UsageLogDetail,
+  UsageRequestContent,
+} from "@/types/api";
 
 // 用量紀錄單筆詳情頁:顯示使用者實際傳入內容(Input,含圖片)與模型完整回覆(Output)。
 // base64 圖片在前端轉成 Blob/object URL 後渲染,避免巨大 data URI 直接塞進 DOM。
 // v2.1.2(task-434):request_content 支援雙內容模式——舊單輪 {text, images, ...}
 // 渲染不變;messages 直傳模式依 role 分段渲染(形狀判別,不做資料遷移)。
-
-// ── task-434 區域型別:messages 模式 request_content(v2.1.2)──
-// types/api.ts 由 task-437 持鎖,本頁以區域型別做形狀判別(以 messages 鍵有無分流);
-// 後端快照確切形狀見 backend/app/services/proxy.py `_build_request_log` / `_snapshot_message`。
-
-interface RequestTextPart {
-  type: "text";
-  text: string;
-}
-
-interface RequestImagePart {
-  type: "image_url";
-  image_url: { url: string };
-}
-
-// file part 快照僅保留檔名(不留存檔案內容,法務考量;對齊 propose v2.1.2 §D.4)
-interface RequestFilePart {
-  type: "file";
-  file: { filename: string };
-}
-
-type RequestMessagePart = RequestTextPart | RequestImagePart | RequestFilePart;
-
-interface RequestMessage {
-  role: "system" | "user" | "assistant";
-  content: string | RequestMessagePart[];
-}
-
-// 生成參數(v2.1.2 §D.7):兩種內容模式皆可能出現;後端「有帶才寫入」快照,不會為 null
-interface RequestGenerationParams {
-  temperature?: number;
-  max_tokens?: number;
-  response_format?: {
-    type: "json_object" | "json_schema";
-    json_schema?: Record<string, unknown>;
-  };
-}
-
-interface MessagesRequestContent extends RequestGenerationParams {
-  model?: string;
-  messages: RequestMessage[];
-  tools?: Record<string, unknown>[];
-}
-
-type SingleTurnRequestContent = UsageRequestContent & RequestGenerationParams;
-type RequestContent = SingleTurnRequestContent | MessagesRequestContent;
-
-function isMessagesRequest(req: RequestContent): req is MessagesRequestContent {
-  return Array.isArray((req as MessagesRequestContent).messages);
-}
+// 快照型別與 isMessagesRequest() 一律取自 types/api.ts(共用契約,不在本頁重複定義)。
 
 function dataUriToBlob(dataUri: string): Blob | null {
   const m = /^data:([^;]+);base64,(.*)$/s.exec(dataUri);
@@ -155,15 +113,20 @@ function ImageItem({ src, index }: { src: string; index: number }) {
   );
 }
 
-// role → 視覺區辨(Badge 變體 + 中文說明);後端 role 走 Literal 白名單,僅此三種
-const ROLE_META: Record<
-  RequestMessage["role"],
-  { label: string; variant: "warning" | "default" | "success" }
-> = {
+// role → 視覺區辨(Badge 變體 + 中文說明);目前後端 role 走 Literal 白名單,僅此三種。
+// 但 schema 已預告未來會開放 tool role,屆時舊紀錄仍會被本頁讀到:查無對應一律走
+// ROLE_FALLBACK(以 role 原字串顯示),不可讓明細頁因未知 role 整頁崩掉。
+type RoleMeta = { label: string; variant: "warning" | "default" | "success" | "secondary" };
+
+const ROLE_META: Record<string, RoleMeta> = {
   system: { label: "系統提示", variant: "warning" },
   user: { label: "使用者", variant: "default" },
   assistant: { label: "助理", variant: "success" },
 };
+
+function roleMetaOf(role: string): RoleMeta {
+  return ROLE_META[role] ?? { label: role, variant: "secondary" };
+}
 
 // 單則 message 的 content:字串直接顯示;parts 陣列依型別呈現
 // (text 文字 / image_url 縮圖沿用 ImageItem / file 檔名)。
@@ -217,7 +180,7 @@ function MessageContent({
 
 // messages 模式:單則訊息區塊(role Badge 標頭 + content)
 function MessageBlock({ message }: { message: RequestMessage }) {
-  const meta = ROLE_META[message.role];
+  const meta = roleMetaOf(message.role);
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
       <div className="flex items-center gap-2">
@@ -313,9 +276,9 @@ export default function UsageLogDetailPage() {
       .finally(() => setLoading(false));
   }, [uid]);
 
-  // request_content 雙內容模式(task-434):API 型別為單輪快照,messages 模式
-  // 以區域型別 + 形狀判別(isMessagesRequest)分流,舊單輪紀錄渲染路徑不變。
-  const req: RequestContent | null = log?.request_content ?? null;
+  // request_content 雙內容模式(task-434):以 isMessagesRequest() 做形狀判別分流,
+  // 舊單輪紀錄渲染路徑不變。
+  const req: UsageRequestContent | null = log?.request_content ?? null;
   const resp = log?.response_summary ?? null;
   // v1.6.2 起 output_text 為完整回覆;舊紀錄僅有截斷的 first_text。
   const outputText = resp?.output_text ?? resp?.first_text ?? "";

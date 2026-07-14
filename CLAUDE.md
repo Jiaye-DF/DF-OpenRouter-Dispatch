@@ -25,14 +25,3 @@ Design-Base 為**不可違反的地板**,版本 `docs/Tasks/*` 的 propose/tasks
 3. 程式碼用到的環境變數皆已於 `.env.example` 定義;缺漏提醒同步。
 
 > 詳細 env 分層 / 機密規範:`docs/Design-Base/00-overview/02-secrets.md`、`03-env-layers.md`、`00-overview/91-project-naming-env.md`。
-
-## 自訂指令
-
-| 指令 | 說明 |
-| --- | --- |
-| [`/commit-all`](.claude/commands/commit-all.md) | 一鍵提交並推送當前分支所有變更 |
-| [`/merge-main`](.claude/commands/merge-main.md) | 合併當前分支至 `main` |
-| [`/scan-project`](.claude/commands/scan-project.md) | 掃描專案結構並分析潛在問題 |
-| [`/dev-up`](.claude/commands/dev-up.md) | 一鍵啟動本機開發環境 |
-| [`/propose-to-tasks`](.claude/commands/propose-to-tasks.md) | 從 propose 拆出 multi-agent 可並行 tasks |
-| [`/reflect-rules`](.claude/commands/reflect-rules.md) | 讀全版本 `fixed.md` 找 pattern → 候選升規 |

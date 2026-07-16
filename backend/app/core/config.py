@@ -192,6 +192,17 @@ class Settings(BaseSettings):
     M365_CLIENT_SECRET: str = ""
     M365_MAIL_SENDER: str = ""
 
+    # --- 模型自動同步排程 (v2.2) ---
+    # MODEL_SYNC_SCHEDULE_ENABLED:模型自動同步排程總開關;關閉時排程 task 消費即 return,不同步。
+    # 對齊既有 AI_EVAL_ENABLED。
+    MODEL_SYNC_SCHEDULE_ENABLED: bool = False
+    # MODEL_SYNC_INTERVAL_DAYS:自動同步間隔天數;排程於「每 N 天的 00:00」觸發(cron 於 502 組出)。
+    MODEL_SYNC_INTERVAL_DAYS: int = 3
+
+    # --- 申請單管理員通知 (v2.2) ---
+    # APIREQ_ADMIN_NOTIFY_ENABLED:申請單判決後通知系統管理員總開關;M365 未配置時自然不寄。
+    APIREQ_ADMIN_NOTIFY_ENABLED: bool = False
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
@@ -252,6 +263,21 @@ class Settings(BaseSettings):
     @classmethod
     def _coerce_ai_rerun_discriminator_enabled(cls, v: Any) -> bool:
         return coerce_bool_env("AI_RERUN_DISCRIMINATOR_ENABLED", v, True)
+
+    @field_validator("MODEL_SYNC_SCHEDULE_ENABLED", mode="before")
+    @classmethod
+    def _coerce_model_sync_schedule_enabled(cls, v: Any) -> bool:
+        return coerce_bool_env("MODEL_SYNC_SCHEDULE_ENABLED", v, False)
+
+    @field_validator("MODEL_SYNC_INTERVAL_DAYS", mode="before")
+    @classmethod
+    def _coerce_model_sync_interval_days(cls, v: Any) -> int:
+        return coerce_int_env("MODEL_SYNC_INTERVAL_DAYS", v, 3)
+
+    @field_validator("APIREQ_ADMIN_NOTIFY_ENABLED", mode="before")
+    @classmethod
+    def _coerce_apireq_admin_notify_enabled(cls, v: Any) -> bool:
+        return coerce_bool_env("APIREQ_ADMIN_NOTIFY_ENABLED", v, False)
 
     @model_validator(mode="after")
     def _fail_fast_in_prod(self) -> Settings:

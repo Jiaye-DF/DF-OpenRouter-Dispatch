@@ -1,0 +1,73 @@
+{#
+  申請單判決通知信(v2.2.0)——寄給系統管理員。
+  context:
+    - applicant_name : 申請人姓名
+    - department     : 申請人部門
+    - project_name   : 申請專案名稱
+    - status         : 判決狀態(原始 enum:manual_pending/agent_done/done/revoked/cancelled)
+    - status_zh      : 判決狀態中文語意(由 service 對映;未知值原樣帶入)
+    - reason         : 判決 / 失敗原因(選填,無則不顯示)
+    - request_uid    : 申請單對外識別碼(uid)
+  另繼承 base context:brand_name / platform_url / current_year。
+  安全:禁含一次性密鑰(sdk_key / user_token / provisioned_secrets)、內部 pid、收件人以外 PII。
+#}
+{% extends "base.html" %}
+
+{% block heading %}申請單判決通知{% endblock %}
+
+{% block preheader %}申請單「{{ project_name }}」判決為{{ status_zh }},申請人 {{ applicant_name }}。{% endblock %}
+
+{% block content %}
+  <p style="margin:0 0 16px;">系統管理員您好,</p>
+
+  <p style="margin:0 0 20px;">
+    有一筆金鑰申請單已判決為
+    <strong style="color:#0f172a;">{{ status_zh }}</strong>,詳情如下:
+  </p>
+
+  <!-- 申請單摘要 -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 24px;">
+    <tr>
+      <td style="padding:18px 20px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="font-size:14px;">
+          <tr>
+            <td style="padding:6px 0; color:#64748b; width:96px; vertical-align:top;">申請人</td>
+            <td style="padding:6px 0; color:#0f172a;">{{ applicant_name }}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0; color:#64748b; vertical-align:top;">部門</td>
+            <td style="padding:6px 0; color:#0f172a;">{{ department }}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0; color:#64748b; vertical-align:top;">專案</td>
+            <td style="padding:6px 0; color:#0f172a;">{{ project_name }}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0; color:#64748b; vertical-align:top;">判決狀態</td>
+            <td style="padding:6px 0; color:#0f172a;"><strong>{{ status_zh }}</strong></td>
+          </tr>
+          {% if reason %}
+          <tr>
+            <td style="padding:6px 0; color:#64748b; vertical-align:top;">原因</td>
+            <td style="padding:6px 0; color:#0f172a; word-break:break-word;">{{ reason }}</td>
+          </tr>
+          {% endif %}
+          <tr>
+            <td style="padding:6px 0; color:#64748b; vertical-align:top;">申請單編號</td>
+            <td style="padding:6px 0; color:#0f172a; font-family:'Consolas','Courier New',monospace; word-break:break-all;">{{ request_uid }}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <p style="margin:0 0 8px; color:#475569;">
+    請至平台後台查看此申請單的完整內容與後續處理。
+  </p>
+{% endblock %}
+
+{% block footer_extra %}
+  <p style="margin:0;">此為申請單判決通知,僅寄送系統管理員。</p>
+{% endblock %}

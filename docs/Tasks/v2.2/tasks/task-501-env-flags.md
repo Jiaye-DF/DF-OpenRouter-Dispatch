@@ -1,7 +1,7 @@
 ---
 id: task-501
 title: 三顆 env 開關 + Settings 欄位 + .env.example
-status: pending
+status: done
 parallel: true
 depends_on: []
 affected_files:

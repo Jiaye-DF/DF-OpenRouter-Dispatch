@@ -1,7 +1,7 @@
 ---
 id: task-511
 title: M365 寄信抽共用底層 + 管理員通知函式 + 模板
-status: pending
+status: done
 parallel: true
 depends_on: []
 affected_files:

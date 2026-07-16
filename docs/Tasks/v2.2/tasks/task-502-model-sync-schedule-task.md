@@ -1,7 +1,7 @@
 ---
 id: task-502
 title: 模型自動同步排程 task + scheduler 掛載 + trigger 稽核標記
-status: pending
+status: done
 parallel: true
 depends_on: [task-501]
 affected_files:

@@ -1,6 +1,6 @@
 # Tasks v2.2.0 · 模型清單自動同步排程 + 申請單判決後通知系統管理員
 
-> 狀態:進行中(已完成 0/5)
+> 狀態:全數完成(5/5;consolidated ruff + 17 test 綠;待 /scan-project 收口)
 > 來源:[propose-v2.2.0.md](./propose-v2.2.0.md)
 > 並行:5 個 task,並行 2(批 A 零依賴)/ 序列由 `depends_on` 驅動 / 預估總時數:12 hr / 阻塞點:0(propose §D 全數拍板)
 
@@ -8,11 +8,11 @@
 
 | # | 標題 | 狀態 | 並行 | 依賴 | 影響檔案 |
 | --- | --- | --- | --- | --- | --- |
-| 501 | 三顆 env 開關 + Settings 欄位 + `.env.example` | pending | ✓ | — | `backend/app/core/config.py`、`.env.example` |
-| 502 | 模型自動同步排程 task + scheduler 掛載 + `trigger` 稽核標記 | pending | ✓ | 501 | `backend/app/tasks/model_sync.py`、`backend/app/tasks/scheduler.py`、`backend/app/services/sync.py`、`backend/tests/tasks/test_model_sync_dispatch.py` |
-| 503 | docker-compose 更新(worker command 追加模組 + prod env 注入) | pending | ✓ | 502 | `docker-compose.dev.yml`、`docker-compose-prod.yml` |
-| 511 | M365 寄信抽共用底層 + 管理員通知函式 + 模板 | pending | ✓ | — | `backend/app/services/email_graph.py`、`backend/app/templates/email/admin_apireq_verdict.html`、`backend/app/templates/email/admin_apireq_verdict.txt`、`backend/tests/services/test_email_graph_admin_notify.py` |
-| 512 | 申請單各終態觸發管理員通知(整合 api_key_requests) | pending | ✓ | 501, 511 | `backend/app/api/v1/api_key_requests.py`、`backend/tests/api/test_api_key_requests_admin_notify.py` |
+| 501 | 三顆 env 開關 + Settings 欄位 + `.env.example` | done | ✓ | — | `backend/app/core/config.py`、`.env.example` |
+| 502 | 模型自動同步排程 task + scheduler 掛載 + `trigger` 稽核標記 | done | ✓ | 501 | `backend/app/tasks/model_sync.py`、`backend/app/tasks/scheduler.py`、`backend/app/services/sync.py`、`backend/tests/tasks/test_model_sync_dispatch.py` |
+| 503 | docker-compose 更新(worker command 追加模組 + prod env 注入) | done | ✓ | 502 | `docker-compose.dev.yml`、`docker-compose-prod.yml` |
+| 511 | M365 寄信抽共用底層 + 管理員通知函式 + 模板 | done | ✓ | — | `backend/app/services/email_graph.py`、`backend/app/templates/email/admin_apireq_verdict.html`、`backend/app/templates/email/admin_apireq_verdict.txt`、`backend/tests/services/test_email_graph_admin_notify.py` |
+| 512 | 申請單各終態觸發管理員通知(整合 api_key_requests) | done | ✓ | 501, 511 | `backend/app/api/v1/api_key_requests.py`、`backend/tests/api/test_api_key_requests_admin_notify.py` |
 
 ## 並行批次
 

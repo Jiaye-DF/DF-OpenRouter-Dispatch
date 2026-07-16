@@ -1,7 +1,7 @@
 ---
 id: task-512
 title: 申請單各終態觸發管理員通知(整合 api_key_requests)
-status: pending
+status: done
 parallel: true
 depends_on: [task-501, task-511]
 affected_files:

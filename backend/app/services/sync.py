@@ -350,6 +350,7 @@ async def sync_models_and_credits(
     actor_user_uid: UUID,
     actor_role: str,
     ip: str | None = None,
+    audit_meta: dict[str, Any] | None = None,
 ) -> ModelSyncResult:
     """同步 OpenRouter 模型清單 + 帳號餘額。Admin only;呼叫端負責 dependency。"""
 
@@ -399,6 +400,8 @@ async def sync_models_and_credits(
         "credits_synced": credits_synced,
         "credits_failed": credits_failed,
     }
+    # audit_meta:呼叫端額外稽核標記(如排程觸發帶 trigger="scheduler");預設 None = 現況一致。
+    audit_extra.update(audit_meta or {})
     await write_audit(
         db,
         actor_user_uid=actor_user_uid,

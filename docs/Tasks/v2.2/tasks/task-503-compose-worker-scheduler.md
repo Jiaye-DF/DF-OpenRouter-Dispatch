@@ -1,7 +1,7 @@
 ---
 id: task-503
 title: docker-compose 更新(worker command 追加模組 + prod env 注入)
-status: pending
+status: done
 parallel: true
 depends_on: [task-502]
 affected_files:

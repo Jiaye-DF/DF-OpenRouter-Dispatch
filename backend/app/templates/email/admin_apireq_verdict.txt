@@ -1,0 +1,22 @@
+{#
+  申請單判決通知信(純文字版,v2.2.0)——寄給系統管理員。
+  context 同 admin_apireq_verdict.html;禁含一次性密鑰 / 內部 pid / 收件人以外 PII。
+#}
+【{{ brand_name }}】申請單判決通知
+
+系統管理員您好,
+
+有一筆金鑰申請單已判決為「{{ status_zh }}」,詳情如下:
+
+  申請人  : {{ applicant_name }}
+  部門    : {{ department }}
+  專案    : {{ project_name }}
+  判決狀態: {{ status_zh }}
+{% if reason %}  原因    : {{ reason }}
+{% endif %}  申請單編號: {{ request_uid }}
+
+請至平台後台查看此申請單的完整內容與後續處理。
+{% if platform_url %}前往平台:{{ platform_url }}{% endif %}
+
+此為系統自動寄送的信件,請勿直接回覆。
+（本通知僅寄送系統管理員）

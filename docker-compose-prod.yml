@@ -64,6 +64,8 @@ services:
       M365_TENANT_ID: ${M365_TENANT_ID}
       M365_CLIENT_SECRET: ${M365_CLIENT_SECRET}
       M365_MAIL_SENDER: ${M365_MAIL_SENDER}
+      # 申請單管理員通知開關(v2.2);於 API 進程觸發
+      APIREQ_ADMIN_NOTIFY_ENABLED: ${APIREQ_ADMIN_NOTIFY_ENABLED}
       SEQ_INGESTION_URL: http://seq
       SEQ_API_KEY: ${SEQ_API_KEY}
     expose:
@@ -153,7 +155,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["taskiq", "worker", "app.tasks.broker:broker", "app.tasks.ai_model_eval"]
+    command: ["taskiq", "worker", "app.tasks.broker:broker", "app.tasks.ai_model_eval", "app.tasks.model_sync"]
     environment:
       APP_ENV: ${APP_ENV}
       APP_NAME: taskiq-worker
@@ -177,6 +179,9 @@ services:
       # AI 真實重跑 + 對比裁決(v2.1);沿用評審派發排程,僅兩顆開關
       AI_RERUN_ENABLED: ${AI_RERUN_ENABLED}
       AI_RERUN_DISCRIMINATOR_ENABLED: ${AI_RERUN_DISCRIMINATOR_ENABLED}
+      # 模型自動同步排程(v2.2);worker 註冊 scheduled_sync_models
+      MODEL_SYNC_SCHEDULE_ENABLED: ${MODEL_SYNC_SCHEDULE_ENABLED}
+      MODEL_SYNC_INTERVAL_DAYS: ${MODEL_SYNC_INTERVAL_DAYS}
       SEQ_INGESTION_URL: http://seq
       SEQ_API_KEY: ${SEQ_API_KEY}
     depends_on:
@@ -215,6 +220,9 @@ services:
       # AI 真實重跑 + 對比裁決(v2.1);沿用評審派發排程,僅兩顆開關
       AI_RERUN_ENABLED: ${AI_RERUN_ENABLED}
       AI_RERUN_DISCRIMINATOR_ENABLED: ${AI_RERUN_DISCRIMINATOR_ENABLED}
+      # 模型自動同步排程(v2.2);scheduler cron label 於 import 時讀該 env
+      MODEL_SYNC_SCHEDULE_ENABLED: ${MODEL_SYNC_SCHEDULE_ENABLED}
+      MODEL_SYNC_INTERVAL_DAYS: ${MODEL_SYNC_INTERVAL_DAYS}
       SEQ_INGESTION_URL: http://seq
       SEQ_API_KEY: ${SEQ_API_KEY}
     depends_on:

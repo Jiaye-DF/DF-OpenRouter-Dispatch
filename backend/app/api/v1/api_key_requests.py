@@ -9,12 +9,14 @@ from uuid_utils import uuid7
 
 from app.clients.openrouter.client import OpenRouterClient, get_openrouter_client
 from app.core.audit import write_audit
+from app.core.config import get_settings
 from app.core.deps import ClientIpDep, DbDep, UserDep
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
 from app.core.response import success_response
 from app.models.api_key_request import ApiKeyRequest
 from app.repositories.api_key_request import ApiKeyRequestRepository
+from app.repositories.user import UserRepository
 from app.schemas.actor import Actor
 from app.schemas.api_key_request import (
     ApiKeyRequestCreateRequest,
@@ -27,7 +29,7 @@ from app.schemas.common import Page
 from app.services import api_key_request_agent as agent
 from app.services import api_key_request_provision as provision
 from app.services import api_key_request_router as router_svc
-from app.services.email_graph import send_provision_email
+from app.services.email_graph import send_admin_notify_email, send_provision_email
 
 logger = get_logger(__name__)
 
@@ -101,6 +103,59 @@ async def _notify_owner(
         detail=row.owner_email.split("@")[-1],
     )
     await db.commit()
+
+
+async def notify_admin_on_verdict(
+    db: DbDep,
+    row: ApiKeyRequest,
+    actor: Actor,
+    ip: str | None,
+) -> None:
+    """申請單進入終態後 best-effort 加寄一封判決通知信給系統管理員(propose §D.4/§D.5/§D.6)。
+
+    與 `_notify_owner` 平行、獨立 try/except:總開關關閉直接 return;查無管理員 /
+    管理員無 email 只落 info log 後 return(不寄、不報錯)。寄送成敗**僅落結構化 log**,
+    **不**寫 DB 欄位(D.6);任何例外都吞掉只落 log,**不**回滾申請單狀態、**不**影響申請人通知。
+    """
+    settings = get_settings()
+    if not settings.APIREQ_ADMIN_NOTIFY_ENABLED:
+        return
+    try:
+        admin = await UserRepository(db).get_by_account(settings.INITIAL_ADMIN_ACCOUNT)
+        if admin is None or not admin.email:
+            logger.info(
+                "管理員通知略過:帳號 %s 不存在或無 email request_uid=%s",
+                settings.INITIAL_ADMIN_ACCOUNT,
+                row.request_uid,
+            )
+            return
+        decision = row.agent_decision if isinstance(row.agent_decision, dict) else {}
+        reason = decision.get("reason")
+        result = await send_admin_notify_email(
+            to_email=admin.email,
+            applicant_name=row.owner_name,
+            department=row.department_name,
+            project_name=row.project_name,
+            status=row.status,
+            reason=reason,
+            request_uid=str(row.request_uid),
+        )
+        if result.ok:
+            logger.info(
+                "管理員通知已寄出 status=%s request_uid=%s domain=%s",
+                row.status,
+                row.request_uid,
+                admin.email.split("@")[-1],
+            )
+        else:
+            logger.info(
+                "管理員通知未寄出 status=%s request_uid=%s error=%s",
+                row.status,
+                row.request_uid,
+                result.error,
+            )
+    except Exception:  # noqa: BLE001 - best-effort:任何例外都不得影響主流程 / 申請人通知
+        logger.exception("管理員通知失敗 request_uid=%s", row.request_uid)
 
 
 @router.get("", summary="API Key 申請列表（admin 全部 / member 僅本人）")
@@ -236,6 +291,8 @@ async def create_api_key_request(
     # 開通成功才寄信通知負責人(best-effort,獨立 commit,失敗不影響開通)
     if row.status == "agent_done":
         await _notify_owner(db, row, actor, ip)
+    # 所有終態(cancelled / manual_pending / agent_done)加寄管理員通知(best-effort,互不連坐)
+    await notify_admin_on_verdict(db, row, actor, ip)
     return success_response(data=_detail(row), detail="success")
 
 
@@ -269,6 +326,8 @@ async def cancel_api_key_request(
         detail=body.reason,
     )
     await db.commit()
+    # 終態 cancelled 加寄管理員通知(best-effort,與申請人通知同層互不連坐)
+    await notify_admin_on_verdict(db, row, actor, ip)
     return success_response(data=_detail(row), detail="success")
 
 
@@ -305,6 +364,8 @@ async def revoke_api_key_request(
         detail=body.reason,
     )
     await db.commit()
+    # 終態 revoked 加寄管理員通知(best-effort,與申請人通知同層互不連坐)
+    await notify_admin_on_verdict(db, row, actor, ip)
     return success_response(data=_detail(row), detail="success")
 
 
@@ -370,6 +431,8 @@ async def process_api_key_request(
     await db.commit()
     # 人工開通成功後寄信通知負責人(best-effort,獨立 commit)
     await _notify_owner(db, row, actor, ip)
+    # 終態 done 加寄管理員通知(best-effort,與申請人通知同層互不連坐)
+    await notify_admin_on_verdict(db, row, actor, ip)
     return success_response(data=_detail(row), detail="success")
 
 

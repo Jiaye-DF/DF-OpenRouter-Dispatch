@@ -53,8 +53,8 @@
     padding: 4px 12px; border-radius: 999px; font-size: 13px; color: #fff;
   }
 
-  .wrap { width: 90%; max-width: 1720px; margin: 0 auto; padding: 0 24px 80px; }
-  @media (max-width: 1024px) { .wrap { width: 100%; } }
+  .wrap { width: auto; max-width: none; margin: 0 64px; padding: 0 0 80px; }
+  @media (max-width: 1024px) { .wrap { margin: 0 16px; } }
 
   /* 目錄 — 兩欄卡片式導覽 */
   nav.toc {
@@ -228,6 +228,8 @@
   .tl-item.milestone::before { background: var(--green); box-shadow: 0 0 0 2px var(--green); }
   .tl-item .ver { font-weight: 700; font-size: 15px; }
   .tl-item .ver .badge { margin-left: 8px; vertical-align: middle; }
+  /* 版本號 token:全文自動包上(見文末 script),與一般文字視覺區隔 */
+  .vtag { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; font-size: .9em; color: var(--blue-dark); background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 0 5px; margin: 0 1px; white-space: nowrap; }
   .tl-item .desc { color: var(--muted); font-size: 15px; margin-top: 3px; }
 
   footer.page { text-align: center; color: var(--muted); font-size: 13px; padding: 8px 24px 0; }
@@ -1078,6 +1080,49 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
     </footer>
 
   </div>
+
+  <script>
+    // 版本號視覺區隔:把內文所有 vX.Y(.Z)(+) token 自動包上 .vtag。
+    // classic script 於 module(mermaid)之前執行 → 不會碰到 mermaid 渲染後的 SVG 文字;
+    // code / pre / 既有 badge 類容器內不處理。
+    (function () {
+      const RX = /v\d+\.\d+(?:\.\d+)?\+?/g;
+      const SKIP_TAG = new Set(["SCRIPT", "STYLE", "CODE", "PRE", "TEXTAREA"]);
+      const skip = (el) => {
+        for (; el; el = el.parentElement) {
+          if (SKIP_TAG.has(el.tagName)) return true;
+          const c = el.classList;
+          if (c.contains("badge") || c.contains("hbadge") || c.contains("vtag")) return true;
+        }
+        return false;
+      };
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        acceptNode(n) {
+          RX.lastIndex = 0;
+          if (!RX.test(n.nodeValue)) return NodeFilter.FILTER_REJECT;
+          return skip(n.parentElement) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+        },
+      });
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      for (const n of nodes) {
+        const s = n.nodeValue;
+        const frag = document.createDocumentFragment();
+        let last = 0, m;
+        RX.lastIndex = 0;
+        while ((m = RX.exec(s))) {
+          frag.appendChild(document.createTextNode(s.slice(last, m.index)));
+          const sp = document.createElement("span");
+          sp.className = "vtag";
+          sp.textContent = m[0];
+          frag.appendChild(sp);
+          last = m.index + m[0].length;
+        }
+        frag.appendChild(document.createTextNode(s.slice(last)));
+        n.parentNode.replaceChild(frag, n);
+      }
+    })();
+  </script>
 
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';

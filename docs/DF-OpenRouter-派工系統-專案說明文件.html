@@ -844,7 +844,27 @@ flowchart LR
         <li><strong>白名單 DB 驅動</strong>（<code>models.is_active</code>）：未啟用就 403，與 OpenRouter 本身是否支援無關。</li>
         <li><strong>三因子須同部門</strong>：SDK Key、User Token 綁部門，Project 屬部門；任一不符回 <code>401</code> 或 <code>400 project_invalid</code>。</li>
         <li><strong>多為軟刪除</strong>：停用 / 刪除保留歷史用量，可追溯；角色變更即時生效。</li>
+        <li><strong>背景功能是「三進程 + 環境開關」構成</strong>：排程 / 通知類功能分散在不同進程、各有總開關；<span class="key">開關沒開或對應進程沒起來時，功能是靜默不動的（不報錯）</span>——排查「怎麼沒跑」先對照下表。</li>
       </ol>
+
+      <h3>功能落點與開關對照</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:22%">功能</th><th style="width:24%">跑在哪個進程</th><th style="width:28%">總開關（環境變數）</th><th>維運注意</th></tr></thead>
+          <tbody>
+            <tr><td><strong>模型呼叫代理</strong>（chat / stream）</td><td><code>backend</code>（API）</td><td>無（核心路徑，恆開）</td><td>唯一對使用者即時路徑；其餘功能掛掉不影響它。</td></tr>
+            <tr><td><strong>AI 模型評審</strong><span class="badge" style="margin-left:6px;">v2.0</span></td><td><code>taskiq-scheduler</code> 到點派發、<code>taskiq-worker</code> 執行</td><td><code>AI_EVAL_ENABLED</code>（每 <code>AI_EVAL_BEAT_INTERVAL_SECONDS</code> 掃一輪）</td><td>需 Redis；關閉＝零 AI 成本。<code>AI_EVAL_START_AT</code> 控制不回溯舊資料。</td></tr>
+            <tr><td><strong>真實重跑＋對比裁決</strong><span class="badge" style="margin-left:6px;">v2.1</span></td><td>同上（worker ＋ scheduler）</td><td><code>AI_RERUN_ENABLED</code>／子開關 <code>AI_RERUN_DISCRIMINATOR_ENABLED</code></td><td>另需在「判別模型設定」指定裁決模型，否則不產生裁決。</td></tr>
+            <tr><td><strong>模型自動同步</strong><span class="badge" style="margin-left:6px;">v2.2</span></td><td><code>taskiq-scheduler</code> 到點（每 N 天 00:00）、<code>taskiq-worker</code> 執行</td><td><code>MODEL_SYNC_SCHEDULE_ENABLED</code>＋<code>MODEL_SYNC_INTERVAL_DAYS</code>（預設 3）</td><td>兩顆 env 須注入 <span class="hl">worker 與 scheduler 兩個進程</span>；撞手動同步的 10 分鐘節流會<span class="hl">靜默略過</span>（稽核 log 以 <code>trigger=scheduler</code> 區分排程觸發）。</td></tr>
+            <tr><td><strong>申請單開通通知信</strong><span class="badge" style="margin-left:6px;">v1.9</span></td><td><code>backend</code>（API，申請流程內）</td><td>M365 四項配置齊全即啟用（<code>M365_TENANT_ID</code> 等）</td><td>best-effort：寄信失敗不影響開通，結果記在申請單 <code>notified_at / notify_error</code>，可「重寄通知」。</td></tr>
+            <tr><td><strong>申請判決通知管理員</strong><span class="badge" style="margin-left:6px;">v2.2</span></td><td><code>backend</code>（API，各終態落點）</td><td><code>APIREQ_ADMIN_NOTIFY_ENABLED</code>（且 M365 已配置）</td><td>收件人＝<code>admin</code> 帳號的 email（帳號無 email 則靜默略過）；best-effort 僅記 log，失敗不擋申請流程。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note info">
+        <div class="head">排程功能「沒跑」的排查順序</div>
+        ① 開關 env 是否為 <code>true</code>、是否注入到<span class="hl">正確進程</span>（prod compose 的 worker／scheduler 是顯式 env 清單，漏列＝拿不到）→ ② <code>taskiq-scheduler</code>／<code>taskiq-worker</code> 容器是否存活 → ③ Redis 是否健康 → ④ 看 Seq log（worker 有結構化執行紀錄）與稽核 log。
+      </div>
     </section>
 
     <!-- 13 常見需求 Playbook -->

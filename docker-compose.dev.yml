@@ -82,7 +82,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: dev
-    command: ["taskiq", "worker", "app.tasks.broker:broker", "app.tasks.ai_model_eval"]
+    command: ["taskiq", "worker", "app.tasks.broker:broker", "app.tasks.ai_model_eval", "app.tasks.model_sync"]
     restart: unless-stopped
     env_file: .env
     # compose 內 Redis 主機名為 redis 服務,覆寫 .env 的 localhost 預設值

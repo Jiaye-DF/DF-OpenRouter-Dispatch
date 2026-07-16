@@ -15,6 +15,7 @@ from taskiq import TaskiqScheduler
 from taskiq.schedule_sources import LabelScheduleSource
 
 import app.tasks.ai_model_eval  # noqa: F401  載入帶 schedule label 的 task,scheduler 才看得到排程
+import app.tasks.model_sync  # noqa: F401  載入模型自動同步排程 task(task-502)
 from app.tasks.broker import broker
 
 scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])

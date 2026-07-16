@@ -245,7 +245,7 @@
       <span class="hbadge">PostgreSQL 17</span>
       <span class="hbadge">Docker / Coolify</span>
       <span class="hbadge">taskiq + Redis 背景任務</span>
-      <span class="hbadge">演進至 v2.1 · AI 模型評審</span>
+      <span class="hbadge">演進至 v2.2 · 自動同步 + 通知</span>
     </div>
   </header>
 
@@ -263,7 +263,7 @@
         <a class="toc-item" href="#concept"><span class="n">4</span><span class="tx"><span class="tt">核心概念與角色</span><span class="ds">名詞、憑證、權限模型</span></span></a>
         <a class="toc-item" href="#flow"><span class="n">5</span><span class="tx"><span class="tt">系統流程圖</span><span class="ds">代理鏈 · 自動開通 · AI 評審管線</span></span></a>
         <a class="toc-item" href="#arch"><span class="n">6</span><span class="tx"><span class="tt">系統架構</span><span class="ds">分層技術棧 + v2.0+ 元件架構圖</span></span></a>
-        <a class="toc-item" href="#evolution"><span class="n">7</span><span class="tx"><span class="tt">版本演進</span><span class="ds">v1.0 → v2.1 時間軸</span></span></a>
+        <a class="toc-item" href="#evolution"><span class="n">7</span><span class="tx"><span class="tt">版本演進</span><span class="ds">v1.0 → v2.2 時間軸</span></span></a>
         <a class="toc-item" href="#value"><span class="n">8</span><span class="tx"><span class="tt">技術價值</span><span class="ds">可遷移的工程能力佐證</span></span></a>
       </div>
 
@@ -661,7 +661,7 @@ flowchart LR
     <!-- 7 版本演進 -->
     <section id="evolution">
       <h2 class="sec"><span class="num">7</span>版本演進</h2>
-      <p class="sectlead">從 MVP 的 API 代理層，成長為「申請—審核—開通—通知」一條龍的自動化平台，再進化到 <span class="hl">AI 模型適配評審與真實重跑對比裁決</span>的自我選型能力。</p>
+      <p class="sectlead">從 MVP 的 API 代理層，成長為「申請—審核—開通—通知」一條龍的自動化平台，再進化到 <span class="hl">AI 模型適配評審與真實重跑對比裁決</span>的自我選型能力，並持續強化<span class="hl">營運自動化</span>（模型定時同步、申請判決通知）。</p>
       <div class="timeline">
         <div class="tl-item milestone">
           <div class="ver">v1.0 <span class="badge green">MVP</span></div>
@@ -715,6 +715,10 @@ flowchart LR
           <div class="ver">v2.1 <span class="badge green">真實重跑 + 對比裁決</span>（2026-06 → 07）</div>
           <div class="desc">對 AI 推薦模型<span class="hl">真實重跑</span>，盲化對比裁決（<span class="hl">建議維持 / 改用 / 平手</span>）+ 成本差，「AI 判決總覽」頁並排真實輸出（.0）；<span class="hl">成本可視化下放</span>：Excel 全維度匯出、用量紀錄開放一般使用者看自身部門（.1）；Chat API 開放 <code>messages[]</code> <span class="hl">多輪對話直傳</span>與三生成參數、使用者<span class="hl">停用即撤銷全部 Token</span> 一鍵斷權（.2）。</div>
         </div>
+        <div class="tl-item">
+          <div class="ver">v2.2 · 自動同步排程 + 申請通知管理員（2026-07）</div>
+          <div class="desc">模型清單<span class="hl">每 3 天定時自動同步</span> OpenRouter（間隔可設定，免人工進「模型管理」頁按同步）；申請單<span class="hl">判決出終態即通知系統管理員</span>，管理者不必巡頁即掌握每筆申請的自動開通 / 轉人工 / 撤銷結果。兩者皆沿用既有同步 / M365 寄信基建，向下相容、預設關閉可隨環境開啟。</div>
+        </div>
       </div>
     </section>
 
@@ -757,7 +761,7 @@ flowchart LR
         </div>
         <div class="subcard">
           <h4>🔄 持續迭代能力</h4>
-          <p><span class="hl">跨 v1.0 → v2.1 穩定演進</span>，每版皆有設計提案（propose）與任務拆解（tasks）文件，向後相容（deprecated alias）、軟刪除保留歷史，展現規格驅動開發紀律。</p>
+          <p><span class="hl">跨 v1.0 → v2.2 穩定演進</span>，每版皆有設計提案（propose）與任務拆解（tasks）文件，向後相容（deprecated alias）、軟刪除保留歷史，展現規格驅動開發紀律。</p>
         </div>
       </div>
       <div class="note info">
@@ -820,9 +824,9 @@ flowchart LR
             <tr><td><strong>專案管理</strong></td><td>在部門下建立專案，取得對外呼叫要填的 <code>專案代碼（Project Code）</code>。</td></tr>
             <tr><td><strong>存取金鑰 / SDK Keys</strong></td><td>建立部門層級 SDK Key；明文 <span class="key">只在建立時顯示一次</span>，DB 僅存 argon2id hash。</td></tr>
             <tr><td><strong>使用者管理</strong></td><td>建立成員、設定 <code>role</code>、針對 user <span class="hl">產生 / 撤銷 User Token</span>。</td></tr>
-            <tr><td><strong>模型白名單</strong></td><td>啟用 / 停用 / 分級模型、與 OpenRouter 同步清單、同步餘額；未啟用模型一律 403。</td></tr>
+            <tr><td><strong>模型白名單</strong></td><td>啟用 / 停用 / 分級模型、與 OpenRouter 同步清單、同步餘額；未啟用模型一律 403。<span class="hl">v2.2 起可定時自動同步</span>（每 3 天，間隔可設定）。</td></tr>
             <tr><td><strong>用量紀錄 / 統計</strong></td><td>依<span class="hl">部門 / 專案 / 使用者</span>三層查 token 與美元成本、延遲、成功與否。</td></tr>
-            <tr><td><strong>申請表單</strong></td><td>檢視 API Key 線上申請與 5 態生命週期；信心不足者在此人工審核。</td></tr>
+            <tr><td><strong>申請表單</strong></td><td>檢視 API Key 線上申請與 5 態生命週期；信心不足者在此人工審核。<span class="hl">v2.2 起每筆判決出終態即通知系統管理員</span>。</td></tr>
             <tr><td><strong>AI 分析</strong><span class="badge" style="margin-left:6px;">v2.0+</span></td><td>設定<span class="hl">判別（裁決）模型</span>；「<span class="hl">AI 判決總覽</span>」依用量紀錄分組檢視原模型 vs AI 推薦模型的真實輸出、對比裁決、成本差與延遲，可依編號排序 / 搜尋。</td></tr>
           </tbody>
         </table>
@@ -911,6 +915,7 @@ flowchart LR
       <ul>
         <li><strong>多數自動</strong>：規則路由 + AI（Claude）驗證信心達標即<span class="hl">自動建立憑證並寄送通知信</span>（狀態 <code>agent_done → done</code>）。</li>
         <li><strong>需人工</strong>：資料異常者取消（<code>cancelled</code>）；信心不足者落到 <code>manual_pending</code>，由 admin 在「申請表單」頁審核後，比照 Playbook A 後半 / B 手動開通。</li>
+        <li><strong>管理員通知</strong><span class="badge" style="margin-left:6px;">v2.2</span>：每筆申請<span class="hl">判決出終態即自動寄信通知系統管理員</span>（自動開通 / 轉人工 / 撤銷皆通知），管理者不必巡頁即掌握；需開啟環境開關 <code>APIREQ_ADMIN_NOTIFY_ENABLED</code> 且 M365 已配置。</li>
       </ul>
 
       <div class="playbook-head">

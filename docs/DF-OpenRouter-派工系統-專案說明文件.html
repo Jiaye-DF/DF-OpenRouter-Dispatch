@@ -32,8 +32,8 @@
     font-family: "Microsoft JhengHei", "PingFang TC", "Segoe UI", system-ui, sans-serif;
     color: var(--text);
     background: var(--bg);
-    line-height: 1.75;
-    font-size: 17px;
+    line-height: 1.7;
+    font-size: 18px;
   }
   code, pre, .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, Menlo, monospace; }
 
@@ -44,24 +44,25 @@
     padding: 52px 24px 44px;
     text-align: center;
   }
-  header.hero .kicker { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; opacity: .85; font-weight: 600; }
-  header.hero h1 { margin: 10px 0 10px; font-size: 32px; line-height: 1.3; }
-  header.hero p.lead { margin: 0 auto; max-width: 700px; opacity: .92; font-size: 15.5px; }
+  header.hero .kicker { font-size: 16px; letter-spacing: .14em; text-transform: uppercase; opacity: .85; font-weight: 600; }
+  header.hero h1 { margin: 10px 0 10px; font-size: 36px; line-height: 1.3; }
+  header.hero p.lead { margin: 0 auto; max-width: 860px; opacity: .92; font-size: 18px; }
   .badge-row { margin-top: 18px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   .hbadge {
     background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35);
-    padding: 4px 12px; border-radius: 999px; font-size: 13px; color: #fff;
+    padding: 5px 14px; border-radius: 999px; font-size: 16px; color: #fff;
   }
 
-  .wrap { width: auto; max-width: none; margin: 0 64px; padding: 0 0 80px; }
-  @media (max-width: 1024px) { .wrap { margin: 0 16px; } }
+  .wrap { max-width: none; margin: 0 16px; padding: 0 0 80px; }
 
   /* 目錄 — 兩欄卡片式導覽 */
   nav.toc {
     background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
     padding: 24px 24px 26px; margin: 30px 0; box-shadow: 0 1px 3px rgba(0,0,0,.05);
   }
-  nav.toc .toc-title { font-size: 13px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; font-weight: 700; margin: 0 0 16px; }
+  nav.toc .toc-title { font-size: 16px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; font-weight: 700; margin: 0 0 16px; }
+  .toc-section-label { font-size: 16px; font-weight: 800; color: var(--blue); letter-spacing: .04em; margin: 18px 0 10px; }
+  .toc-section-label:first-of-type { margin-top: 4px; }
   .toc-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
   @media (min-width: 700px) { .toc-grid { grid-template-columns: 1fr 1fr; } }
   a.toc-item {
@@ -71,87 +72,66 @@
   }
   a.toc-item:hover { border-color: var(--blue); box-shadow: 0 4px 14px rgba(37,99,235,.12); transform: translateY(-1px); }
   a.toc-item .n {
-    flex: none; width: 32px; height: 32px; border-radius: 9px; background: #eff6ff; color: var(--blue);
-    display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px;
+    flex: none; width: 36px; height: 36px; border-radius: 9px; background: #eff6ff; color: var(--blue);
+    display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px;
   }
   a.toc-item .tx { display: flex; flex-direction: column; }
-  a.toc-item .tx .tt { font-weight: 700; font-size: 15px; }
-  a.toc-item .tx .ds { color: var(--muted); font-size: 14px; margin-top: 3px; }
-  .toc-section-label { font-size: 12px; color: var(--blue-dark); letter-spacing: .08em; text-transform: uppercase; font-weight: 800; margin: 18px 0 10px; }
-  .toc-section-label:first-of-type { margin-top: 4px; }
-
-  /* PART 分隔橫幅（對齊 DF-SSO） */
-  .part-divider { margin: 36px 0 6px; padding: 16px 22px; border-radius: 16px; background: linear-gradient(135deg, #0f172a, #1e3a8a); color: #fff; }
-  .part-divider .pk { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; opacity: .8; font-weight: 600; }
-  .part-divider h2 { margin: 4px 0 2px; font-size: 22px; border: none; display: block; }
-  .part-divider p { margin: 0; font-size: 14px; opacity: .9; }
-  /* 深底橫幅內的 strong 不可沿用全域深色(否則深底配深字看不見),改用白色。 */
-  .part-divider strong { color: #fff; }
-
-  /* 有序步驟清單 */
-  ol.steps { counter-reset: step; list-style: none; padding-left: 0; margin: 6px 0 12px; }
-  ol.steps > li { counter-increment: step; position: relative; padding: 2px 0 14px 42px; }
-  ol.steps > li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 8px; background: #eff6ff; color: var(--blue); font-weight: 800; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; }
-  ol.steps > li:last-child { padding-bottom: 2px; }
-  ol.steps ul { margin: 8px 0 0; }
-
-  /* Playbook 情境標頭 */
-  .playbook-head { background: #eff6ff; border-left: 4px solid var(--blue); border-radius: 0 10px 10px 0; padding: 10px 16px; margin: 26px 0 12px; }
-  .playbook-head h3 { margin: 0; font-size: 16px; color: var(--blue-dark); }
-  .playbook-head .ctx { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
-
-  /* 紅色狀態 badge */
-  .badge.red { background: var(--red-bg); color: var(--red); border-color: var(--red-border); }
+  a.toc-item .tx .tt { font-weight: 700; font-size: 18px; color: #0f172a; }
+  a.toc-item .tx .ds { color: var(--muted); font-size: 16px; margin-top: 3px; }
 
   /* 區塊卡片化 */
   section {
     background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
     padding: 6px 30px 28px; margin: 22px 0; box-shadow: 0 1px 3px rgba(0,0,0,.04); scroll-margin-top: 16px;
   }
-  h2.sec { font-size: 22px; border-bottom: 2px solid var(--border); padding-bottom: 12px; margin: 26px 0 4px; display: flex; align-items: center; gap: 12px; }
-  h2.sec .num { flex: none; width: 34px; height: 34px; border-radius: 10px; background: var(--blue); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; }
+  h2.sec { font-size: 26px; border-bottom: 2px solid var(--border); padding-bottom: 12px; margin: 26px 0 4px; display: flex; align-items: center; gap: 12px; }
+  h2.sec .num { flex: none; width: 38px; height: 38px; border-radius: 10px; background: var(--blue); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; }
   p.sectlead { color: var(--muted); margin: 14px 0 18px; }
-  h3 { font-size: 17px; margin: 28px 0 12px; color: #111827; }
-  p, ul { margin: 0 0 12px; }
-  p:last-child, ul:last-child { margin-bottom: 0; }
+  h3 { font-size: 21px; margin: 28px 0 12px; color: #111827; }
+  h4 { font-size: 18px; margin: 18px 0 8px; color: #111827; }
+  p, ul, ol { margin: 0 0 12px; }
+  p:last-child, ul:last-child, ol:last-child { margin-bottom: 0; }
   ul { padding-left: 22px; }
   li { margin: 5px 0; }
   strong { font-weight: 700; color: #0f172a; }
   .muted { color: var(--muted); }
-  .small { font-size: 14.5px; }
+  .small { font-size: 16px; }
   /* 文字重點層級 */
   .hl { color: var(--blue-dark); font-weight: 700; }                 /* 關鍵術語 / 專有名詞 */
   .mk { background: linear-gradient(transparent 58%, #bfdbfe 58%); font-weight: 700; padding: 0 1px; }  /* 螢光標重點 */
-  .em { font-size: 17px; font-weight: 700; color: #0f172a; }         /* 加大強調 */
+  .em { font-size: 20px; font-weight: 700; color: #0f172a; }         /* 加大強調 */
   .key { color: var(--amber); font-weight: 700; }                    /* 須注意 */
   .rd { color: var(--red); font-weight: 700; }                       /* 重大風險 / 禁止 */
-  .lead-line { font-size: 16.5px; }
+  .lead-line { font-size: 19px; }
 
   /* 成效指標卡 */
   .metrics { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; }
   @media (min-width: 760px) { .metrics { grid-template-columns: repeat(4, 1fr); } }
   .metric { border: 1px solid var(--border); border-radius: 14px; padding: 18px 16px; text-align: center; background: linear-gradient(180deg, #f8fbff, #ffffff); }
-  .metric .big { font-size: 30px; font-weight: 800; color: var(--blue-dark); line-height: 1.2; }
-  .metric .big small { font-size: 15px; font-weight: 700; }
-  .metric .ml { font-weight: 700; font-size: 14px; margin-top: 6px; }
-  .metric .ms { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
-  .metric .arw { color: var(--muted); font-size: 13px; }
-  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: 14.5px; }
+  .metric .big { font-size: 32px; font-weight: 800; color: var(--blue-dark); line-height: 1.2; }
+  .metric .big small { font-size: 18px; font-weight: 700; }
+  .metric .ml { font-weight: 700; font-size: 17px; margin-top: 6px; }
+  .metric .ms { color: var(--muted); font-size: 16px; margin-top: 4px; }
+  .metric .arw { color: var(--muted); font-size: 16px; }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: 16px; }
 
   /* inline badge */
-  .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 11px; font-size: 12.5px; font-weight: 700; background: #eff6ff; color: var(--blue); border: 1px solid #bfdbfe; }
+  .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 12px; font-size: 16px; font-weight: 700; background: #eff6ff; color: var(--blue); border: 1px solid #bfdbfe; }
   .badge.green { background: var(--green-bg); color: var(--green); border-color: var(--green-border); }
   .badge.amber { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-border); }
+  .badge.red { background: var(--red-bg); color: var(--red); border-color: var(--red-border); }
   .badge.gray { background: var(--code-bg); color: var(--muted); border-color: var(--border); }
 
   /* grid + subcard */
   .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
   @media (min-width: 720px) { .grid.cols2 { grid-template-columns: repeat(2, 1fr); } .grid.cols3 { grid-template-columns: repeat(3, 1fr); } }
   .subcard { border: 1px solid var(--border); border-radius: 12px; padding: 18px; background: var(--surface); }
-  .subcard h4 { margin: 0 0 8px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
-  .subcard .ico { width: 28px; height: 28px; flex: none; border-radius: 8px; background: #eff6ff; color: var(--blue); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; }
-  .subcard p { margin: 0; font-size: 15px; color: var(--muted); }
-  .subcard .label { color: var(--muted); font-size: 12.5px; margin: 8px 0 6px; font-weight: 600; }
+  .subcard h4 { margin: 0 0 8px; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+  .subcard .ico { width: 32px; height: 32px; flex: none; border-radius: 8px; background: #eff6ff; color: var(--blue); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; }
+  .subcard p { margin: 0; font-size: 16px; color: var(--muted); }
+  .subcard ul { margin: 0; padding-left: 18px; }
+  .subcard li { font-size: 16px; }
+  .subcard .label { color: var(--muted); font-size: 16px; margin: 8px 0 6px; font-weight: 600; }
 
   /* 表格 */
   .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; margin: 6px 0; }
@@ -164,29 +144,61 @@
 
   /* code block */
   .codeblock { border: 1px solid var(--border); border-radius: 12px; background: #0f172a; overflow: hidden; margin: 6px 0; }
-  .codeblock .lang { padding: 7px 14px; font-size: 12.5px; color: #94a3b8; border-bottom: 1px solid #1e293b; }
+  .codeblock .lang { padding: 7px 14px; font-size: 16px; color: #94a3b8; border-bottom: 1px solid #1e293b; }
   .codeblock pre { margin: 0; padding: 14px; overflow-x: auto; }
-  .codeblock pre code { font-size: 13px; line-height: 1.6; white-space: pre; color: #e2e8f0; background: none; border: none; padding: 0; }
+  .codeblock pre code { font-size: 16px; line-height: 1.6; white-space: pre; color: #e2e8f0; background: none; border: none; padding: 0; }
   .codeblock .k { color: #93c5fd; } .codeblock .s { color: #86efac; } .codeblock .c { color: #64748b; }
 
   /* note 提示框 */
-  .note { border-left: 4px solid; padding: 14px 18px; border-radius: 0 10px 10px 0; margin: 16px 0; font-size: 15.5px; }
+  .note { border-left: 4px solid; padding: 14px 18px; border-radius: 0 10px 10px 0; margin: 16px 0; font-size: 17px; }
   .note.info { background: #eff6ff; border-color: var(--blue); }
   .note.tip { background: var(--green-bg); border-color: var(--green); }
   .note.warn { background: var(--amber-bg); border-color: var(--amber); }
   .note.danger { background: var(--red-bg); border-color: var(--red); }
   .note .head { font-weight: 700; margin-bottom: 4px; }
 
+  /* 分層架構 */
+  .layer { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .layer + .layer { margin-top: 14px; }
+  .layer .lh { background: var(--code-bg); padding: 10px 16px; font-weight: 700; font-size: 16px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .layer .lb { padding: 16px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { border: 1px solid var(--border); border-radius: 999px; padding: 6px 16px; font-size: 16px; background: var(--surface); }
+  .chip b { font-weight: 700; }
+
+  /* 步驟（編號方塊，沿用導覽數字晶片風格） */
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; margin: 12px 0; }
+  ol.steps > li { position: relative; padding: 2px 0 2px 44px; margin: 9px 0; }
+  ol.steps > li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: 1px;
+    width: 30px; height: 30px; background: #eff6ff; color: var(--blue); border: 1px solid #bfdbfe;
+    border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px;
+  }
+  ol.steps ul { margin: 8px 0 0; }
+
+  /* Playbook 標頭 */
+  .playbook-head { background: linear-gradient(90deg, #eff6ff, transparent); border-left: 5px solid var(--blue); padding: 12px 16px; border-radius: 0 10px 10px 0; margin: 28px 0 12px; }
+  .playbook-head h3 { margin: 0; }
+  .playbook-head .ctx { color: var(--muted); font-size: 16px; margin-top: 2px; }
+
+  /* Part 分隔 */
+  .part-divider { margin: 36px 0 6px; padding: 16px 22px; border-radius: 16px; background: linear-gradient(135deg, #0f172a, #1e3a8a); color: #fff; }
+  .part-divider .pk { font-size: 16px; letter-spacing: .14em; text-transform: uppercase; opacity: .8; font-weight: 600; }
+  .part-divider h2 { margin: 4px 0 2px; font-size: 26px; border: none; display: block; }
+  .part-divider p { margin: 0; font-size: 17px; opacity: .9; }
+  /* 深底橫幅內的 strong 不可沿用全域深色(否則深底配深字看不見),改用白色。 */
+  .part-divider strong { color: #fff; }
+
   /* 流程圖（純 CSS，無外部依賴） */
   .flow { display: flex; flex-direction: column; align-items: stretch; }
   .flow-node { border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; background: var(--surface); }
-  .flow-node .t { font-weight: 700; font-size: 14.5px; }
-  .flow-node .d { color: var(--muted); font-size: 13px; margin-top: 4px; line-height: 1.6; }
+  .flow-node .t { font-weight: 700; font-size: 17px; }
+  .flow-node .d { color: var(--muted); font-size: 16px; margin-top: 4px; line-height: 1.6; }
   .flow-node.accent { border-color: #bfdbfe; background: #eff6ff; }
   .flow-node.ext { border-style: dashed; background: var(--code-bg); }
   .flow-node.store { border-color: var(--green-border); background: var(--green-bg); }
   .arrow { align-self: center; color: var(--muted); font-size: 20px; line-height: 1; padding: 8px 0; text-align: center; }
-  .arrow .lbl { display: block; font-size: 12px; }
+  .arrow .lbl { display: block; font-size: 16px; }
 
   /* Mermaid 流程圖（同 DF-SSO 做法） */
   figure.diagram { margin: 18px 0; }
@@ -194,9 +206,9 @@
     background: #fff; color: var(--text);
     border: 1px solid var(--border); border-radius: 12px;
     padding: 18px; text-align: center; overflow-x: auto;
-    font-size: 13px; line-height: 1.5;
+    font-size: 16px; line-height: 1.5;
   }
-  figure.diagram figcaption { text-align: center; color: var(--muted); font-size: 13px; margin-top: 8px; }
+  figure.diagram figcaption { text-align: center; color: var(--muted); font-size: 16px; margin-top: 8px; }
 
   /* 圖片 / 圖表:在新視窗開啟原圖 */
   figure.diagram { position: relative; }
@@ -204,21 +216,13 @@
   .open-new {
     position: absolute; top: 10px; right: 10px; z-index: 2;
     display: inline-flex; align-items: center; gap: 5px;
-    padding: 5px 11px; font-size: 12.5px; font-weight: 600;
+    padding: 5px 11px; font-size: 16px; font-weight: 600;
     border: 1px solid var(--border); border-radius: 8px;
     background: rgba(255,255,255,.94); color: var(--blue);
     cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08);
   }
   .open-new:hover { background: #eff6ff; border-color: var(--blue); }
-  figure.diagram figcaption::after { content: " · 點擊圖表可在新視窗開啟"; color: var(--blue); font-size: 12px; }
-
-  /* 分層架構 */
-  .layer { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
-  .layer + .layer { margin-top: 14px; }
-  .layer .lh { background: var(--code-bg); padding: 10px 16px; font-weight: 700; font-size: 13.5px; color: var(--muted); border-bottom: 1px solid var(--border); }
-  .layer .lb { padding: 16px; display: flex; flex-wrap: wrap; gap: 10px; }
-  .chip { border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 13px; background: var(--surface); }
-  .chip b { font-weight: 700; }
+  figure.diagram figcaption::after { content: " · 點擊圖表可在新視窗開啟"; color: var(--blue); font-size: 16px; }
 
   /* 時間軸 */
   .timeline { position: relative; padding-left: 28px; margin-top: 6px; }
@@ -226,13 +230,22 @@
   .tl-item { position: relative; padding: 0 0 20px; }
   .tl-item::before { content: ""; position: absolute; left: -24px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--blue); border: 2px solid var(--surface); box-shadow: 0 0 0 2px var(--blue); }
   .tl-item.milestone::before { background: var(--green); box-shadow: 0 0 0 2px var(--green); }
-  .tl-item .ver { font-weight: 700; font-size: 15px; }
+  .tl-item .ver { font-weight: 700; font-size: 18px; }
   .tl-item .ver .badge { margin-left: 8px; vertical-align: middle; }
-  /* 版本號 token:全文自動包上(見文末 script),與一般文字視覺區隔 */
-  .vtag { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; font-size: .9em; color: var(--blue-dark); background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 0 5px; margin: 0 1px; white-space: nowrap; }
-  .tl-item .desc { color: var(--muted); font-size: 15px; margin-top: 3px; }
+  /* 版本號 token:全文自動包上(見文末 script),與一般文字視覺區隔;字級下限 16px */
+  .vtag { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; font-size: max(16px, .9em); color: var(--blue-dark); background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 0 5px; margin: 0 1px; white-space: nowrap; }
+  .tl-item .desc { color: var(--muted); font-size: 16px; margin-top: 3px; }
 
-  footer.page { text-align: center; color: var(--muted); font-size: 13px; padding: 8px 24px 0; }
+  footer.page { text-align: center; color: var(--muted); font-size: 16px; padding: 8px 24px 0; }
+
+  @media print {
+    body { background: #fff; font-size: 12px; }
+    header.hero { background: #1e3a8a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    section, nav.toc { box-shadow: none; border-color: #ccc; break-inside: avoid; }
+    .part-divider { -webkit-print-color-adjust: exact; print-color-adjust: exact; break-inside: avoid; }
+    figure.diagram, pre.mermaid { break-inside: avoid; }
+    a { color: #1d4ed8; }
+  }
 </style>
 </head>
 <body>
@@ -240,7 +253,7 @@
   <header class="hero">
     <div class="kicker">企業內部平台 · 專案說明文件</div>
     <h1>DF-OpenRouter 派工系統<br>LLM API 中控派發管理平台</h1>
-    <p class="lead">集中管理企業內部呼叫大型語言模型（LLM）時的金鑰、路由、配額與稽核；以後端代理層統一收斂所有對外 API 呼叫，達成成本控管、安全隔離與自動化開通。本文件涵蓋系統摘要、架構、操作手冊與整體技術價值。</p>
+    <p class="lead">集中管理企業內部呼叫大型語言模型（LLM）時的金鑰、路由、配額與稽核；以後端代理層統一收斂所有對外 API 呼叫，達成成本控管、安全隔離與自動化開通。本文件分兩部分 —— Part I 為經營層摘要，說明商業價值與解決的問題；Part II 為技術設計與維運操作手冊。</p>
     <div class="badge-row">
       <span class="hbadge">FastAPI · Python 3.14</span>
       <span class="hbadge">Next.js · TypeScript</span>
@@ -257,114 +270,64 @@
     <nav class="toc">
       <p class="toc-title">內容導覽</p>
 
-      <div class="toc-section-label">PART I · 系統與技術設計</div>
+      <div class="toc-section-label">PART I · 經營層摘要：商業價值與解決的問題</div>
       <div class="toc-grid">
-        <a class="toc-item" href="#summary"><span class="n">1</span><span class="tx"><span class="tt">專案摘要</span><span class="ds">一句話定位與三大能力</span></span></a>
-        <a class="toc-item" href="#purpose"><span class="n">2</span><span class="tx"><span class="tt">目的</span><span class="ds">安全、成本、稽核、統一接點</span></span></a>
-        <a class="toc-item" href="#problem"><span class="n">3</span><span class="tx"><span class="tt">解決的問題與效益</span><span class="ds">痛點對照 + 量化成效</span></span></a>
-        <a class="toc-item" href="#concept"><span class="n">4</span><span class="tx"><span class="tt">核心概念與角色</span><span class="ds">名詞、憑證、權限模型</span></span></a>
-        <a class="toc-item" href="#flow"><span class="n">5</span><span class="tx"><span class="tt">系統流程圖</span><span class="ds">代理鏈 · 自動開通 · AI 評審管線</span></span></a>
-        <a class="toc-item" href="#arch"><span class="n">6</span><span class="tx"><span class="tt">系統架構</span><span class="ds">分層技術棧 + v2.0+ 元件架構圖</span></span></a>
-        <a class="toc-item" href="#evolution"><span class="n">7</span><span class="tx"><span class="tt">版本演進</span><span class="ds">v1.0 → v2.2 時間軸</span></span></a>
-        <a class="toc-item" href="#value"><span class="n">8</span><span class="tx"><span class="tt">技術價值</span><span class="ds">可遷移的工程能力佐證</span></span></a>
+        <a class="toc-item" href="#summary"><span class="n">1</span><span class="tx"><span class="tt">專案摘要</span><span class="ds">一句話定位與量化效益</span></span></a>
+        <a class="toc-item" href="#problem"><span class="n">2</span><span class="tx"><span class="tt">解決的問題與商業價值</span><span class="ds">金鑰 / 成本 / 稽核亂象 → 統一治理</span></span></a>
       </div>
 
-      <div class="toc-section-label">PART II · 維運操作手冊</div>
+      <div class="toc-section-label">PART II · 技術設計與維運操作手冊</div>
       <div class="toc-grid">
-        <a class="toc-item" href="#env"><span class="n">9</span><span class="tx"><span class="tt">線上環境一覽</span><span class="ds">管理後台與 API 兩組網址</span></span></a>
-        <a class="toc-item" href="#login"><span class="n">10</span><span class="tx"><span class="tt">第一次登入後台</span><span class="ds">管理者登入與權限</span></span></a>
-        <a class="toc-item" href="#tabs"><span class="n">11</span><span class="tx"><span class="tt">後台分頁導覽</span><span class="ds">部門、專案、金鑰、模型、用量</span></span></a>
-        <a class="toc-item" href="#ops-concept"><span class="n">12</span><span class="tx"><span class="tt">維運核心觀念</span><span class="ds">操作前必懂的幾條規則</span></span></a>
-        <a class="toc-item" href="#playbook"><span class="n">13</span><span class="tx"><span class="tt">常見需求 Playbook</span><span class="ds">情境式操作 A–F</span></span></a>
-        <a class="toc-item" href="#manual"><span class="n">14</span><span class="tx"><span class="tt">使用者：SDK 呼叫手冊</span><span class="ds">端點、Header、Request / Response</span></span></a>
-        <a class="toc-item" href="#api"><span class="n">15</span><span class="tx"><span class="tt">API 端點總覽</span><span class="ds">管理端與代理端介面</span></span></a>
-        <a class="toc-item" href="#runbook"><span class="n">16</span><span class="tx"><span class="tt">故障排除 Runbook</span><span class="ds">症狀對照與錯誤碼</span></span></a>
+        <a class="toc-item" href="#concept"><span class="n">3</span><span class="tx"><span class="tt">核心概念與角色</span><span class="ds">名詞、憑證、權限模型</span></span></a>
+        <a class="toc-item" href="#flow"><span class="n">4</span><span class="tx"><span class="tt">系統流程圖</span><span class="ds">代理鏈 · 自動開通 · AI 評審管線</span></span></a>
+        <a class="toc-item" href="#arch"><span class="n">5</span><span class="tx"><span class="tt">系統架構</span><span class="ds">分層技術棧 + v2.0+ 元件架構圖</span></span></a>
+        <a class="toc-item" href="#evolution"><span class="n">6</span><span class="tx"><span class="tt">版本演進</span><span class="ds">v1.0 → v2.2 時間軸</span></span></a>
+        <a class="toc-item" href="#value"><span class="n">7</span><span class="tx"><span class="tt">技術價值</span><span class="ds">可遷移的工程能力佐證</span></span></a>
+        <a class="toc-item" href="#env"><span class="n">8</span><span class="tx"><span class="tt">線上環境一覽</span><span class="ds">管理後台與 API 兩組網址</span></span></a>
+        <a class="toc-item" href="#login"><span class="n">9</span><span class="tx"><span class="tt">第一次登入後台</span><span class="ds">管理者登入與權限</span></span></a>
+        <a class="toc-item" href="#tabs"><span class="n">10</span><span class="tx"><span class="tt">後台分頁導覽</span><span class="ds">部門、專案、金鑰、模型、用量</span></span></a>
+        <a class="toc-item" href="#ops-concept"><span class="n">11</span><span class="tx"><span class="tt">維運核心觀念</span><span class="ds">操作前必懂的幾條規則</span></span></a>
+        <a class="toc-item" href="#playbook"><span class="n">12</span><span class="tx"><span class="tt">常見需求 Playbook</span><span class="ds">情境式操作 A–G</span></span></a>
+        <a class="toc-item" href="#manual"><span class="n">13</span><span class="tx"><span class="tt">使用者：SDK 呼叫手冊</span><span class="ds">端點、Header、Request / Response</span></span></a>
+        <a class="toc-item" href="#api"><span class="n">14</span><span class="tx"><span class="tt">API 端點總覽</span><span class="ds">管理端與代理端介面</span></span></a>
+        <a class="toc-item" href="#runbook"><span class="n">15</span><span class="tx"><span class="tt">故障排除 Runbook</span><span class="ds">症狀對照與錯誤碼</span></span></a>
       </div>
     </nav>
 
-    <!-- ===== PART I · 系統與技術設計 ===== -->
+    <div class="note tip">
+      <div class="head">這份文件的兩個部分</div>
+      <strong>Part I</strong>：寫給<strong>經營者與主管</strong>，不需技術背景，說明這套平台解決什麼問題、帶來什麼商業價值；<strong>Part II</strong>：寫給工程與維運人員，涵蓋架構、流程與工程決策，加上照著點就能操作的日常維運手冊。
+    </div>
+
+    <!-- ===== PART I · 經營層摘要：商業價值與解決的問題 ===== -->
     <div class="part-divider">
       <div class="pk">Part I</div>
-      <h2>系統與技術設計</h2>
-      <p>這個平台解決什麼問題、長什麼樣子、資料怎麼流、做了哪些工程決策與技術價值。</p>
+      <h2>經營層摘要：商業價值與解決的問題</h2>
+      <p>DF-OpenRouter 派工系統為公司解決什麼問題、帶來什麼價值 —— 不需技術背景即可閱讀。</p>
     </div>
 
     <!-- 1 專案摘要 -->
     <section id="summary">
       <h2 class="sec"><span class="num">1</span>專案摘要</h2>
-      <p class="sectlead lead-line">把「<span class="rd">員工各自拿金鑰亂打 API</span>」變成「<span class="mk">公司統一發放、統一代理、全程可稽核</span>」的中控平台。</p>
-      <p>後端（FastAPI）作為所有 LLM 呼叫的 <span class="mk">唯一代理出口</span>，<span class="hl">原生 API Key 加密存於後端、永不下發前端</span>；使用者改持 <span class="hl">SDK Key + User Token</span> 雙因子憑證呼叫統一端點，由後端換發金鑰、限流、寫入稽核後回傳。</p>
+      <p class="sectlead lead-line">把「<span class="rd">員工各自申請金鑰、各自呼叫 AI，公司看不到也管不到</span>」變成「<span class="mk">公司統一發放、統一代理、全程可稽核</span>」的 AI 使用中控平台。</p>
+      <p>DF-OpenRouter 派工系統是大豐環保的 <span class="hl">AI（大型語言模型）使用中控平台</span>：全公司任何系統要呼叫 AI 模型，一律經過這個中央平台代為轉發。真正的供應商金鑰<span class="hl">只存在平台內部、加密保管</span>，員工與各系統拿到的是公司發放、<span class="hl">可隨時收回</span>的憑證；每一次呼叫都自動記錄「<span class="mk">哪個部門、哪個專案、哪個人、用了哪個模型、花了多少錢</span>」，成本與使用狀況隨時可查。</p>
       <div class="grid cols3" style="margin-top:18px;">
         <div class="subcard">
-          <h4><span class="ico">代</span>代理層</h4>
-          <p><span class="hl">單一後端出口</span>，支援 OpenRouter（外網）與企業地端 OpenAI-compatible 模型，多金鑰 failover。</p>
+          <h4><span class="ico">控</span>統一出入口</h4>
+          <p>全公司 AI 呼叫收斂到<span class="hl">單一出口</span>：誰能用、能用哪些模型、用了多少，公司說了算、一處管理。</p>
         </div>
         <div class="subcard">
-          <h4><span class="ico">控</span>中控管理</h4>
-          <p><span class="hl">部門 → 專案 → 使用者 → 金鑰</span>的階層式組織，模型白名單與用量成本三維度報表。</p>
+          <h4><span class="ico">帳</span>成本自動歸戶</h4>
+          <p>每筆呼叫自動歸到<span class="hl">部門 → 專案 → 個人</span>，AI 花費像水電費一樣逐層看得見，分攤對帳免人工。</p>
         </div>
         <div class="subcard">
-          <h4><span class="ico">動</span>自動開通</h4>
-          <p>申請表單 + 規則路由 + <span class="hl">AI 欄位驗證</span>，信心足夠即全自動建立憑證並寄送通知信。</p>
+          <h4><span class="ico">動</span>開通全自動</h4>
+          <p>線上申請表單由 <span class="hl">AI 自動審核</span>，資料可信即自動開通並寄送憑證信，從數天人工縮短到分鐘級。</p>
         </div>
       </div>
       <div class="note info" style="margin-top:16px;">
-        <div class="head">🧪 v2.0 → v2.1 新增能力 · AI 模型適配評審</div>
-        平台不只代發，更能<span class="hl">自我優化選型</span>：背景 AI 評審針對每筆呼叫評估「原模型 vs 其他候選模型」的適配度並推薦更合適者（v2.0）；再對推薦模型<span class="hl">真實重跑</span>、以盲化「<span class="hl">對比裁決</span>」判定推薦輸出與原輸出孰優，給出<span class="mk">建議維持 / 建議改用 / 平手</span>與成本差，集中呈現於「AI 判決總覽」頁（v2.1）。
-      </div>
-    </section>
-
-    <!-- 2 目的 -->
-    <section id="purpose">
-      <h2 class="sec"><span class="num">2</span>目的</h2>
-      <div class="grid cols2" style="margin-top:18px;">
-        <div class="subcard">
-          <h4>🔐 安全隔離</h4>
-          <p>原生 API Key 集中後端加密保管，<span class="hl">前端與使用者永遠取不到明文</span>，杜絕金鑰外流與硬編碼風險。</p>
-        </div>
-        <div class="subcard">
-          <h4>💰 成本控管</h4>
-          <p>每一次模型呼叫都<span class="hl">歸戶到部門 / 專案 / 使用者</span>，可逐層彙總 token 與美元成本，支援多應用分別計費。</p>
-        </div>
-        <div class="subcard">
-          <h4>📊 可稽核性</h4>
-          <p><span class="hl">用量 Log 與操作稽核 Log 雙軌記錄</span>，搭配 Seq 集中式 Log，異常可追蹤、責任可歸屬。</p>
-        </div>
-        <div class="subcard">
-          <h4>⚡ 統一接點</h4>
-          <p>對使用者提供穩定、簡化的呼叫 schema；<span class="hl">底層供應商、金鑰輪替、限流全部透明</span>。</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- 3 解決的問題 -->
-    <section id="problem">
-      <h2 class="sec"><span class="num">3</span>解決的問題與效益</h2>
-      <p class="sectlead">企業導入 LLM 的四大實際痛點，以及平台如何對應、帶來什麼效益。</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th style="width:38%">實際痛點 / 風險</th><th>平台的解法</th></tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>金鑰散落、難以管控</strong><br><span class="muted small">員工各自申請金鑰，<span class="rd">外流即難以追查與撤銷</span></span></td>
-              <td>金鑰集中後端加密保管；對使用者改發雙因子憑證，<span class="hl">可隨時撤銷</span>且不影響其他人。</td>
-            </tr>
-            <tr>
-              <td><strong>成本黑箱</strong><br><span class="muted small"><span class="rd">無法得知哪個部門 / 專案花了多少</span></span></td>
-              <td>每次呼叫寫入 <code>usage_logs</code> 並標註部門 / 專案 / 使用者，<span class="hl">儀表板逐層彙總成本</span>。</td>
-            </tr>
-            <tr>
-              <td><strong>無白名單控管</strong><br><span class="muted small">使用者可任意呼叫<span class="rd">昂貴或未核可的模型</span></span></td>
-              <td>模型白名單由 DB 驅動（<code>models.is_active</code>），呼叫前先檢查，未核可一律 403。</td>
-            </tr>
-            <tr>
-              <td><strong>開通流程仰賴線下人工</strong><br><span class="muted small"><span class="rd">申請、審核、建帳、發憑證耗時且易出錯</span></span></td>
-              <td>線上申請表單 + 規則路由 + AI（Claude）欄位驗證，<span class="hl">信心足夠即自動開通</span>並寄送憑證信。</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="head">🧪 平台的進階能力 · AI 幫公司挑模型（v2.0 → v2.1）</div>
+        平台不只代發呼叫，還會在背景用 AI 持續檢視：「這些呼叫若改用<span class="hl">更便宜或更合適的模型</span>，品質會不會打折？」—— 由多位 AI 評審交叉評分推薦候選模型，再把推薦模型<span class="hl">實際重跑一次</span>、盲測比較兩邊輸出，給出<span class="mk">建議維持 / 建議改用 / 平手</span>與成本差異，作為公司持續降低 AI 成本的依據。
       </div>
 
       <h3>量化效益</h3>
@@ -397,9 +360,69 @@
       </div>
     </section>
 
-    <!-- 4 核心概念與角色 -->
+    <!-- 2 解決的問題與商業價值 -->
+    <section id="problem">
+      <h2 class="sec"><span class="num">2</span>解決的問題與商業價值</h2>
+      <p class="sectlead lead-line">AI 輔助開發（Vibe Coding）讓公司內部系統<span class="hl">快速增加</span>，每套幾乎都要呼叫 AI 模型，但金鑰與成本管理各做各的 —— <span class="rd">已經發生把供應商金鑰明文寫在程式碼裡、直接上傳 GitHub 的實際案例</span>：金鑰一外流，任何人都能拿去呼叫、費用照算在公司頭上，而且散落各處根本收不回來。DF-OpenRouter 派工系統把「<span class="mk">誰能用 AI、用什麼模型、花了多少錢</span>」收斂回公司統一控管。</p>
+
+      <h3>沒有中控平台前，公司實際承受的問題</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th style="width:38%">實際痛點 / 風險</th><th>平台的解法</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>金鑰散落、明文外流</strong><br><span class="muted small">Vibe Coding 產出快，員工各自申請金鑰，<span class="rd">甚至明文寫進程式碼直接上傳 GitHub</span> —— 全世界都看得到，外流即難以追查與撤銷</span></td>
+              <td>供應商金鑰集中平台加密保管、<span class="hl">不經員工之手</span>，程式碼裡沒有可外洩的原生金鑰；員工改持<span class="hl">公司發放的憑證</span>，即使外流也可隨時收回、換發，且不影響其他人。</td>
+            </tr>
+            <tr>
+              <td><strong>成本黑箱</strong><br><span class="muted small"><span class="rd">無法得知哪個部門 / 專案花了多少</span>，預算與分攤無憑無據</span></td>
+              <td>每次呼叫自動記錄到部門 / 專案 / 個人，<span class="hl">儀表板逐層彙總金額</span>，AI 花費第一次「看得見」。</td>
+            </tr>
+            <tr>
+              <td><strong>模型無人把關</strong><br><span class="muted small">使用者可任意呼叫<span class="rd">昂貴或未核可的模型</span></span></td>
+              <td>公司核可的模型才開放使用（<span class="hl">白名單</span>），未核可一律擋下，昂貴模型不會被誤用。</td>
+            </tr>
+            <tr>
+              <td><strong>開通流程仰賴線下人工</strong><br><span class="muted small"><span class="rd">申請、審核、建帳、發憑證耗時且易出錯</span></span></td>
+              <td>線上申請 + <span class="hl">AI 自動審核</span>，資料可信即自動開通並寄送憑證信，人工只處理例外。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>商業價值</h3>
+      <div class="grid cols2">
+        <div class="subcard">
+          <h4>🔐 資安風險收斂</h4>
+          <p>供應商金鑰<span class="hl">只存在平台一處、加密保管</span>，員工手上沒有可外洩的原生金鑰；憑證可隨時收回，<span class="hl">離職 / 調動即斷權</span>。</p>
+        </div>
+        <div class="subcard">
+          <h4>💰 成本看得見、管得住</h4>
+          <p>每一塊 AI 花費都能歸到<span class="hl">部門 / 專案 / 個人</span>，異常用量抓得出來，預算編列與成本分攤有真實數據支撐。</p>
+        </div>
+        <div class="subcard">
+          <h4>📊 可稽核、可問責</h4>
+          <p>呼叫紀錄與管理操作<span class="hl">雙軌留痕</span>，出事可追查「誰、何時、從哪個系統、呼叫了什麼」，符合稽核與內控要求。</p>
+        </div>
+        <div class="subcard">
+          <h4>⚡ 導入 AI 更快、更省</h4>
+          <p>新系統<span class="hl">不必自行搭接供應商與保管金鑰</span>，申請憑證即接即用；平台還持續用 AI 分析「換更省的模型划不划算」，把成本往下壓。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PART II · 技術設計與維運操作手冊 ===== -->
+    <div class="part-divider">
+      <div class="pk">Part II</div>
+      <h2>技術設計與維運操作手冊</h2>
+      <p>系統長什麼樣子、資料怎麼流、做了哪些工程決策；後半段以「<strong>有人來找你說 ___，你該怎麼做</strong>」的情境為主：接入 OpenRouter、開通成員、調白名單、查成本與排錯，照著點即可。</p>
+    </div>
+
+    <!-- 3 核心概念與角色 -->
     <section id="concept">
-      <h2 class="sec"><span class="num">4</span>核心概念與角色</h2>
+      <h2 class="sec"><span class="num">3</span>核心概念與角色</h2>
       <p class="sectlead">理解平台前需先掌握的組織模型、憑證與權限角色。</p>
 
       <h3>組織模型</h3>
@@ -454,9 +477,9 @@
       <p class="muted small">角色不固化於 JWT，每次請求即時由 DB 讀取，確保降級立即生效；前端僅依角色顯示 / 隱藏按鈕，實際過濾一律由後端完成。</p>
     </section>
 
-    <!-- 5 系統流程圖 -->
+    <!-- 4 系統流程圖 -->
     <section id="flow">
-      <h2 class="sec"><span class="num">5</span>系統流程圖</h2>
+      <h2 class="sec"><span class="num">4</span>系統流程圖</h2>
 
       <h3>流程 A：模型呼叫代理鏈（核心資料流）</h3>
       <p class="sectlead">使用者應用如何透過平台安全地呼叫 LLM。</p>
@@ -552,9 +575,9 @@ flowchart TD
       </div>
     </section>
 
-    <!-- 6 系統架構 -->
+    <!-- 5 系統架構 -->
     <section id="arch">
-      <h2 class="sec"><span class="num">6</span>系統架構</h2>
+      <h2 class="sec"><span class="num">5</span>系統架構</h2>
       <p class="sectlead">Monorepo 前後端分離，以 Docker Compose 編排，Coolify 正式部署。</p>
 
       <div class="layer">
@@ -660,9 +683,9 @@ flowchart LR
       </figure>
     </section>
 
-    <!-- 7 版本演進 -->
+    <!-- 6 版本演進 -->
     <section id="evolution">
-      <h2 class="sec"><span class="num">7</span>版本演進</h2>
+      <h2 class="sec"><span class="num">6</span>版本演進</h2>
       <p class="sectlead">從 MVP 的 API 代理層，成長為「申請—審核—開通—通知」一條龍的自動化平台，再進化到 <span class="hl">AI 模型適配評審與真實重跑對比裁決</span>的自我選型能力，並持續強化<span class="hl">營運自動化</span>（模型定時同步、申請判決通知）。</p>
       <div class="timeline">
         <div class="tl-item milestone">
@@ -724,9 +747,9 @@ flowchart LR
       </div>
     </section>
 
-    <!-- 8 技術價值 -->
+    <!-- 7 技術價值 -->
     <section id="value">
-      <h2 class="sec"><span class="num">8</span>技術價值</h2>
+      <h2 class="sec"><span class="num">7</span>技術價值</h2>
       <p class="sectlead">這份專案展現的可遷移工程能力 —— 適合作為下一份工作的技術佐證。</p>
       <div class="grid cols2">
         <div class="subcard">
@@ -772,16 +795,9 @@ flowchart LR
       </div>
     </section>
 
-    <!-- ===== PART II · 維運操作手冊 ===== -->
-    <div class="part-divider">
-      <div class="pk">Part II</div>
-      <h2>維運操作手冊</h2>
-      <p>以「<strong>有人來找你說 ___，你該怎麼做</strong>」的情境為主：管理者如何接入 OpenRouter、開通成員、調白名單、查成本與排錯；使用者如何呼叫代理端點。照著點即可。</p>
-    </div>
-
-    <!-- 9 線上環境一覽 -->
+    <!-- 8 線上環境一覽 -->
     <section id="env">
-      <h2 class="sec"><span class="num">9</span>線上環境一覽</h2>
+      <h2 class="sec"><span class="num">8</span>線上環境一覽</h2>
       <p class="sectlead">兩套完全獨立的環境；<span class="hl">管理後台</span>是 admin 登入操作的地方，<span class="hl">API Base URL</span>是使用者程式呼叫的地方。</p>
       <div class="table-wrap">
         <table>
@@ -794,16 +810,16 @@ flowchart LR
       </div>
       <div class="note warn">
         <div class="head">⚠ 環境隔離</div>
-        Prod 與 Test <span class="hl">資料庫、金鑰、用量完全獨立</span>，不共用；測試請一律打 Test，勿在 Prod 試打。管理後台帳密由 <span class="hl">Coolify 環境變數</span> seed（見 §10）；OpenRouter Key 由 <span class="hl">IT 部門統一管理與儲值</span>。Coolify 操作詳見其他維運教學文件。
+        Prod 與 Test <span class="hl">資料庫、金鑰、用量完全獨立</span>，不共用；測試請一律打 Test，勿在 Prod 試打。管理後台帳密由 <span class="hl">Coolify 環境變數</span> seed（見 §9）；OpenRouter Key 由 <span class="hl">IT 部門統一管理與儲值</span>。Coolify 操作詳見其他維運教學文件。
       </div>
     </section>
 
-    <!-- 10 第一次登入後台 -->
+    <!-- 9 第一次登入後台 -->
     <section id="login">
-      <h2 class="sec"><span class="num">10</span>第一次登入管理後台</h2>
+      <h2 class="sec"><span class="num">9</span>第一次登入管理後台</h2>
       <p class="sectlead">管理者（<code>role=admin</code>）才需要登入後台；一般使用者只拿三因子憑證、不進後台。</p>
       <ol class="steps">
-        <li>用瀏覽器開啟<strong>管理後台網址</strong>（見 §9 上表）。</li>
+        <li>用瀏覽器開啟<strong>管理後台網址</strong>（見 §8 上表）。</li>
         <li>以<strong>帳號 + 密碼</strong>登入。首位管理員的帳密由 <strong>Coolify 後台的環境變數</strong> seed —— 帳號見 <code>INITIAL_ADMIN_ACCOUNT</code>、密碼見 <code>INITIAL_ADMIN_PASSWORD</code>（對應環境的 stack 設定內查看）。</li>
         <li>登入後看到<strong>部門 / 用量 Dashboard</strong>，代表你已是管理員；後續可在「使用者管理」自行新增其他 admin。</li>
         <li>若顯示<strong>無權限 / 被導回登入頁</strong>，表示帳密錯誤或該帳號 <code>role</code> 不是 <code>admin</code> —— 請確認 Coolify 環境變數值，或由現任管理員到「使用者管理」把你調為 admin。</li>
@@ -814,9 +830,9 @@ flowchart LR
       </div>
     </section>
 
-    <!-- 11 後台分頁導覽 -->
+    <!-- 10 後台分頁導覽 -->
     <section id="tabs">
-      <h2 class="sec"><span class="num">11</span>後台分頁導覽</h2>
+      <h2 class="sec"><span class="num">10</span>後台分頁導覽</h2>
       <p class="sectlead">管理者會用到的主要分頁與用途。設定動線：<span class="hl">部門 → OpenRouter Key → SDK Key → 專案 → 使用者</span>。</p>
       <div class="table-wrap">
         <table>
@@ -835,9 +851,9 @@ flowchart LR
       </div>
     </section>
 
-    <!-- 12 維運核心觀念 -->
+    <!-- 11 維運核心觀念 -->
     <section id="ops-concept">
-      <h2 class="sec"><span class="num">12</span>維運核心觀念</h2>
+      <h2 class="sec"><span class="num">11</span>維運核心觀念</h2>
       <p class="sectlead">操作前先記住這幾條，能避開九成「為什麼打不通 / 看不到明文」的疑惑。</p>
       <ol class="steps">
         <li><strong>OpenRouter 原生 Key 只存後端</strong>（AES-256-GCM 加密），後台僅顯示遮罩；前端與使用者<span class="key">永遠拿不到明文</span>。</li>
@@ -869,9 +885,9 @@ flowchart LR
       </div>
     </section>
 
-    <!-- 13 常見需求 Playbook -->
+    <!-- 12 常見需求 Playbook -->
     <section id="playbook">
-      <h2 class="sec"><span class="num">13</span>常見需求 Playbook</h2>
+      <h2 class="sec"><span class="num">12</span>常見需求 Playbook</h2>
       <p class="sectlead">照情境找對應流程，依步驟點即可。</p>
 
       <div class="playbook-head">
@@ -886,11 +902,11 @@ flowchart LR
         <li><strong>「專案管理」在部門下建立專案</strong>，複製<strong>專案代碼</strong>。</li>
         <li><strong>「使用者管理」建立成員</strong>並<strong>產生 User Token</strong>，記下明文。</li>
         <li><strong>「模型白名單」確認</strong>要用的模型已啟用（必要時先與 OpenRouter 同步清單）。</li>
-        <li>把 <span class="hl">SDK Key + User Token + 專案代碼</span> 連同對應 API Base URL 交付使用者，請對方參考 <a href="#manual">§14 使用者：SDK 呼叫手冊</a>。</li>
+        <li>把 <span class="hl">SDK Key + User Token + 專案代碼</span> 連同對應 API Base URL 交付使用者，請對方參考 <a href="#manual">§13 使用者：SDK 呼叫手冊</a>。</li>
       </ol>
       <div class="note tip">
         <div class="head">💡 自動化捷徑</div>
-        若改走線上<strong>「申請表單」</strong>，上面第 2–6 步可由<span class="hl">規則路由 + AI 欄位驗證</span>自動完成並寄送憑證信（見 <a href="#flow">§5 流程 B</a>）；本 Playbook 是純手動 / 新部門首次接入的作法。
+        若改走線上<strong>「申請表單」</strong>，上面第 2–6 步可由<span class="hl">規則路由 + AI 欄位驗證</span>自動完成並寄送憑證信（見 <a href="#flow">§4 流程 B</a>）；本 Playbook 是純手動 / 新部門首次接入的作法。
       </div>
 
       <div class="playbook-head">
@@ -956,9 +972,9 @@ flowchart LR
       </div>
     </section>
 
-    <!-- 14 使用者：SDK 呼叫手冊 -->
+    <!-- 13 使用者：SDK 呼叫手冊 -->
     <section id="manual">
-      <h2 class="sec"><span class="num">14</span>使用者：SDK 呼叫手冊</h2>
+      <h2 class="sec"><span class="num">13</span>使用者：SDK 呼叫手冊</h2>
       <p class="sectlead">SDK 使用者拿到三組憑證後，如何呼叫代理端點。完整使用者說明另見 <code>docs/tutorial/openrouter-platform-user-guide.html</code>。</p>
 
       <h3>① 端點與認證 Header</h3>
@@ -1027,9 +1043,9 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
       </div>
     </section>
 
-    <!-- 15 API 端點總覽 -->
+    <!-- 14 API 端點總覽 -->
     <section id="api">
-      <h2 class="sec"><span class="num">15</span>API 端點總覽</h2>
+      <h2 class="sec"><span class="num">14</span>API 端點總覽</h2>
       <p class="sectlead">管理端（登入 Cookie 認證）與代理端（三組 Header）嚴格分離；完整 Schema 見後端 Swagger <code>/api/docs</code>。</p>
       <div class="table-wrap">
         <table>
@@ -1051,9 +1067,9 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
       </div>
     </section>
 
-    <!-- 16 故障排除 Runbook -->
+    <!-- 15 故障排除 Runbook -->
     <section id="runbook">
-      <h2 class="sec"><span class="num">16</span>故障排除 Runbook</h2>
+      <h2 class="sec"><span class="num">15</span>故障排除 Runbook</h2>
       <p class="sectlead">使用者回報「打不通」時，依症狀對照可能原因與第一步該檢查什麼。</p>
       <div class="table-wrap">
         <table>
@@ -1071,7 +1087,7 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
       </div>
       <div class="note info">
         <div class="head">完整錯誤碼對照</div>
-        每個 <code>detail</code> 錯誤碼的逐項說明與處理建議，見 <a href="#manual">§14 使用者：SDK 呼叫手冊</a> 與 <code>docs/tutorial/openrouter-platform-user-guide.html</code> 的「錯誤碼對照」。
+        每個 <code>detail</code> 錯誤碼的逐項說明與處理建議，見 <a href="#manual">§13 使用者：SDK 呼叫手冊</a> 與 <code>docs/tutorial/openrouter-platform-user-guide.html</code> 的「錯誤碼對照」。
       </div>
     </section>
 
@@ -1161,15 +1177,15 @@ X-Project-Code: &lt;專案代碼&gt;</code></pre>
 <style>
   html,body{margin:0;height:100%;font-family:"Microsoft JhengHei","Segoe UI",system-ui,sans-serif;background:#f1f5f9;}
   #bar{position:fixed;top:0;left:0;right:0;height:48px;display:flex;align-items:center;gap:8px;padding:0 14px;background:#1e3a8a;color:#fff;z-index:10;box-shadow:0 1px 6px rgba(0,0,0,.25);}
-  #bar .t{font-size:14px;font-weight:600;margin-right:auto;opacity:.95;}
-  #bar button{border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;border-radius:8px;padding:6px 12px;font-size:14px;line-height:1;cursor:pointer;}
+  #bar .t{font-size:16px;font-weight:600;margin-right:auto;opacity:.95;}
+  #bar button{border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;border-radius:8px;padding:6px 12px;font-size:16px;line-height:1;cursor:pointer;}
   #bar button:hover{background:rgba(255,255,255,.26);}
-  #pct{min-width:58px;text-align:center;font-variant-numeric:tabular-nums;font-size:14px;}
+  #pct{min-width:58px;text-align:center;font-variant-numeric:tabular-nums;font-size:16px;}
   #stage{position:absolute;inset:48px 0 0 0;overflow:auto;background:#f1f5f9;cursor:grab;}
   #stage.grabbing{cursor:grabbing;}
   #canvas{display:inline-block;padding:24px;box-sizing:content-box;}
   #canvas svg{display:block;}
-  .hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.82);color:#fff;font-size:12.5px;padding:6px 13px;border-radius:999px;z-index:10;pointer-events:none;}
+  .hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.82);color:#fff;font-size:16px;padding:6px 13px;border-radius:999px;z-index:10;pointer-events:none;}
 </style></head><body>
 <div id="bar">
   <span class="t">圖表放大檢視</span>

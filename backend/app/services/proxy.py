@@ -271,6 +271,23 @@ def _summarize_response(resp: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+def _strip_nul(value: Any) -> Any:
+    """遞迴移除字串中的 NUL(`\\u0000`),回傳結構相同的新值。
+
+    Postgres 的 `text` / `jsonb` 型別**無法儲存** NUL 字元(唯一存不進 text 的合法碼位),
+    帶 NUL 的 JSONB INSERT 會拋 asyncpg `UntranslatableCharacterError` 令整筆 usage_log
+    寫入失敗(呼叫已成功、記帳卻靜默遺失)。NUL 多來自文件 / OCR 抽取殘留混入使用者輸入,
+    寫入前一律清除;dict key 亦清(理論上罕見,保險起見)。
+    """
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {_strip_nul(k): _strip_nul(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_strip_nul(v) for v in value]
+    return value
+
+
 def _simplify_sse_line(line: str, state: dict[str, Any]) -> str | None:
     """解析一行 OpenRouter SSE:更新記帳狀態,並回傳「簡化後」要轉給呼叫端的 SSE。
 
@@ -422,8 +439,12 @@ def schedule_usage_log(
                     latency_ms=latency_ms,
                     status=status,
                     error_code=error_code,
-                    request_content=request_log,
-                    response_summary=_summarize_response(resp) if resp else None,
+                    # 兩個 JSONB 欄位寫入前遞迴清除 NUL:Postgres text/jsonb 存不進 NUL,
+                    # 帶 NUL(多為文件/OCR 抽取殘留)會令整筆記帳靜默寫入失敗(見 _strip_nul)。
+                    request_content=_strip_nul(request_log),
+                    response_summary=(
+                        _strip_nul(_summarize_response(resp)) if resp else None
+                    ),
                     openrouter_generation_id=gen_id,
                     used_tools=used_tools,
                 )

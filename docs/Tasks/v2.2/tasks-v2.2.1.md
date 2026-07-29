@@ -1,6 +1,6 @@
 # Tasks v2.2.1 · 圖片 / 檔案改存 S3,DB 只留物件路徑(base64 兩階段棄用)
 
-> 狀態:**全數完成(12/12)**,待收口提交(2026-07-29;後端 540 passed / 0 failed,前端 lint + type-check + build 全綠,mypy 全庫維持 baseline 49)
+> 狀態:**全數完成(13/13,含補充 task-533)**(2026-07-29;後端 562 passed / 0 failed,前端 lint + type-check + build 全綠,ruff 62 / mypy 49 皆維持 baseline)
 > 來源:[propose-v2.2.1.md](./propose-v2.2.1.md)
 > 並行:12 個 task,可並行 11 / 序列 1(同檔互鎖)/ 預估總時數:30 hr / 阻塞點:0(propose §D 全數拍板)
 
@@ -58,6 +58,7 @@
 | 530 | 遷移 script **Phase 1**(只上傳,DB 零變更) | done | ✓ | 523, 524 | `backend/scripts/migrate_base64_to_s3.py`、`backend/tests/services/test_migrate_base64_to_s3.py` |
 | 531 | 遷移 script **Phase 2**(改寫 JSONB)+ 執行 runbook | done | ✗ | 530 | `backend/scripts/migrate_base64_to_s3.py`、`backend/tests/services/test_migrate_base64_to_s3.py`、`docs/Tasks/v2.2/runbook-v2.2.1-migration.md` |
 | 532 | 對外文件同步(`INTEGRATION.md` + `user-guide` 頁) | done | ✓ | 525, 527 | `docs/INTEGRATION.md`、`frontend/src/app/(main)/user-guide/page.tsx` |
+| 533 | AI 重跑恢復帶圖 — 後端下載 S3 物件重新 inline 成 base64(**補充 task**) | done | ✓ | 523, 526, 531 | `backend/app/clients/s3/client.py`、`README.md`、`backend/app/services/ai_model_eval_rerun.py`、`backend/tests/clients/test_s3_client.py`、`backend/tests/services/test_rerun_inline_images.py` |
 
 ## 並行批次
 

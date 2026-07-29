@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import io
 from collections.abc import Callable, Coroutine
 from typing import TypeVar
 
 import pytest
 from botocore.exceptions import ConnectTimeoutError, ReadTimeoutError
+from botocore.response import StreamingBody
 from botocore.stub import Stubber
 
 from app.clients.s3 import (
@@ -87,6 +89,112 @@ async def test_head_object_returns_true_when_exists() -> None:
         )
         assert await client.head_object(_KEY) is True
         stub.assert_no_pending_responses()
+
+
+def _streaming(data: bytes) -> StreamingBody:
+    """包成 boto3 實際回傳的 `StreamingBody`(直接塞 bytes 無法 `.read()`)。"""
+    return StreamingBody(io.BytesIO(data), len(data))
+
+
+async def test_get_object_success_returns_body_and_content_type() -> None:
+    client = make_client()
+    payload = b"\x89PNG\r\n\x1a\nfake-image-bytes"
+    with Stubber(client._s3) as stub:
+        stub.add_response(
+            "get_object",
+            {"Body": _streaming(payload), "ContentType": "image/png"},
+            {"Bucket": _BUCKET, "Key": _KEY},
+        )
+        body, content_type = await client.get_object(_KEY)
+        stub.assert_no_pending_responses()
+    assert body == payload
+    assert content_type == "image/png"
+
+
+async def test_get_object_without_content_type_returns_empty_string() -> None:
+    """S3 未回 ContentType 時回空字串:client 不猜 MIME,由呼叫端決定 fallback。"""
+    client = make_client()
+    with Stubber(client._s3) as stub:
+        stub.add_response(
+            "get_object", {"Body": _streaming(b"x")}, {"Bucket": _BUCKET, "Key": _KEY}
+        )
+        body, content_type = await client.get_object(_KEY)
+    assert body == b"x"
+    assert content_type == ""
+
+
+async def test_get_object_no_such_key_raises_not_found() -> None:
+    """與 `head_object` 不同:`get_object` 對物件不存在一律拋 `S3NotFoundError`。"""
+    client = make_client()
+    with Stubber(client._s3) as stub:
+        stub.add_client_error(
+            "get_object",
+            service_error_code="NoSuchKey",
+            service_message="The specified key does not exist.",
+            http_status_code=404,
+        )
+        with pytest.raises(S3NotFoundError) as excinfo:
+            await client.get_object(_KEY)
+    assert excinfo.value.aws_code == "NoSuchKey"
+
+
+async def test_get_object_403_maps_to_upload_error() -> None:
+    client = make_client()
+    with Stubber(client._s3) as stub:
+        stub.add_client_error(
+            "get_object",
+            service_error_code="AccessDenied",
+            http_status_code=403,
+        )
+        with pytest.raises(S3UploadError) as excinfo:
+            await client.get_object(_KEY)
+    assert excinfo.value.aws_code == "AccessDenied"
+    # botocore 原始訊息不得外洩(權限類錯誤的 response 常夾帶簽章欄位)。
+    assert _KEY not in excinfo.value.detail
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ReadTimeoutError(endpoint_url="https://example.invalid/"),
+        ConnectTimeoutError(endpoint_url="https://example.invalid/"),
+    ],
+)
+async def test_get_object_timeout_maps_to_timeout_error(
+    exc: BaseException, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = make_client()
+
+    def _raise(**_kwargs: object) -> None:
+        raise exc
+
+    monkeypatch.setattr(client._s3, "get_object", _raise)
+    with pytest.raises(S3TimeoutError):
+        await client.get_object(_KEY)
+
+
+async def test_get_object_timeout_while_reading_body_is_mapped() -> None:
+    """`Body.read()` 才真正拉資料 —— 讀取階段的逾時同樣要轉型,不可漏接。"""
+
+    class _ExplodingBody:
+        def read(self) -> bytes:
+            raise ReadTimeoutError(endpoint_url="https://example.invalid/")
+
+    client = make_client()
+    with Stubber(client._s3) as stub:
+        stub.add_response(
+            "get_object",
+            {"Body": _ExplodingBody(), "ContentType": "image/png"},
+            {"Bucket": _BUCKET, "Key": _KEY},
+        )
+        with pytest.raises(S3TimeoutError):
+            await client.get_object(_KEY)
+
+
+async def test_get_object_rejects_invalid_key() -> None:
+    client = make_client()
+    with pytest.raises(S3Error):
+        await client.get_object("dev/../../etc/passwd")
 
 
 async def test_presign_get_returns_url_with_ttl_and_target() -> None:
@@ -241,16 +349,21 @@ async def test_all_capabilities_go_through_to_thread(monkeypatch: pytest.MonkeyP
                 "ServerSideEncryption": "AES256",
             },
         )
+        stub.add_response(
+            "get_object", {"Body": _streaming(b"x")}, {"Bucket": _BUCKET, "Key": _KEY}
+        )
         stub.add_response("delete_object", {}, {"Bucket": _BUCKET, "Key": _KEY})
         stub.add_response("head_object", {"ContentLength": 1}, {"Bucket": _BUCKET, "Key": _KEY})
 
         await client.put_object(_KEY, b"x", "image/png")
+        await client.get_object(_KEY)
         await client.presign_get(_KEY, 900)
         await client.delete_object(_KEY)
         await client.head_object(_KEY)
 
     assert calls == [
         "_put_object_sync",
+        "_get_object_sync",
         "_presign_get_sync",
         "_delete_object_sync",
         "_head_object_sync",

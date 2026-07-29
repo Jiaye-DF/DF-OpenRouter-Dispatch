@@ -662,7 +662,7 @@ export default function UserGuidePage() {
                   <TD className="font-mono">files</TD>
                   <TD>object[]</TD>
                   <TD>否</TD>
-                  <TD>上傳檔案(如 PDF),每筆為 <code>{`{ filename, file_data }`}</code>;<code>file_data</code> 為 <code>data:application/pdf;base64,...</code> 或可公開存取的遠端 URL。<strong>用量紀錄僅保留 <code>filename</code>,不留存檔案內容</strong></TD>
+                  <TD>上傳檔案(如 PDF),每筆為 <code>{`{ filename, file_data }`}</code>;<code>file_data</code> 為 <code>data:application/pdf;base64,...</code> 或可公開存取的遠端 URL。<strong>自 v2.2.1 起,用量紀錄除 <code>filename</code> 外亦留存檔案內容</strong>(存於公司自有 S3,見下方<strong>附件儲存與保存政策</strong>)</TD>
                 </TR>
                 <TR>
                   <TD className="font-mono">videos</TD>
@@ -751,7 +751,7 @@ export default function UserGuidePage() {
           <CodeBlock language="JSON" code={FILE_EXAMPLE} />
           <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
             <li>每筆檔案需給 <code>filename</code> 與 <code>file_data</code>;<code>file_data</code> 可填 base64 data URL 或可公開存取的遠端 URL。檔案解析由 OpenRouter 處理(模型原生支援則直接傳入,否則由 OpenRouter 解析後再送模型),可能產生額外計費。</li>
-            <li><strong>隱私:用量紀錄僅保留 <code>filename</code>,不留存檔案內容(<code>file_data</code>)</strong>;請避免在 <code>filename</code> 夾帶敏感資訊。</li>
+            <li><strong>保存政策(v2.2.1 起變更):用量紀錄除 <code>filename</code> 外亦留存檔案內容</strong>,存於公司自有 AWS S3(private,不對外公開),取用一律經後端簽發的短期連結;<strong>v2.2.1 之前的歷史紀錄只有檔名、沒有內容</strong>。詳見下方<strong>附件儲存與保存政策</strong>。</li>
           </ul>
           {/* 本地模型區塊暫時隱藏(待實際導入企業內部模型再開啟)
           <div className="mt-4 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 text-sm">
@@ -777,7 +777,7 @@ export default function UserGuidePage() {
             <li><strong>content 兩種寫法</strong>:純文字字串;或 parts 陣列——型別只接受 <code>text</code> / <code>image_url</code> / <code>file</code>(能力與單輪模式相同,影片同樣不支援)。</li>
             <li><strong>則數不設上限</strong>:以所選模型的 context window 為自然上限(全部訊息都計入 token),超過由模型端回錯誤。</li>
             <li><code>tools</code>(如 web search)兩種模式皆可搭配;回應格式<strong>不變</strong>,仍為統一格式的純文字 <code>data</code>。</li>
-            <li>對話歷史由<strong>呼叫端自行保存與帶入</strong>,平台不儲存 session;messages 內容會原樣寫入用量紀錄供稽核(檔案僅記檔名),請勿夾帶敏感個資。</li>
+            <li>對話歷史由<strong>呼叫端自行保存與帶入</strong>,平台不儲存 session;messages 內容會寫入用量紀錄供稽核(其中的圖片與檔案自 v2.2.1 起改存公司自有 S3,見下方<strong>附件儲存與保存政策</strong>),請勿夾帶敏感個資。</li>
           </ul>
 
           <p className="font-medium mt-2">多輪對話 Request 範例:</p>
@@ -880,7 +880,7 @@ export default function UserGuidePage() {
               <p className="text-sm text-muted-foreground">
                 帶 <code>files</code> 即可附上 PDF 等檔案讓模型閱讀。<code>file_data</code> 可填
                 可公開存取的遠端 URL(下方 curl 範例)或本機檔案轉成的 base64 data URL(下方 Python 範例)。
-                <strong>用量紀錄僅保留檔名,不留存檔案內容。</strong>
+                <strong>自 v2.2.1 起,用量紀錄除檔名外亦留存檔案內容</strong>(存於公司自有 S3,private;見下方<strong>附件儲存與保存政策</strong>)。
               </p>
               <p className="font-medium">curl(遠端 URL,最容易測試)</p>
               <CodeBlock language="bash" code={CURL_FILE_EXAMPLE} />
@@ -997,6 +997,65 @@ export default function UserGuidePage() {
           </div>
         </Section>
 
+        <Section id="attachments" title="附件儲存與保存政策(v2.2.1)">
+          <p>
+            自 <strong>v2.2.1</strong> 起,請求中夾帶的圖片與檔案改存<strong>公司自有 AWS S3</strong>,
+            用量紀錄本身只留物件位置。本段說明這對你(呼叫端)與管理端各代表什麼。
+          </p>
+
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">呼叫端</Badge>
+              <span className="font-medium text-sm">契約不變,零改動</span>
+            </div>
+            <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+              <li>
+                <code>/model/chat</code>、<code>/model/chat/stream</code> 與 deprecated
+                {" "}<code>/model/openrouter/chat</code> 的 <strong>request / response 格式完全不變</strong>;
+                仍可<strong>照舊送 base64 data URI</strong>,<strong>不需要</strong>改任何程式碼。
+              </li>
+              <li>
+                <strong>送給模型的內容也不變</strong>:平台轉送給下游模型的請求內容與 v2.2.0
+                <strong>完全相同</strong>(圖片仍為原本的 base64 或原始 URL、<code>file_data</code> 照舊),已由回歸測試逐欄驗證;
+                <strong>模型回應品質不受本版影響</strong>。
+              </li>
+              <li>本版改變的<strong>只有平台後端寫進用量紀錄的儲存形式</strong>。</li>
+            </ul>
+          </div>
+
+          <p className="font-medium mt-2">存放位置與取用方式</p>
+          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+            <li>圖片 / 檔案存放於<strong>公司自有 AWS S3</strong>,物件一律 <strong>private、不對外公開</strong>(無公開網址)。</li>
+            <li>檢視時(管理端用量明細頁)一律透過後端當場簽發的<strong>短期連結</strong>取得,<strong>預設有效期 15 分鐘</strong>;過期即失效,重新開啟頁面即可取得新連結。</li>
+            <li>原本就送<strong>遠端 <code>https://</code> URL</strong> 的附件,平台<strong>原樣保留該 URL、不代抓</strong>,可讀性仍取決於該外部站台。</li>
+          </ul>
+
+          <p className="font-medium mt-2">檔案(PDF 等)自 v2.2.1 起才留存內容</p>
+          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+            <li>v2.2.1 之前,<code>files</code> 的用量紀錄<strong>只有檔名、沒有檔案內容</strong>。</li>
+            <li><strong>自 v2.2.1 起才開始留存檔案內容</strong>,且<strong>只對新請求生效</strong>——本版之前的歷史紀錄<strong>不會、也無法</strong>補上內容。</li>
+            <li>圖片內容則自始即有留存,本版只是換了存放位置。</li>
+            <li>本項為平台端設定,由管理員啟用物件儲存後生效;未啟用時維持 v2.2.0 行為(圖片原樣快照、檔案僅記檔名)。</li>
+          </ul>
+
+          <p className="font-medium mt-2">管理端可見的行為變更</p>
+          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+            <li>
+              用量明細 API 回吐的 <code>request_content</code> 中,<strong>圖片元素的語意由「base64 data URI 或遠端 URL」變更為「可直接顯示的短期 URL」</strong>;
+              檔案元素則由「只有 <code>filename</code>」變成「<code>filename</code> + 可開啟的短期 URL」。
+            </li>
+            <li>此為<strong>管理端可見的行為變更</strong>;SDK 呼叫端的 request / response 不受影響。</li>
+            <li>歷史紀錄在遷移完成前新舊形態並存,明細頁對兩種形態皆可正常顯示。</li>
+          </ul>
+
+          <p className="font-medium mt-2">S3 故障不影響代理可用性(best-effort)</p>
+          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+            <li>附件上傳採 <strong>best-effort</strong>:S3 故障 / 逾時<strong>不會</strong>讓任何代理請求失敗——下游照常呼叫、回應照常返還、用量照常記帳。</li>
+            <li>失敗時<strong>不會</strong>退回把 base64 寫進用量紀錄,而是在該筆紀錄標記「此附件未留存」並保留大小 / 型別等資訊,同時落 log 供追查。</li>
+            <li>最壞情況只是<strong>該筆紀錄的附件內容沒留存</strong>,對外行為完全正常。</li>
+          </ul>
+        </Section>
+
         <Section id="security" title="安全注意事項">
           <ul className="list-disc pl-5 space-y-2">
             <li>
@@ -1007,10 +1066,11 @@ export default function UserGuidePage() {
             </li>
             <li>所有呼叫都會記錄一筆 <code>usage_logs</code>(模型、token、耗時、是否成功);管理員可在後台<strong>用量紀錄</strong>頁面查詢。</li>
             <li>
-              本平台<strong>不會</strong>儲存 OpenRouter 回傳的內部 metadata;但會保留請求內容(<code>text</code>、含 base64 圖片)以利稽核,請<strong>不要</strong>在 prompt 中夾帶敏感個資。
+              本平台<strong>不會</strong>儲存 OpenRouter 回傳的內部 metadata;但會保留請求內容(<code>text</code>、<code>images</code>、<code>messages</code>)以利稽核,請<strong>不要</strong>在 prompt 中夾帶敏感個資。
             </li>
             <li>
-              <strong>檔案上傳例外</strong>:<code>files</code> 僅保留 <code>filename</code>,<strong>不</strong>留存檔案內容(<code>file_data</code>);檔案內容僅於該次請求轉送 OpenRouter,不寫入用量紀錄。
+              <strong>附件保存(v2.2.1 起變更)</strong>:圖片與檔案(<code>files</code>)的內容存放於公司自有 AWS S3(private,不對外公開),用量紀錄本身只留物件位置;
+              <code>file_data</code> 的 base64 內容<strong>任何情況下都不會寫入用量紀錄</strong>。政策全文見上方<strong>附件儲存與保存政策</strong>。
             </li>
           </ul>
         </Section>

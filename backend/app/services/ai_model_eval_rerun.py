@@ -8,7 +8,9 @@
 2. **跳過條件**(決議:標終局不重跑):無任何「推薦 ≠ 原模型」→ `mark_reran(status=1)`、
    challenger 0 筆。
 3. 對每個 challenger **串行**(非併發,§5.2 定案)逐一處理:
-   - 組原輸入快照 payload → `chat_completion`(非串流,`DEFAULT_OPENROUTER_KEY`,
+   - 組原輸入快照 payload(v2.2.1:快照裡的 S3 物件 key 圖片先下載回來 inline 成 base64
+     才送下游,見 `_inline_snapshot_images`;**該版本只給下游,不落地**)
+     → `chat_completion`(非串流,`DEFAULT_OPENROUTER_KEY`,
      **不**寫 `usage_logs`)→ 解析輸出 / usage → 算 `cost_usd`(沿用 proxy 計費:
      取回應 `usage.cost` / `total_cost`)→ `cost_delta = challenger − original`
      (無原成本 → NULL)。
@@ -35,7 +37,9 @@ log 中**不**輸出 API key 等機密(對齊 `03-backend/05-exceptions-and-logg
 from __future__ import annotations
 
 import asyncio
+import base64
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -48,6 +52,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.openrouter.client import OpenRouterClient
 from app.clients.openrouter.errors import OpenRouterRateLimitError
+from app.clients.s3 import S3Client, S3Error, get_s3_client
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
@@ -68,6 +73,7 @@ from app.services.ai_model_eval_rerun_prompt import (
     _parse_discriminator_content,
     build_discriminator_prompt,
 )
+from app.services.attachment import content_type_for_mime
 
 logger = get_logger(__name__)
 
@@ -228,6 +234,158 @@ async def _chat_with_retry(
     raise OpenRouterRateLimitError(429, "retry exhausted")
 
 
+# --- messages 快照的 S3 圖片重新 inline(task-533)---------------------------------
+#
+# v2.2.1 起快照裡的圖片是 **S3 物件 key**,而 `request_snapshot._is_replayable` 會把物件 key
+# 形態的 image part 剔除(直接送下去只是畸形 payload)—— 結果是「messages 模式 + 含圖」的
+# 紀錄重跑時失去圖片,退化成純文字比較(v2.2.0 本來會送 base64)。
+#
+# 本區塊在**呼叫 `replay_messages` 之前**把快照裡的物件 key 換成 data URI:形態隨之變成
+# `data_uri`,`replay_messages` 便依既有規則原樣保留。剔除規則仍只有一份、留在純函式層 ——
+# 下載失敗時「剔除該 part」是免費得到的(留著物件 key → 下游自然被剔掉)。
+#
+# **禁**改成「簽一把短期唯讀 URL 丟給下游模型」:那類簽章 URL 視同臨時憑證,禁寫 log、
+# 禁存 DB、禁送第三方 / 下游模型(`90-third-party-service/09-object-storage.md`),用途已
+# 收斂為管理端明細頁顯示。下載後 inline 送的是 base64,與 v2.2.0 下游收到的內容完全等價,
+# 簽章一個字元都不外流。
+
+
+def _object_key_of_part(part: Mapping[str, Any]) -> str | None:
+    """取此 content part 的 S3 物件 key;非 `image_url` part 或非物件 key 形態 → None。
+
+    形態判別一律走 `request_snapshot` 的公開 API(`attachment_form` / `attachment_ref_of`),
+    本層**不**自行判斷字串長相,避免第二份判別實作漂移。
+    """
+    if part.get("type") != "image_url":
+        return None
+    inner = part.get("image_url")
+    if not isinstance(inner, Mapping) or not isinstance(inner.get("url"), str):
+        return None
+    if request_snapshot.attachment_form(part) != "object_key":
+        return None
+    return request_snapshot.attachment_ref_of(part)
+
+
+def _object_keys_in(request_content: Mapping[str, Any]) -> list[str]:
+    """列出快照 messages 內所有物件 key 形態的圖片(**去重**,保留首次出現順序)。"""
+    keys: list[str] = []
+    for msg in request_snapshot.messages_of(request_content):
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in request_snapshot.as_parts(content):
+            key = _object_key_of_part(part)
+            if key is not None and key not in keys:
+                keys.append(key)
+    return keys
+
+
+async def _download_data_uris(client: S3Client, keys: list[str]) -> dict[str, str]:
+    """下載物件並轉成 `data:<mime>;base64,...`;單一物件失敗只記 warning 後略過。
+
+    best-effort:略過的 key 在快照裡維持物件 key 形態,`replay_messages` 會自然剔除該 part,
+    重跑照常完成。mime 取 S3 物件 metadata 的 Content-Type(上傳時即由 MIME 白名單寫入),
+    再過一次 `content_type_for_mime` 收斂 —— 本層**不**自備 MIME 對照表。
+    """
+    out: dict[str, str] = {}
+    for key in keys:
+        try:
+            body, content_type = await client.get_object(key)
+        except S3Error as err:
+            logger.warning(
+                "評審重跑:附件下載失敗,該圖片不重放 key=%s error=%s aws_code=%s",
+                key,
+                type(err).__name__,
+                err.aws_code or "-",
+            )
+            continue
+        except Exception as err:  # noqa: BLE001 - best-effort:未預期例外不得擋下整個重跑
+            # 刻意不用 logger.exception:traceback 可能夾帶下層原始訊息(見 s3/errors.py 檔頭),
+            # 本專案 log 無機密過濾層,只留例外類別名。
+            logger.warning(
+                "評審重跑:附件下載發生未預期例外,該圖片不重放 key=%s error=%s",
+                key,
+                type(err).__name__,
+            )
+            continue
+        if not body:
+            logger.warning("評審重跑:附件內容為空,該圖片不重放 key=%s", key)
+            continue
+        mime = content_type_for_mime(content_type)
+        out[key] = f"data:{mime};base64,{base64.b64encode(body).decode('ascii')}"
+    return out
+
+
+def _inlined_part(part: dict[str, Any], data_uris: Mapping[str, str]) -> dict[str, Any]:
+    """把單一 image part 的物件 key 換成 data URI;非物件 key / 下載失敗 → 原樣返回。"""
+    key = _object_key_of_part(part)
+    data_uri = data_uris.get(key) if key is not None else None
+    if data_uri is None:
+        return part
+    inner = part.get("image_url")
+    image_url = dict(inner) if isinstance(inner, Mapping) else {}
+    image_url["url"] = data_uri
+    return {**part, "image_url": image_url}
+
+
+def _with_inlined_images(
+    request_content: dict[str, Any], data_uris: Mapping[str, str]
+) -> dict[str, Any]:
+    """套用 inline 結果,回**新** dict(含新的 messages / parts)。
+
+    絕不就地改 ORM 的 JSONB 物件 —— 一旦就地改,SQLAlchemy 可能把 base64 flush 回 DB。
+    """
+    messages: list[dict[str, Any]] = []
+    for msg in request_snapshot.messages_of(request_content):
+        content = msg.get("content")
+        if not isinstance(content, list):
+            messages.append(msg)
+            continue
+        parts = [_inlined_part(p, data_uris) for p in request_snapshot.as_parts(content)]
+        messages.append({**msg, "content": parts})
+    return {**request_content, "messages": messages}
+
+
+async def _inline_snapshot_images(
+    request_content: dict[str, Any], *, client: S3Client | None = None
+) -> dict[str, Any]:
+    """把快照 messages 內的 S3 物件 key 圖片換成 base64 data URI(**僅供送下游**)。
+
+    ⚠ 回傳值**只**能餵給 `replay_messages` 產出下游 payload;**禁**拿去 `RerunInput` 落地
+    或組 `build_discriminator_prompt` —— 那等於把 base64 寫回 DB,違反 v2.2.1「快照零
+    base64」硬規則。
+
+    快照內沒有任何物件 key 圖片(含單輪快照)→ 原樣返回,**完全不碰** S3:不取 client、
+    也不讀 S3 設定。單輪模式的重放行為(僅重放 text)不在本 task 範圍,維持不變。
+    """
+    if not request_snapshot.is_messages_snapshot(request_content):
+        return request_content
+    keys = _object_keys_in(request_content)
+    if not keys:
+        return request_content
+
+    if not get_settings().S3_STORAGE_ENABLED:
+        logger.warning("評審重跑:S3 未啟用,快照內 %d 張圖片不重放", len(keys))
+        return request_content
+
+    s3 = client
+    if s3 is None:
+        try:
+            s3 = get_s3_client()
+        except S3Error as err:
+            logger.warning(
+                "評審重跑:S3 client 取得失敗,快照內 %d 張圖片不重放 error=%s",
+                len(keys),
+                type(err).__name__,
+            )
+            return request_content
+
+    data_uris = await _download_data_uris(s3, keys)
+    if not data_uris:
+        return request_content
+    return _with_inlined_images(request_content, data_uris)
+
+
 async def _run_challenger(
     client: OpenRouterClient,
     *,
@@ -241,6 +399,9 @@ async def _run_challenger(
     `request_snapshot.replay_messages`(單輪僅重放 text;messages 直傳模式整段對話重放,
     file part 因快照未留 file_data 而剔除)。**不可**直接讀 `text` —— messages 模式沒有
     該鍵,會變成拿空 prompt 去真實計費呼叫 challenger(v2.1.2 缺陷)。
+
+    `request_content` 應為 `_inline_snapshot_images` 的產物(S3 圖片已 inline 成 base64,
+    僅供送下游),**不是**要落地的那份。
     """
     messages = request_snapshot.replay_messages(request_content)
     payload: dict[str, Any] = {"model": rerun_model, "messages": messages}
@@ -388,6 +549,11 @@ async def rerun_evaluation(
         )
         return
 
+    # 送下游用的快照:S3 物件 key 圖片重新 inline 成 base64(task-533)。**只**給
+    # `_run_challenger` 用 —— 落地(`RerunInput.request_content`)與 discriminator prompt
+    # 一律用原始 `request_content`,否則 base64 會被寫回 DB(v2.2.1 硬規則:快照零 base64)。
+    replay_content = await _inline_snapshot_images(request_content)
+
     success_count = 0
     for ch in challengers:
         challenger_model_uid: UUID | None = None
@@ -398,7 +564,7 @@ async def rerun_evaluation(
         try:
             outcome = await _run_challenger(
                 client,
-                request_content=request_content,
+                request_content=replay_content,
                 rerun_model=ch.rerun_model,
                 api_key=api_key,
             )

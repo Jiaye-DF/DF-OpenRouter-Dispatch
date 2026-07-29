@@ -228,21 +228,63 @@ export interface RequestTextPart {
   text: string;
 }
 
-export interface RequestImagePart {
-  type: "image_url";
-  image_url: { url: string };
+// ── 附件形態(v2.2.1 起,對應後端 services/attachment.py + api/v1/usage_logs.py presign)──
+// 單一附件的「內容參照」共有四種可能值,讀取端一律視為「附件存在」,只在能否取得內容上分歧:
+//   1. presigned URL(落 S3 成功,明細端回吐時已簽章;有 TTL,逾時即失效)
+//   2. 遠端 URL(呼叫端原本就給 http(s),後端不代抓、原樣保留)
+//   3. data URI(v2.2.0 以前的舊列,尚未遷移)
+//   4. S3 物件路徑(presign 失敗時退回的原值 —— **不是** URL,不可直接當 <img src>)
+// 另有「上傳失敗標記」:附件存在但內容未留存,只留可稽核的 metadata。
+
+// 失敗原因碼。後端日後可能新增,故此處僅列已知值,顯示端一律走對照表 + fallback,
+// 不得假設 exhaustive(漏接會讓明細頁對未知原因碼顯示空白)。
+export type AttachmentFailureReason =
+  | "invalid_data_uri"
+  | "s3_upload_failed"
+  | "s3_unavailable";
+
+export interface AttachmentFailureMeta {
+  mime?: string;
+  bytes?: number;
+  sha256?: string;
+  reason?: AttachmentFailureReason | string;
 }
 
-// file part 快照僅保留檔名(不留存檔案內容,法務考量)
+export interface RequestImagePart {
+  type: "image_url";
+  // presigned URL / 遠端 URL / 舊 data URI / (presign 失敗時)S3 物件路徑
+  image_url: { url: string };
+  upload_failed?: false;
+}
+
+// 上傳失敗的 image part:**沒有** image_url,只有 metadata(見 attachment.py `_image_marker`)
+export interface RequestImageFailedPart extends AttachmentFailureMeta {
+  type: "image_url";
+  upload_failed: true;
+}
+
+// file part:v2.2.0 以前僅保留檔名(內容從未留存);v2.2.1 起成功值多帶 `key`
+// (presigned URL / 遠端 URL;presign 失敗時為 S3 物件路徑)。
 export interface RequestFilePart {
   type: "file";
-  file: { filename: string };
+  file: {
+    filename: string;
+    key?: string;
+    upload_failed?: false;
+  };
+}
+
+export interface RequestFileFailedPart {
+  type: "file";
+  file: AttachmentFailureMeta & { filename: string; upload_failed: true };
 }
 
 export type RequestMessagePart =
   | RequestTextPart
   | RequestImagePart
-  | RequestFilePart;
+  | RequestImageFailedPart
+  | RequestFilePart
+  | RequestFileFailedPart;
 
 export interface RequestMessage {
   role: "system" | "user" | "assistant";
@@ -263,9 +305,11 @@ export interface RequestGenerationParams {
 export interface SingleTurnRequestContent extends RequestGenerationParams {
   model?: string;
   text?: string | null;
-  images?: string[];
-  // 上傳檔案僅保留檔名(不留存檔案內容,法務考量)
-  files?: string[];
+  // v2.2.1 起元素從「一律 data URI 字串」擴為:presigned URL / 遠端 URL / 舊 data URI /
+  // S3 物件路徑(皆為字串),或上傳失敗標記(物件)。
+  images?: (string | RequestImageFailedPart)[];
+  // v2.2.0 以前為**純檔名字串**(內容從未留存,不可點);v2.2.1 起為帶 `key` 的 file part。
+  files?: (string | RequestFilePart | RequestFileFailedPart)[];
   tools?: Record<string, unknown>[];
 }
 

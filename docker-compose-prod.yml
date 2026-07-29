@@ -66,6 +66,16 @@ services:
       M365_MAIL_SENDER: ${M365_MAIL_SENDER}
       # 申請單管理員通知開關(v2.2);於 API 進程觸發
       APIREQ_ADMIN_NOTIFY_ENABLED: ${APIREQ_ADMIN_NOTIFY_ENABLED}
+      # S3 物件儲存(v2.2.1);代理寫入端落地附件 + 管理端 presign,
+      # 遷移 script(scripts/migrate_base64_to_s3.py)亦於本容器內執行,故七顆都要。
+      # AWS_* 為機密,值一律由 Coolify Environment Variables 注入,禁寫實值。
+      S3_STORAGE_ENABLED: ${S3_STORAGE_ENABLED}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_KEY_PREFIX: ${S3_KEY_PREFIX}
+      S3_PRESIGN_TTL_SECONDS: ${S3_PRESIGN_TTL_SECONDS}
       SEQ_INGESTION_URL: http://seq
       SEQ_API_KEY: ${SEQ_API_KEY}
     expose:

@@ -203,6 +203,22 @@ class Settings(BaseSettings):
     # APIREQ_ADMIN_NOTIFY_ENABLED:申請單判決後通知系統管理員總開關;M365 未配置時自然不寄。
     APIREQ_ADMIN_NOTIFY_ENABLED: bool = False
 
+    # --- S3 物件儲存 (v2.2.1) ---
+    # S3_STORAGE_ENABLED:總開關;false → 完全維持 v2.2.0 行為(附件仍以 base64 入快照、不呼叫 S3),
+    # 為零風險回退開關。對齊既有 AI_EVAL_ENABLED / MODEL_SYNC_SCHEDULE_ENABLED 慣例。
+    S3_STORAGE_ENABLED: bool = False
+    # AWS IAM 憑證;⚠ AWS_SECRET_ACCESS_KEY 為機密,禁 commit 實值、禁入 log,
+    # 由本機 .env 或 Coolify 後台注入。
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "ap-northeast-1"
+    S3_BUCKET: str = "df-openrouter-dispatch-prod"
+    # S3_KEY_PREFIX:物件 key 前綴;dev / test / prod 共用單一 bucket,靠此前綴隔離避免互相污染。
+    S3_KEY_PREFIX: str = "dev"
+    # S3_PRESIGN_TTL_SECONDS:presigned URL 有效期(秒),預設 900(15 分鐘);
+    # 僅用於管理端明細頁顯示圖片 / 開啟檔案,不用於下游模型呼叫。
+    S3_PRESIGN_TTL_SECONDS: int = 900
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
@@ -279,6 +295,16 @@ class Settings(BaseSettings):
     def _coerce_apireq_admin_notify_enabled(cls, v: Any) -> bool:
         return coerce_bool_env("APIREQ_ADMIN_NOTIFY_ENABLED", v, False)
 
+    @field_validator("S3_STORAGE_ENABLED", mode="before")
+    @classmethod
+    def _coerce_s3_storage_enabled(cls, v: Any) -> bool:
+        return coerce_bool_env("S3_STORAGE_ENABLED", v, False)
+
+    @field_validator("S3_PRESIGN_TTL_SECONDS", mode="before")
+    @classmethod
+    def _coerce_s3_presign_ttl_seconds(cls, v: Any) -> int:
+        return coerce_int_env("S3_PRESIGN_TTL_SECONDS", v, 900)
+
     @model_validator(mode="after")
     def _fail_fast_in_prod(self) -> Settings:
         """正式環境啟動把關:安全前提缺漏即 raise,避免靜默以最不安全狀態上線。"""
@@ -289,6 +315,26 @@ class Settings(BaseSettings):
             errors.append("JWT_SECRET 長度須 >= 32")
         if not self.cors_origins_list:
             errors.append("CORS_ORIGINS 不可為空(prod 不允許回退為任意來源)")
+        # S3 開關為 false 時不檢查,讓未配置 AWS 的環境仍可正常啟動。
+        # AWS_REGION / S3_KEY_PREFIX 雖有預設值仍納入檢查:compose 以 ${VAR} 引用時,
+        # 該變數未設會被展開成空字串並「覆蓋掉」此處的預設值(而非回退),
+        # 導致 region 空白讓 boto3 失敗、prefix 空白讓各環境物件寫進 bucket 根目錄互相污染。
+        if self.S3_STORAGE_ENABLED:
+            missing = [
+                name
+                for name, value in (
+                    ("AWS_ACCESS_KEY_ID", self.AWS_ACCESS_KEY_ID),
+                    ("AWS_SECRET_ACCESS_KEY", self.AWS_SECRET_ACCESS_KEY),
+                    ("AWS_REGION", self.AWS_REGION),
+                    ("S3_BUCKET", self.S3_BUCKET),
+                    ("S3_KEY_PREFIX", self.S3_KEY_PREFIX),
+                )
+                if not value.strip()
+            ]
+            if missing:
+                errors.append(
+                    "S3_STORAGE_ENABLED=true 但下列 S3 設定缺漏:" + " / ".join(missing)
+                )
         if errors:
             raise ValueError("正式環境組態檢查失敗:" + "；".join(errors))
         return self

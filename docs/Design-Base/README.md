@@ -129,6 +129,7 @@
 | 串 Stripe / 綠界(payment) | + `90-third-party-service/05-payment.md` |
 | 接 Sentry / Datadog / Loki | + `90-third-party-service/06-monitoring.md` |
 | 接 reviewdog / codecov | + `90-third-party-service/07-lint-bot.md` |
+| 串物件儲存 / S3(圖片 / 檔案上傳、presigned URL) | + `90-third-party-service/09-object-storage.md` + `03-backend/03-async-and-tx.md` |
 
 ### Code Review 收口
 
@@ -253,6 +254,7 @@
 | `06-monitoring.md` | Sentry / Datadog / Loki + PII 過濾 |
 | `07-lint-bot.md` | reviewdog / codecov |
 | `08-df-sso.md` | 串公司 DF-SSO 中央:4 硬性契約 + 5 端點 + 模式 A/B + silent re-auth(skill 隨附 `INTEGRATION.md` 的宣告式子集) |
+| `09-object-storage.md` | 物件儲存(S3):`app/clients/s3/` 落點 + boto3 同步 SDK 必 `to_thread` + deterministic key + bucket private + presigned URL(權限繼承簽發者 IAM)+ 失敗 best-effort |
 
 ### `99-code-review/` — Code Review 收口
 

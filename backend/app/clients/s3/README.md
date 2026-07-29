@@ -11,11 +11,17 @@
 | 方法 | 說明 |
 | --- | --- |
 | `put_object(key, body, content_type)` | 上傳物件(強制 `ServerSideEncryption=AES256`) |
+| `get_object(key) -> (bytes, content_type)` | 下載物件內容;物件不存在**拋** `S3NotFoundError`(與 `head_object` 不同) |
 | `presign_get(key, ttl)` | 簽發短期唯讀 URL(分鐘級 TTL) |
 | `delete_object(key)` | 刪除物件 |
 | `head_object(key) -> bool` | 存在檢查;**物件層級**不存在回 `False`,bucket 不存在則拋 |
 
-四項皆為 `async`,內部一律 `asyncio.to_thread` 包裹 boto3(見下方「同步 SDK」)。
+五項皆為 `async`,內部一律 `asyncio.to_thread` 包裹 boto3(見下方「同步 SDK」)。
+
+> `get_object` 的用途是讓後端**自行取回內容**再送下游(task-533:AI 重跑把 S3 圖片重新
+> inline 成 base64 送 challenger),而**不是**簽 presigned URL 交給下游模型 —— 後者違反
+> 「presigned URL 視同臨時憑證」規範。回傳的 `content_type` 取自 S3 物件 metadata
+> (上傳時由 MIME 白名單寫入);S3 未回該欄時為空字串,**本 client 不猜 MIME**。
 
 ## bucket / region / 設定
 

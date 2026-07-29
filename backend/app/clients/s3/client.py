@@ -1,7 +1,7 @@
 """S3 物件儲存 client(boto3)。
 
 `boto3` 為**同步** SDK。本專案跑單 worker(`UVICORN_WORKERS=1`),在 async 函式內裸呼叫
-會卡住 event loop 上的**所有**請求,因此四項能力一律以 `asyncio.to_thread` 包裹
+會卡住 event loop 上的**所有**請求,因此五項能力一律以 `asyncio.to_thread` 包裹
 (對齊 `03-backend/03-async-and-tx.md` / `03-backend/08-performance.md`)。
 
 `generate_presigned_url` 雖為本地簽章計算(不打網路),仍一併包裹,讓「本檔所有 boto3
@@ -70,7 +70,7 @@ def _ensure_valid_key(key: str, *, operation: str) -> str:
 
 
 class S3Client:
-    """S3 物件儲存 client — 上傳 / 簽發短期讀取 URL / 刪除 / 存在檢查。
+    """S3 物件儲存 client — 上傳 / 下載 / 簽發短期讀取 URL / 刪除 / 存在檢查。
 
     boto3 的 `client` 物件為 thread-safe(`resource` 不是),可安全在多個
     `asyncio.to_thread` 執行緒間共用;建 client 有 metadata 載入成本,故以單例重用
@@ -111,7 +111,7 @@ class S3Client:
     def bucket(self) -> str:
         return self._bucket
 
-    # --- 四項能力(對外皆為 async,boto3 呼叫全在 to_thread 內)---
+    # --- 五項能力(對外皆為 async,boto3 呼叫全在 to_thread 內)---
 
     async def put_object(self, key: str, body: bytes, content_type: str) -> None:
         """上傳物件。
@@ -128,6 +128,31 @@ class S3Client:
         """
         safe_key = _ensure_valid_key(key, operation="put_object")
         await asyncio.to_thread(self._put_object_sync, safe_key, body, content_type)
+
+    async def get_object(self, key: str) -> tuple[bytes, str]:
+        """下載物件內容。
+
+        用於後端**自行取回內容**的場景(如 AI 重跑把 S3 圖片重新 inline 成 base64 送下游),
+        避免動用 presigned URL —— 後者視同臨時憑證,禁送第三方 / 下游模型
+        (`09-object-storage.md` § presigned URL)。
+
+        Args:
+            key: 物件 key。
+
+        Returns:
+            `(內容 bytes, Content-Type)`。S3 未回 `ContentType` 時第二元素為空字串;
+            本 client **不猜** MIME,由呼叫端決定 fallback。
+
+        Raises:
+            S3NotFoundError: 物件或 bucket 不存在。**與 `head_object` 不同**:本方法對
+                「物件不存在」一律拋出而非回 None —— 呼叫端多為 best-effort 下載,
+                `except S3Error` 一句即涵蓋所有失敗路徑,無需再分辨回傳值。
+            S3TimeoutError: 連線 / 讀取逾時。
+            S3UploadError: 權限不足 / 其他 `ClientError`。
+            S3Error: 其他未預期的 botocore 錯誤,或 key 不合法。
+        """
+        safe_key = _ensure_valid_key(key, operation="get_object")
+        return await asyncio.to_thread(self._get_object_sync, safe_key)
 
     async def presign_get(self, key: str, ttl: int) -> str:
         """簽發短期唯讀 URL。
@@ -198,6 +223,17 @@ class S3Client:
             )
         except (BotoCoreError, ClientError) as exc:
             raise self._to_app_error(exc, operation="put_object", key=key) from None
+
+    def _get_object_sync(self, key: str) -> tuple[bytes, str]:
+        try:
+            resp = self._s3.get_object(Bucket=self._bucket, Key=key)
+            # `Body` 為 StreamingBody:讀取才真正拉資料,故 read() 一併納入 try
+            # (逾時 / 連線中斷會在此拋出,不能漏接)。
+            body: bytes = resp["Body"].read()
+        except (BotoCoreError, ClientError) as exc:
+            raise self._to_app_error(exc, operation="get_object", key=key) from None
+        content_type = resp.get("ContentType") or ""
+        return body, str(content_type)
 
     def _presign_get_sync(self, key: str, ttl: int) -> str:
         try:

@@ -45,6 +45,7 @@ from app.models.usage_log import UsageLog
 from app.repositories.internal_key import InternalKeyRepository
 from app.repositories.openrouter_key import OpenRouterKeyRepository
 from app.schemas.model import ChatMessage, ResponseFormat
+from app.services.attachment import AttachmentSnapshot, build_attachment_snapshot
 from app.services.internal_key import decrypt_key as decrypt_internal_key
 from app.services.openrouter_key import decrypt_key
 from app.services.rate_limit import RateLimitExceeded, get_limiter
@@ -163,6 +164,10 @@ def _snapshot_message(message: ChatMessage) -> dict[str, Any]:
     content 為字串或非 file part(text / image_url)時原樣保留(image_url 含
     base64 原樣入 JSONB,與單輪模式 `images` 一致,對齊 propose v2.1.2 §D.4);
     file part 仿單輪模式**只記 `filename` 不記 `file_data`**(法務考量)。
+
+    ⚠ v2.2.1 起這是**後備路徑**:正式流程的 messages 快照改由 `attachment.py` 落地層
+    產出(附件存 S3 路徑,`files` 加記路徑 —— §D.3 已推翻上述「僅記檔名」決策)。
+    本 fn 只在 `_build_request_log(snapshot=None)` 時使用(單元測試直呼)。
     """
     dumped = message.model_dump(exclude_none=True)
     content = dumped.get("content")
@@ -186,31 +191,49 @@ def _build_request_log(
     temperature: float | None = None,
     max_tokens: int | None = None,
     response_format: ResponseFormat | None = None,
+    snapshot: AttachmentSnapshot | None = None,
 ) -> dict[str, Any]:
     """組出寫入 usage_logs.request_content 的請求快照(雙內容模式,v2.1.2)。
 
     與 `_rewrite_request` 分開:這裡保留使用者「原始輸入語意」供 dashboard 檢視,
     而非下游實際送出的 payload 結構。tools 有值才記。
 
-    - 單輪模式:`{model, text, images}`(+ tools / files),結構與 v2.1.1 一致。
-      files 刻意**只記錄檔名**(`filename`)、不記 `file_data`:避免將使用者上傳的
-      檔案內容留存於系統(法務考量)。
-    - messages 直傳模式:`{model, messages: <原樣快照>}`;file part 同樣僅記檔名,
-      image_url part 原樣保留(見 `_snapshot_message`)。
+    - 單輪模式:`{model, text, images}`(+ tools / files),鍵與鍵序與 v2.1.1 一致。
+    - messages 直傳模式:`{model, messages: <快照>}`。
     - 生成參數(兩模式皆同):有帶的 `temperature` / `max_tokens` /
       `response_format` 一併記入,供用量明細追溯呼叫條件;未帶不出現(不記 None)。
+
+    **附件值的形態**(v2.2.1 / task-525):`snapshot` 有值時,`images` / `files` /
+    `messages` 內的附件一律取 `app/services/attachment.py` 落地層的產出 ——
+    成功為 S3 物件路徑(遠端 URL 原樣保留)、失敗為 `upload_failed` 標記;
+    `S3_STORAGE_ENABLED=false` 時落地層回 v2.2.0 等價值,本 fn 因此不需分支判斷開關。
+    `files` 由 v2.1.2 的「僅記檔名」升級為 `filename` + 路徑(**推翻**該版法務決策,
+    propose v2.2.1 §D.3)。`snapshot=None`(僅單元測試直呼)時退回 v2.2.0 行為。
+
+    無論走哪條路徑,`file_data` 的 base64 **永不**進入本 fn 的輸出(§D.5 硬規則)。
     """
     log: dict[str, Any]
     if messages is not None:
-        log = {"model": model, "messages": [_snapshot_message(m) for m in messages]}
+        snapshot_messages = (
+            snapshot.messages
+            if snapshot is not None and snapshot.messages is not None
+            else [_snapshot_message(m) for m in messages]
+        )
+        log = {"model": model, "messages": snapshot_messages}
         if tools:
             log["tools"] = tools
     else:
-        log = {"model": model, "text": text, "images": list(images or [])}
+        log = {
+            "model": model,
+            "text": text,
+            "images": list(snapshot.images) if snapshot is not None else list(images or []),
+        }
         if tools:
             log["tools"] = tools
         if files:
-            log["files"] = [f["filename"] for f in files]
+            log["files"] = (
+                list(snapshot.files) if snapshot is not None else [f["filename"] for f in files]
+            )
     if temperature is not None:
         log["temperature"] = temperature
     if max_tokens is not None:
@@ -218,6 +241,41 @@ def _build_request_log(
     if response_format is not None:
         log["response_format"] = response_format.model_dump(exclude_none=True)
     return log
+
+
+def _new_usage_log_uid() -> UUID:
+    """在請求最前端產一顆 UUIDv7,同時作為 usage_logs 主鍵與附件 S3 key 的擁有者層級。
+
+    why 不等到 INSERT 時才產:附件要在呼叫下游**之前**落 S3,而 key 需要一個擁有者
+    層級;若兩邊各產一顆,S3 上的物件就再也對不回那筆 usage_log。故一顆 uid 貫穿
+    「附件 key → 記帳主鍵」,與遷移路徑 `scope="legacy"` 用 `usage_log_uid` 當
+    owner 的語意一致(`attachment.build_object_key`)。
+    """
+    return UUID(str(uuid7()))
+
+
+async def _attachment_snapshot(
+    usage_log_uid: UUID,
+    *,
+    images: list[str] | None,
+    files: list[dict[str, str]] | None,
+    messages: list[ChatMessage] | None,
+) -> AttachmentSnapshot:
+    """把本次請求的附件交給落地層,取回寫進 `request_content` 的快照用值。
+
+    本 fn 是 proxy 與 S3 的**唯一**接觸面:proxy 不碰 boto3、不組 key、不判開關,
+    全交由 `app/services/attachment.py`(§B.2)。落地層為 best-effort —— 上傳失敗
+    只回失敗標記、不拋例外,故此處不需要(也刻意不加)例外處理:任何「補救用」的
+    fallback 都只會退回寫 base64,正是本版要消滅的東西。
+
+    下游 payload 由 `_rewrite_request` 以**原始輸入**另行組裝,不受本 fn 影響(§D.4)。
+    """
+    return await build_attachment_snapshot(
+        request_uid=str(usage_log_uid),
+        images=images,
+        files=files,
+        messages=messages,
+    )
 
 
 def _extract_content(resp: dict[str, Any]) -> str:
@@ -390,6 +448,7 @@ def schedule_usage_log(
     status: str,
     error_code: str | None,
     request_log: dict[str, Any],
+    usage_log_uid: UUID | None = None,
 ) -> None:
     """Fire-and-forget 寫入一筆 usage_logs(獨立 session,不受主 request 影響)。
 
@@ -409,6 +468,11 @@ def schedule_usage_log(
         error_code: 失敗時的錯誤碼(如 rate_limited / model_not_found);成功為 None。
         request_log: 請求快照(見 `_build_request_log`);本 fn 另由其 `tools` 鍵
             推導 `used_tools` 欄(有非空 tools → True)。
+        usage_log_uid: 本筆紀錄的主鍵。由呼叫端於**請求最前端**產生並沿用
+            (v2.2.1 / task-525):同一顆 uid 亦作為附件 S3 key 的擁有者層級,
+            日後才能由 `.../chat/<YYYY>/<MM>/<DD>/<uid>/...` 反查到這筆 usage_log。
+            一次請求至多寫一筆 usage_logs,故沿用同一顆 uid 不會撞主鍵;
+            未提供(舊呼叫點 / 測試)時自行產生。
     """
 
     async def _task() -> None:
@@ -425,7 +489,7 @@ def schedule_usage_log(
                 used_tools = bool((request_log or {}).get("tools"))
 
                 row = UsageLog(
-                    usage_log_uid=UUID(str(uuid7())),
+                    usage_log_uid=usage_log_uid or UUID(str(uuid7())),
                     user_uid=user_uid,
                     department_uid=department_uid,
                     project_uid=project_uid,
@@ -505,9 +569,10 @@ async def run_chat(
         images: 圖片 URL / data URI 清單,可為 None(單輪模式)。
         videos: 影片清單;本版本不支援,非空即回 400。
         tools: 可選工具清單,原樣透傳給下游;目前僅支援 server 端工具。
-        files: 上傳檔案清單(filename / file_data),如 PDF;用量紀錄僅留檔名。
+        files: 上傳檔案清單(filename / file_data),如 PDF;用量紀錄留檔名 + S3 路徑
+            (v2.2.1;`file_data` 的 base64 永不入用量紀錄)。
         messages: messages 直傳模式的多輪訊息(與 text/images/files 互斥);
-            schema 驗證後原樣透傳;用量紀錄 file part 僅留檔名。
+            schema 驗證後原樣透傳;用量紀錄 file part 留檔名 + S3 路徑。
         temperature: 生成溫度(0-2);None 不注入 payload,走模型預設。
         max_tokens: 回覆 token 上限(≥1);None 不注入 payload,走模型預設。
         response_format: 型別化回覆格式(json_object / json_schema);None 不注入。
@@ -534,6 +599,7 @@ async def run_chat(
         max_tokens=max_tokens,
         response_format=response_format,
     )
+    usage_log_uid = _new_usage_log_uid()
     request_log = _build_request_log(
         model,
         text,
@@ -544,6 +610,9 @@ async def run_chat(
         temperature=temperature,
         max_tokens=max_tokens,
         response_format=response_format,
+        snapshot=await _attachment_snapshot(
+            usage_log_uid, images=images, files=files, messages=messages
+        ),
     )
 
     if model_row.provider == "internal":
@@ -556,6 +625,7 @@ async def run_chat(
             user_uid=user_uid,
             payload=payload,
             request_log=request_log,
+            usage_log_uid=usage_log_uid,
         )
     return await _run_chat_openrouter(
         db,
@@ -566,6 +636,7 @@ async def run_chat(
         user_uid=user_uid,
         payload=payload,
         request_log=request_log,
+        usage_log_uid=usage_log_uid,
     )
 
 
@@ -579,6 +650,7 @@ async def _run_chat_openrouter(
     user_uid: UUID,
     payload: dict[str, Any],
     request_log: dict[str, Any],
+    usage_log_uid: UUID,
 ) -> str:
     """OpenRouter 流程 — 每把 Key 經 rate limiter,撞限額 failover 換下一把。
 
@@ -594,6 +666,7 @@ async def _run_chat_openrouter(
         user_uid: 呼叫者使用者 uid(記帳用)。
         payload: 已重組好的 `/chat/completions` payload(含 model / messages / tools)。
         request_log: 請求快照,寫入 usage_logs 用。
+        usage_log_uid: 由 `run_chat` 產生、與附件 S3 key 共用的紀錄主鍵。
 
     Returns:
         模型回應的純文字內容。
@@ -661,6 +734,7 @@ async def _run_chat_openrouter(
                 status="error",
                 error_code="model_not_found",
                 request_log=request_log,
+                usage_log_uid=usage_log_uid,
             )
             raise AppError("model_not_found", code=404) from exc
         except OpenRouterForbiddenError as exc:
@@ -676,6 +750,7 @@ async def _run_chat_openrouter(
                 status="error",
                 error_code="model_forbidden",
                 request_log=request_log,
+                usage_log_uid=usage_log_uid,
             )
             raise AppError("model_forbidden", code=403) from exc
         except OpenRouterRateLimitError as exc:
@@ -691,6 +766,7 @@ async def _run_chat_openrouter(
                 status="error",
                 error_code="rate_limited",
                 request_log=request_log,
+                usage_log_uid=usage_log_uid,
             )
             raise AppError("rate_limited", code=429) from exc
         except OpenRouterError as exc:
@@ -714,6 +790,7 @@ async def _run_chat_openrouter(
             status="success",
             error_code=None,
             request_log=request_log,
+            usage_log_uid=usage_log_uid,
         )
         return _extract_content(resp_body)
 
@@ -733,6 +810,7 @@ async def _run_chat_openrouter(
         status="error",
         error_code=error_code,
         request_log=request_log,
+        usage_log_uid=usage_log_uid,
     )
     raise AppError(error_code, code=code) from last_err
 
@@ -775,6 +853,7 @@ async def _run_chat_internal(
     user_uid: UUID,
     payload: dict[str, Any],
     request_log: dict[str, Any],
+    usage_log_uid: UUID,
 ) -> str:
     """Internal 流程(v1.2 增量,DB-driven per-Key):
 
@@ -792,6 +871,7 @@ async def _run_chat_internal(
         user_uid: 呼叫者使用者 uid(記帳用)。
         payload: 已重組好的 `/chat/completions` payload。
         request_log: 請求快照,寫入 usage_logs 用。
+        usage_log_uid: 由 `run_chat` 產生、與附件 S3 key 共用的紀錄主鍵。
 
     Returns:
         模型回應的純文字內容。
@@ -842,6 +922,7 @@ async def _run_chat_internal(
             key_row=key_row,
             payload=payload,
             request_log=request_log,
+            usage_log_uid=usage_log_uid,
             started=started,
             department_uid=department_uid,
             project_uid=project_uid,
@@ -878,6 +959,7 @@ async def _run_chat_internal(
                 status="error",
                 error_code="internal_busy",
                 request_log=request_log,
+                usage_log_uid=usage_log_uid,
             )
             raise AppError(
                 "internal_busy",
@@ -891,6 +973,7 @@ async def _run_chat_internal(
             key_row=chosen,
             payload=payload,
             request_log=request_log,
+            usage_log_uid=usage_log_uid,
             started=started,
             department_uid=department_uid,
             project_uid=project_uid,
@@ -911,6 +994,7 @@ async def _try_internal_call(
     key_row: InternalKey,
     payload: dict[str, Any],
     request_log: dict[str, Any],
+    usage_log_uid: UUID,
     started: float,
     department_uid: UUID,
     project_uid: UUID,
@@ -928,6 +1012,7 @@ async def _try_internal_call(
         key_row: 本次嘗試使用的 internal_key 資料列。
         payload: 已重組好的 `/chat/completions` payload。
         request_log: 請求快照,寫入 usage_logs 用。
+        usage_log_uid: 由 `run_chat` 產生、與附件 S3 key 共用的紀錄主鍵。
         started: 本次請求起算的 time.monotonic() 起點,用於算 latency。
         department_uid: 呼叫者部門 uid(記帳用)。
         project_uid: 呼叫者專案 uid(記帳用)。
@@ -967,6 +1052,7 @@ async def _try_internal_call(
         status="success",
         error_code=None,
         request_log=request_log,
+        usage_log_uid=usage_log_uid,
     )
     return _extract_content(resp_body)
 
@@ -1011,9 +1097,10 @@ async def run_chat_stream(
         images: 圖片 URL / data URI 清單,可為 None(單輪模式)。
         videos: 影片清單;本版本不支援,非空即 400。
         tools: 可選工具清單,原樣透傳。
-        files: 上傳檔案清單(filename / file_data),如 PDF;用量紀錄僅留檔名。
+        files: 上傳檔案清單(filename / file_data),如 PDF;用量紀錄留檔名 + S3 路徑
+            (v2.2.1;`file_data` 的 base64 永不入用量紀錄)。
         messages: messages 直傳模式的多輪訊息(與 text/images/files 互斥);
-            schema 驗證後原樣透傳;用量紀錄 file part 僅留檔名。
+            schema 驗證後原樣透傳;用量紀錄 file part 留檔名 + S3 路徑。
         temperature: 生成溫度(0-2);None 不注入 payload,走模型預設。
         max_tokens: 回覆 token 上限(≥1);None 不注入 payload,走模型預設。
         response_format: 型別化回覆格式(json_object / json_schema);None 不注入。
@@ -1047,6 +1134,7 @@ async def run_chat_stream(
     payload["stream"] = True
     # 確保最後一個 chunk 帶 usage,供記帳;對 SDK 為 OpenAI 標準欄位,透明無害。
     payload["stream_options"] = {"include_usage": True}
+    usage_log_uid = _new_usage_log_uid()
     request_log = _build_request_log(
         model,
         text,
@@ -1057,6 +1145,9 @@ async def run_chat_stream(
         temperature=temperature,
         max_tokens=max_tokens,
         response_format=response_format,
+        snapshot=await _attachment_snapshot(
+            usage_log_uid, images=images, files=files, messages=messages
+        ),
     )
 
     async for chunk in _stream_openrouter(
@@ -1068,6 +1159,7 @@ async def run_chat_stream(
         user_uid=user_uid,
         payload=payload,
         request_log=request_log,
+        usage_log_uid=usage_log_uid,
     ):
         yield chunk
 
@@ -1082,6 +1174,7 @@ async def _stream_openrouter(
     user_uid: UUID,
     payload: dict[str, Any],
     request_log: dict[str, Any],
+    usage_log_uid: UUID,
 ) -> AsyncIterator[str]:
     """OpenRouter 串流流程 — Key failover 在「收到第一個 chunk 之前」完成。
 
@@ -1098,6 +1191,7 @@ async def _stream_openrouter(
         user_uid: 呼叫者使用者 uid(記帳用)。
         payload: 已含 stream=True 的 `/chat/completions` payload。
         request_log: 請求快照,寫入 usage_logs 用。
+        usage_log_uid: 由 `run_chat_stream` 產生、與附件 S3 key 共用的紀錄主鍵。
 
     Yields:
         OpenRouter SSE 字串(已含換行框架)。
@@ -1131,6 +1225,7 @@ async def _stream_openrouter(
             status="error",
             error_code=error_code,
             request_log=request_log,
+            usage_log_uid=usage_log_uid,
         )
 
     # --- Phase 1:Key failover,直到成功連上(收到第一個 chunk)---
@@ -1262,4 +1357,5 @@ async def _stream_openrouter(
             status=status,
             error_code=error_code,
             request_log=request_log,
+            usage_log_uid=usage_log_uid,
         )

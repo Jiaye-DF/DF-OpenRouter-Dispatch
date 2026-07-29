@@ -75,6 +75,8 @@
 | `uuid-utils`(UUIDv7) | 0.10.x | `0.10.x` |
 | `python-multipart` | 0.0.12+ | `0.0.12` |
 | `seqlog`(Seq 集中式 log) | 0.4.x | `0.4.3` |
+| `boto3`(S3 物件儲存;**同步** SDK,呼叫必經 `asyncio.to_thread`) | 1.43.x | `1.43.58` |
+| `botocore`(boto3 傳遞相依;`Config` timeout / retry 與 `stub.Stubber` 測試替身) | 1.43.x | `1.43.58` |
 | `jinja2`(開通 / 通知信模板) | 3.1.x | `3.1.x` |
 | `pytest` / `pytest-asyncio` / `pytest-cov` / `respx` | 8.x / 0.24+ / 6.x / 0.22.x | `8.3.x` / `0.24.x` / `6.0.x` / `0.22.x` |
 | `ruff` / `mypy` | 0.8.x / 1.13.x | `0.8.x` / `1.13.x` |

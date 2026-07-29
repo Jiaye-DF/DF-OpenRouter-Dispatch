@@ -30,7 +30,8 @@ estimated_hours: 1
 ## Acceptance
 
 - [ ] prod compose 七鍵齊備:`for k in S3_STORAGE_ENABLED AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION S3_BUCKET S3_KEY_PREFIX S3_PRESIGN_TTL_SECONDS; do grep -q "$k" docker-compose-prod.yml || echo "MISSING: $k"; done` **無任何輸出**
-- [ ] **無機密實值**:`grep -nE "AWS_SECRET_ACCESS_KEY:\s*[^$\s]" docker-compose-prod.yml` **無輸出**(值必為 `${...}` 形式)
+- [ ] **無機密實值**:`grep -nE "^[[:space:]]*(S3_[A-Z_]+|AWS_[A-Z_]+):[[:space:]]*[^[:space:]$]" docker-compose-prod.yml docker-compose.dev.yml` **無輸出**(七鍵值必為 `${...}` 形式)
+  > ⚠️ 本條原寫作 `"AWS_SECRET_ACCESS_KEY:\s*[^$\s]"` —— ERE 的中括號內 `\s` **不是**空白字元類而是字面 `\` 與 `s`,會對合規的 `${AWS_SECRET_ACCESS_KEY}` 誤報命中。已改用 POSIX class(2026-07-29,由 task-529 worker 回報)。
 - [ ] 兩份 compose 皆語法正確:`docker compose -f docker-compose.dev.yml config -q` 與 `docker compose -f docker-compose-prod.yml config -q` 皆回 exit 0
 - [ ] dev 路徑可見性:`docker compose -f docker-compose.dev.yml config | grep -q "env_file\|S3_STORAGE_ENABLED"` 為真
 - [ ] `gitleaks detect --no-git` 對兩份 compose 無命中

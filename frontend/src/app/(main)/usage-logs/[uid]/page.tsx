@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Download, ExternalLink } from "lucide-react";
+import { ArrowLeft, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { PageTitle } from "@/components/common/PageTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { formatUSD } from "@/lib/utils/format";
 import { useAppSelector } from "@/store/hooks";
 import { isMessagesRequest } from "@/types/api";
 import type {
+  AttachmentFailureMeta,
   RequestGenerationParams,
   RequestMessage,
   RequestMessagePart,
@@ -28,6 +29,11 @@ import type {
 // v2.1.2(task-434):request_content 支援雙內容模式——舊單輪 {text, images, ...}
 // 渲染不變;messages 直傳模式依 role 分段渲染(形狀判別,不做資料遷移)。
 // 快照型別與 isMessagesRequest() 一律取自 types/api.ts(共用契約,不在本頁重複定義)。
+//
+// v2.2.1(task-528):附件落 S3 後,單一附件值同時存在**多種形態**(見 types/api.ts
+// 「附件形態」段)。本頁一律先把原始值正規化成 ImageSource / FileEntry 再渲染,
+// 所有判別都對 unknown 做 runtime 檢查——快照是歷史 JSONB,任何形狀都可能出現,
+// 一列畸形不得讓整頁掛掉(propose §E)。
 
 function dataUriToBlob(dataUri: string): Blob | null {
   const m = /^data:([^;]+);base64,(.*)$/s.exec(dataUri);
@@ -42,48 +48,297 @@ function dataUriToBlob(dataUri: string): Blob | null {
   }
 }
 
-function ImageItem({ src, index }: { src: string; index: number }) {
-  const isDataUri = src.startsWith("data:");
+// ── 附件值正規化(v2.2.1)────────────────────────────────────────────────
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(source: unknown, key: string): string {
+  if (!isRecord(source)) return "";
+  const value = source[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+const DATA_URI_PREFIX = "data:";
+const REMOTE_URL_RE = /^https?:\/\//i;
+// presigned URL 必帶 SigV4(或舊式 SigV2)查詢參數;沒有就是呼叫端原本給的外部連結
+// (後端 §D.2 對遠端 URL 原樣保留、不代抓)。此判別只影響標示文案,判錯不影響可用性。
+const PRESIGNED_QUERY_RE = /[?&](X-Amz-Signature|X-Amz-Credential|AWSAccessKeyId)=/i;
+
+type ContentLocation = "stored" | "external";
+
+const LOCATION_LABELS: Record<ContentLocation, string> = {
+  stored: "已存檔",
+  external: "外部連結",
+};
+
+// 後端 attachment.py 的失敗原因短代碼;未列到的一律原樣顯示,不吞成空白。
+const FAILURE_REASON_LABELS: Record<string, string> = {
+  invalid_data_uri: "來源內容格式不正確",
+  s3_upload_failed: "儲存服務上傳失敗",
+  s3_unavailable: "儲存服務暫時無法使用",
+};
+
+function locationOf(url: string): ContentLocation {
+  return PRESIGNED_QUERY_RE.test(url) ? "stored" : "external";
+}
+
+/** 取出上傳失敗標記的 metadata;非失敗標記 → null。image 走頂層、file 走 `file.*`。 */
+function failureMetaOf(value: unknown): AttachmentFailureMeta | null {
+  if (!isRecord(value)) return null;
+  const inner = isRecord(value.file) ? value.file : null;
+  const holder =
+    value.upload_failed === true
+      ? value
+      : inner?.upload_failed === true
+        ? inner
+        : null;
+  if (holder === null) return null;
+  return {
+    mime: typeof holder.mime === "string" ? holder.mime : undefined,
+    bytes: typeof holder.bytes === "number" ? holder.bytes : undefined,
+    sha256: typeof holder.sha256 === "string" ? holder.sha256 : undefined,
+    reason: typeof holder.reason === "string" ? holder.reason : undefined,
+  };
+}
+
+/** 取附件的內容參照:單輪 images 為字串本身,part 則取 `image_url.url` / `file.key`。 */
+function refOf(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (!isRecord(value)) return "";
+  return readString(value.image_url, "url") || readString(value.file, "key");
+}
+
+type ImageSource =
+  | { kind: "url"; url: string; location: ContentLocation }
+  | { kind: "data"; uri: string }
+  | { kind: "failed"; meta: AttachmentFailureMeta }
+  | { kind: "unavailable" };
+
+function resolveImageSource(value: unknown): ImageSource {
+  const meta = failureMetaOf(value);
+  if (meta) return { kind: "failed", meta };
+
+  const ref = refOf(value);
+  if (!ref) return { kind: "unavailable" };
+  if (ref.slice(0, DATA_URI_PREFIX.length).toLowerCase() === DATA_URI_PREFIX) {
+    return { kind: "data", uri: ref };
+  }
+  if (REMOTE_URL_RE.test(ref)) {
+    return { kind: "url", url: ref, location: locationOf(ref) };
+  }
+  // 既非 data URI 也非 http(s):presign 失敗時退回的 S3 物件路徑。
+  // 直接塞進 <img src> 只會對本站發一個必然 404 的相對請求,故視為「連結未產生」。
+  return { kind: "unavailable" };
+}
+
+type FileSource =
+  | { kind: "link"; url: string; location: ContentLocation }
+  | { kind: "failed"; meta: AttachmentFailureMeta }
+  // v2.2.0(含全部歷史列)只留檔名,內容從未留存 → 不可點
+  | { kind: "name-only" }
+  // 有留存路徑但簽章連結沒產生出來(presign 失敗)→ 重新載入可能就好了
+  | { kind: "unavailable" };
+
+interface FileEntry {
+  filename: string;
+  source: FileSource;
+}
+
+function resolveFileEntry(value: unknown): FileEntry {
+  if (typeof value === "string") {
+    return { filename: value.trim(), source: { kind: "name-only" } };
+  }
+  const filename = readString(isRecord(value) ? value.file : undefined, "filename");
+  const meta = failureMetaOf(value);
+  if (meta) return { filename, source: { kind: "failed", meta } };
+
+  const ref = refOf(value);
+  if (!ref) return { filename, source: { kind: "name-only" } };
+  if (REMOTE_URL_RE.test(ref)) {
+    return { filename, source: { kind: "link", url: ref, location: locationOf(ref) } };
+  }
+  if (ref.slice(0, DATA_URI_PREFIX.length).toLowerCase() === DATA_URI_PREFIX) {
+    // 快照理論上不留 file_data,但真出現時仍給得出可開啟的連結
+    return { filename, source: { kind: "link", url: ref, location: "stored" } };
+  }
+  return { filename, source: { kind: "unavailable" } };
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
+}
+
+// presigned URL 有 TTL(預設 15 分鐘),停留過久後圖片會載入失敗;
+// 此 context 讓深層的附件元件能要求整筆明細重取,換一批新連結。
+const ReloadContext = React.createContext<(() => void) | null>(null);
+
+// ── 附件呈現元件 ────────────────────────────────────────────────────────
+
+interface AttachmentMetaProps {
+  meta: AttachmentFailureMeta;
+}
+
+function AttachmentMeta({ meta }: AttachmentMetaProps) {
+  const items: string[] = [];
+  if (meta.mime) items.push(`型別:${meta.mime}`);
+  if (typeof meta.bytes === "number" && meta.bytes > 0) {
+    items.push(`大小:${formatBytes(meta.bytes)}`);
+  }
+  if (meta.reason) {
+    items.push(`原因:${FAILURE_REASON_LABELS[meta.reason] ?? meta.reason}`);
+  }
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((text) => (
+        <Badge key={text} variant="secondary" className="max-w-full break-all">
+          {text}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+interface AttachmentNoticeProps {
+  title: string;
+  description?: string;
+  meta?: AttachmentFailureMeta;
+  onReload?: () => void;
+}
+
+function AttachmentNotice({
+  title,
+  description,
+  meta,
+  onReload,
+}: AttachmentNoticeProps) {
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/40 p-3">
+      <span className="text-sm font-medium break-words">{title}</span>
+      {description && (
+        <span className="text-sm text-muted-foreground break-words">
+          {description}
+        </span>
+      )}
+      {meta && <AttachmentMeta meta={meta} />}
+      {onReload && (
+        <div>
+          <Button variant="outline" size="sm" onClick={onReload}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            重新載入
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ImageItemProps {
+  // 單輪 `images[i]` 原始值(字串 / 失敗標記)或 messages 的 image_url part;
+  // 形狀不保證(歷史 JSONB),一律經 resolveImageSource 正規化。
+  value: unknown;
+  index: number;
+}
+
+function ImageItem({ value, index }: ImageItemProps) {
+  const source = React.useMemo(() => resolveImageSource(value), [value]);
+  const reload = React.useContext(ReloadContext);
   const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
-  const [failed, setFailed] = React.useState(false);
+  const [decodeFailed, setDecodeFailed] = React.useState(false);
+  const [loadFailed, setLoadFailed] = React.useState(false);
+
+  const dataUri = source.kind === "data" ? source.uri : null;
 
   React.useEffect(() => {
-    if (!isDataUri) return;
-    const blob = dataUriToBlob(src);
-    if (!blob) {
-      setFailed(true);
+    if (dataUri === null) {
+      setBlobUrl(null);
+      setDecodeFailed(false);
       return;
     }
+    const blob = dataUriToBlob(dataUri);
+    if (!blob) {
+      setBlobUrl(null);
+      setDecodeFailed(true);
+      return;
+    }
+    setDecodeFailed(false);
     const url = URL.createObjectURL(blob);
     setBlobUrl(url);
     // 元件卸載 / src 變更時釋放,避免 object URL 洩漏
     return () => URL.revokeObjectURL(url);
-  }, [src, isDataUri]);
+  }, [dataUri]);
 
-  const displaySrc = isDataUri ? blobUrl : src;
+  // 重新取明細後拿到新連結 → 清掉上一輪的載入失敗狀態
+  React.useEffect(() => {
+    setLoadFailed(false);
+  }, [source]);
 
-  if (failed) {
+  const label = `圖片 #${index + 1}`;
+
+  if (source.kind === "failed") {
     return (
-      <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
-        圖片 #{index + 1}:無法解析的 base64 內容
-      </div>
+      <AttachmentNotice
+        title={`${label}:上傳失敗,內容未留存`}
+        meta={source.meta}
+      />
     );
   }
 
+  if (source.kind === "unavailable") {
+    return (
+      <AttachmentNotice
+        title={`${label}:內容連結未產生`}
+        description="內容已留存,但這次沒能取得可讀取的連結。請重新載入再試。"
+        onReload={reload ?? undefined}
+      />
+    );
+  }
+
+  if (decodeFailed) {
+    return <AttachmentNotice title={`${label}:無法解析的內嵌內容`} />;
+  }
+
+  if (loadFailed) {
+    return (
+      <AttachmentNotice
+        title={`${label}:圖片載入失敗`}
+        description={
+          source.kind === "data"
+            ? "內嵌內容無法解碼為可顯示的圖片。"
+            : "連結已逾時或失效(連結有效期約 15 分鐘)。請重新載入取得新連結。"
+        }
+        onReload={source.kind === "data" ? undefined : (reload ?? undefined)}
+      />
+    );
+  }
+
+  const displaySrc = source.kind === "data" ? blobUrl : source.url;
+  const locationLabel =
+    source.kind === "data" ? "已存檔・舊格式" : LOCATION_LABELS[source.location];
+
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-2 rounded-xl border border-border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm text-muted-foreground">
-          圖片 #{index + 1}
-          {isDataUri ? "(base64)" : "(URL)"}
+          {label}({locationLabel})
         </span>
         {displaySrc && (
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <a
               href={displaySrc}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-sm underline underline-offset-2 hover:text-foreground"
+              className="inline-flex min-h-[44px] items-center gap-1 text-sm underline underline-offset-2 hover:cursor-pointer hover:text-foreground md:min-h-0"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               開新分頁
@@ -91,7 +346,7 @@ function ImageItem({ src, index }: { src: string; index: number }) {
             <a
               href={displaySrc}
               download={`usage-image-${index + 1}`}
-              className="inline-flex items-center gap-1 text-sm underline underline-offset-2 hover:text-foreground"
+              className="inline-flex min-h-[44px] items-center gap-1 text-sm underline underline-offset-2 hover:cursor-pointer hover:text-foreground md:min-h-0"
             >
               <Download className="h-3.5 w-3.5" />
               下載
@@ -104,11 +359,75 @@ function ImageItem({ src, index }: { src: string; index: number }) {
         <img
           src={displaySrc}
           alt={`輸入圖片 ${index + 1}`}
-          className="max-h-80 w-auto rounded-md border border-border object-contain"
+          loading="lazy"
+          onError={() => setLoadFailed(true)}
+          className="max-h-80 w-auto max-w-full rounded-md border border-border object-contain"
         />
       ) : (
         <Skeleton className="h-40 w-full" />
       )}
+    </div>
+  );
+}
+
+interface FileItemProps {
+  entry: FileEntry;
+  index: number;
+}
+
+function FileItem({ entry, index }: FileItemProps) {
+  const reload = React.useContext(ReloadContext);
+  const name = entry.filename || "(未命名檔案)";
+  const label = `檔案 #${index + 1}`;
+
+  if (entry.source.kind === "failed") {
+    return (
+      <AttachmentNotice
+        title={`${label}:${name} — 上傳失敗,內容未留存`}
+        meta={entry.source.meta}
+      />
+    );
+  }
+
+  if (entry.source.kind === "unavailable") {
+    return (
+      <AttachmentNotice
+        title={`${label}:${name}`}
+        description="內容已留存,但這次沒能取得可讀取的連結。請重新載入再試。"
+        onReload={reload ?? undefined}
+      />
+    );
+  }
+
+  if (entry.source.kind === "name-only") {
+    return (
+      <div className="flex flex-col gap-1 rounded-xl border border-border bg-muted/40 px-3 py-2">
+        <span className="font-mono text-sm break-all">{name}</span>
+        <span className="text-sm text-muted-foreground">
+          (未留存)本版之前僅記錄檔名,未留存檔案內容
+        </span>
+      </div>
+    );
+  }
+
+  const { url, location } = entry.source;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+      <span className="font-mono text-sm break-all">{name}</span>
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-muted-foreground">
+          ({LOCATION_LABELS[location]})
+        </span>
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex min-h-[44px] items-center gap-1 text-sm underline underline-offset-2 hover:cursor-pointer hover:text-foreground md:min-h-0"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          開啟
+        </a>
+      </div>
     </div>
   );
 }
@@ -129,7 +448,7 @@ function roleMetaOf(role: string): RoleMeta {
 }
 
 // 單則 message 的 content:字串直接顯示;parts 陣列依型別呈現
-// (text 文字 / image_url 縮圖沿用 ImageItem / file 檔名)。
+// (text 文字 / image_url 沿用 ImageItem / file 沿用 FileItem)。
 function MessageContent({
   content,
 }: {
@@ -146,6 +465,7 @@ function MessageContent({
   }
 
   let imageIndex = 0;
+  let fileIndex = 0;
   return (
     <div className="flex flex-col gap-2">
       {content.map((part, i) => {
@@ -162,17 +482,11 @@ function MessageContent({
         if (part.type === "image_url") {
           const idx = imageIndex;
           imageIndex += 1;
-          return <ImageItem key={i} src={part.image_url.url} index={idx} />;
+          return <ImageItem key={i} value={part} index={idx} />;
         }
-        return (
-          <div
-            key={i}
-            className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
-          >
-            <span className="text-muted-foreground">檔案(僅保留檔名):</span>{" "}
-            <span className="font-mono break-all">{part.file.filename}</span>
-          </div>
-        );
+        const idx = fileIndex;
+        fileIndex += 1;
+        return <FileItem key={i} entry={resolveFileEntry(part)} index={idx} />;
       })}
     </div>
   );
@@ -261,10 +575,14 @@ export default function UsageLogDetailPage() {
   const [log, setLog] = React.useState<UsageLogDetail | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  // presigned URL 逾時後由附件元件觸發:重取整筆明細換一批新連結(v2.2.1)
+  const [reloadTick, setReloadTick] = React.useState(0);
+  const reload = React.useCallback(() => setReloadTick((n) => n + 1), []);
 
   React.useEffect(() => {
     if (!uid) return;
     setLoading(true);
+    setError(null);
     apiClient
       .get<UsageLogDetail>(API_ENDPOINTS.usageLogById(uid))
       .then((data) => setLog(data))
@@ -274,7 +592,7 @@ export default function UsageLogDetailPage() {
         );
       })
       .finally(() => setLoading(false));
-  }, [uid]);
+  }, [uid, reloadTick]);
 
   // request_content 雙內容模式(task-434):以 isMessagesRequest() 做形狀判別分流,
   // 舊單輪紀錄渲染路徑不變。
@@ -285,7 +603,7 @@ export default function UsageLogDetailPage() {
   const isLegacyOutput = !resp?.output_text && !!resp?.first_text;
 
   return (
-    <>
+    <ReloadContext.Provider value={reload}>
       <div className="mb-4">
         <Button
           variant="outline"
@@ -426,8 +744,8 @@ export default function UsageLogDetailPage() {
                           圖片({req.images.length})
                         </span>
                         <div className="flex flex-col gap-3">
-                          {req.images.map((src, i) => (
-                            <ImageItem key={i} src={src} index={i} />
+                          {req.images.map((value, i) => (
+                            <ImageItem key={i} value={value} index={i} />
                           ))}
                         </div>
                       </div>
@@ -436,18 +754,17 @@ export default function UsageLogDetailPage() {
                     {req.files && req.files.length > 0 && (
                       <div className="flex flex-col gap-2">
                         <span className="text-sm text-muted-foreground">
-                          上傳檔案({req.files.length}) — 僅保留檔名,不留存檔案內容
+                          上傳檔案({req.files.length})
                         </span>
-                        <ul className="flex flex-col gap-1">
-                          {req.files.map((name, i) => (
-                            <li
+                        <div className="flex flex-col gap-2">
+                          {req.files.map((value, i) => (
+                            <FileItem
                               key={i}
-                              className="rounded-lg border border-border bg-muted/40 px-3 py-2 font-mono text-sm break-all"
-                            >
-                              {name}
-                            </li>
+                              entry={resolveFileEntry(value)}
+                              index={i}
+                            />
                           ))}
-                        </ul>
+                        </div>
                       </div>
                     )}
 
@@ -491,6 +808,6 @@ export default function UsageLogDetailPage() {
           </CardContent>
         </Card>
       )}
-    </>
+    </ReloadContext.Provider>
   );
 }

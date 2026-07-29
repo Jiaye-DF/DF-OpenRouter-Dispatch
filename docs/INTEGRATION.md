@@ -70,7 +70,7 @@ JSON body 欄位如下:
 | `model` | string | 是 | OpenRouter 模型 id(例:`openai/gpt-4o-mini`),須在管理員設定的白名單內 |
 | `text` | string | 否 | 使用者輸入的文字 |
 | `images` | string[] | 否 | 圖片 URL 或 `data:image/...;base64,...` 字串陣列 |
-| `files` | object[] | 否 | 上傳檔案(如 PDF)陣列,每筆為 `{ "filename": string, "file_data": string }`;`file_data` 為 `data:application/pdf;base64,...` 或可公開存取的遠端 URL,見 §5.3。**用量紀錄僅保留 `filename`,不留存檔案內容** |
+| `files` | object[] | 否 | 上傳檔案(如 PDF)陣列,每筆為 `{ "filename": string, "file_data": string }`;`file_data` 為 `data:application/pdf;base64,...` 或可公開存取的遠端 URL,見 §5.3。**自 v2.2.1 起,用量紀錄除 `filename` 外亦留存檔案內容**(存於公司自有 S3,見 §11) |
 | `videos` | string[] | 否 | 暫不支援,送出即回 `400 feature_not_supported` |
 | `tools` | object[] | 否 | 工具清單,格式同 OpenAI `tools` 規格,原樣透傳給下游。**目前僅支援 OpenRouter server 端內建工具**(如 web search,見 §5.2);會回 `tool_calls` 的 function calling 尚未開放 |
 | `messages` | object[] | 否 | **多輪對話訊息陣列**(v2.1.2),每筆為 `{ "role": string, "content": string \| object[] }`。`role` 只收 `system` / `user` / `assistant`;`content` 為字串或 content parts 陣列(只收 `text` / `image_url` / `file` 三種 type)。**與 `text` / `images` / `files` 互斥**(同時帶回 `400`);不可為空陣列;無應用層筆數上限(模型 context window 為自然上限)。見 §5.4 |
@@ -143,7 +143,8 @@ GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/allowed/models
 
 - `file_data` 可填 **base64 data URL**(`data:application/pdf;base64,...`)或**可公開存取的遠端 URL**(如 `https://example.com/doc.pdf`)。
 - 檔案解析由 OpenRouter 處理:模型原生支援檔案輸入時直接傳入,否則由 OpenRouter 解析後再送模型;解析 / 額外 token 可能由 OpenRouter 計費,一併反映在用量統計。
-- **隱私**:用量紀錄**僅保留 `filename`,不留存 `file_data`(檔案內容)**;與圖片不同(圖片內容會留存供稽核預覽),請放心附上文件,但仍請避免在 `filename` 夾帶敏感資訊。
+- **保存政策(v2.2.1 起變更)**:用量紀錄自 v2.2.1 起會留存 `filename` **與檔案內容**;檔案存放於公司自有 AWS S3(private,不對外公開),取用一律經後端簽發的短期連結。**v2.2.1 之前的歷史紀錄只有檔名、沒有內容,不會也無法補上**。細節見 §11。
+- 請仍避免在 `filename` 與檔案內容中夾帶不必要的敏感個資。
 
 ### 5.4 多輪對話(`messages` 直傳模式,v2.1.2)
 
@@ -172,7 +173,7 @@ GET https://df-it-openrouter-dispatch-api.it.zerozero.tw/api/v1/allowed/models
 - **content 形狀**:字串,或 parts 陣列——type 只收 `text` / `image_url`(內層 `{ "url": ... }`,值同 §5 `images`)/ `file`(內層同 §5.3 的 `{ "filename", "file_data" }`);`video` 仍不支援。
 - **不可為空陣列**(回 `400`);**無應用層筆數上限**,模型 context window 為自然上限,超限由 OpenRouter 回錯誤。
 - `tools`(§5.2)可照常搭配。
-- **隱私**:用量紀錄快照 `messages` 原樣保留(含 base64 圖片,供稽核);file part 僅記 `filename`、不留存 `file_data`(同 §5.3)。
+- **隱私**:用量紀錄會快照 `messages` 供稽核;其中的圖片與檔案自 v2.2.1 起改存公司自有 S3(快照只留物件位置,不再留 base64 字串),file part 除 `filename` 外亦留存檔案內容(同 §5.3 / §11)。**request 契約不變**,呼叫端照舊送 base64 data URI 即可。
 
 ### 5.5 生成參數(`temperature` / `max_tokens` / `response_format`,v2.1.2)
 
@@ -414,7 +415,7 @@ if __name__ == "__main__":
     print(result["choices"][0]["message"]["content"])
 ```
 
-> 隱私:用量紀錄**僅保留 `filename`,不留存檔案內容**(見 §5.3 / §10);請避免在 `filename` 夾帶敏感資訊。
+> 保存政策:自 **v2.2.1** 起,用量紀錄除 `filename` 外**亦留存檔案內容**(存於公司自有 S3,private,取用經後端簽發的短期連結);v2.2.1 之前的歷史紀錄只有檔名、沒有內容。見 §5.3 / §10 / §11。
 
 ### 多輪對話(messages,含 system prompt 與對話歷史)
 
@@ -655,5 +656,43 @@ if __name__ == "__main__":
 - **不要**把 SDK Key / User Token 寫死於前端(Browser / App)或 commit 到任何 git repo;只能存於後端服務、CI Secret、或加密的設定管理工具。
 - 若懷疑憑證外洩,**立即**聯絡管理員撤銷:User Token 撤銷後對應使用者所有舊 token 立即失效;SDK Key 撤銷後對應部門所有呼叫立即失效。
 - 所有呼叫都會記錄一筆 `usage_logs`(模型、token、耗時、是否成功);管理員可在後台**用量紀錄**頁面查詢。
-- 本平台**不會**儲存 OpenRouter 回傳的內部 metadata;但會保留請求內容(`text`、`images` 含 base64 圖片)以利稽核,請**不要**在 prompt 中夾帶敏感個資。
-- **檔案上傳例外**:`files` 僅保留 `filename`,**不**留存檔案內容(`file_data`);檔案內容僅於該次請求轉送 OpenRouter,不寫入用量紀錄。
+- 本平台**不會**儲存 OpenRouter 回傳的內部 metadata;但會保留請求內容(`text`、`images`、`messages`)以利稽核,請**不要**在 prompt 中夾帶敏感個資。
+- **附件保存(v2.2.1 起變更)**:圖片與檔案(`files`)的內容存放於公司自有 AWS S3(private,不對外公開),用量紀錄本身只留物件位置;`file_data` 的 base64 內容**任何情況下都不會寫入用量紀錄**。政策全文見 §11。
+
+---
+
+## 11. 附件儲存與保存政策(v2.2.1)
+
+v2.2.1 起,請求中夾帶的圖片與檔案改存**公司自有 AWS S3**,用量紀錄(`usage_logs.request_content`)只留物件位置。本節說明這對呼叫端與管理端各代表什麼。
+
+### 11.1 對呼叫端:**契約不變,零改動**
+
+- `POST /api/v1/model/chat`、`POST /api/v1/model/chat/stream` 與 deprecated alias `POST /api/v1/model/openrouter/chat` 的 **request / response schema 完全不變**。
+- 呼叫端**仍可照舊送 base64 data URI**(`images` / `files.file_data` / `messages` 的 `image_url` 與 `file` part),**不需要**改任何 SDK 端程式碼、不需要改送遠端 URL、無新增必填欄位。
+- **送給模型的內容也不變**:平台轉送給下游模型的請求內容與 v2.2.0 **完全相同**(圖片仍為原本的 base64 或原始 URL、`file_data` 照舊),已由回歸測試逐欄驗證。因此**模型回應品質不受本版影響**,無須擔心「換了圖片傳法導致輸出劣化」。
+- 本版改變的**只有平台後端寫進用量紀錄的儲存形式**。
+
+### 11.2 附件存放位置與取用方式
+
+- 上傳的圖片 / 檔案存放於**公司自有 AWS S3**,物件一律 **private,不對外公開**,無公開網址、無 CDN。
+- 需要檢視時(管理端用量明細頁),一律透過後端**當場簽發的短期連結**取得,**預設有效期 15 分鐘**;連結過期即失效,需重新開啟頁面取得新連結。
+- 呼叫端原本就送**遠端 `https://` URL** 的附件,平台**原樣保留該 URL、不代抓**,可讀性仍取決於該外部站台。
+
+### 11.3 檔案(PDF 等)自 v2.2.1 起才留存內容
+
+- v2.2.1 之前,`files` 的用量紀錄**只有檔名、沒有檔案內容**。
+- **自 v2.2.1 起才開始留存檔案內容**;此為新功能,**只對新請求生效**——本版之前的歷史紀錄**不會、也無法**補上內容。
+- 圖片內容則自始即有留存,本版只是換了存放位置。
+- 本項為平台端設定,由管理員啟用物件儲存後生效;未啟用時維持 v2.2.0 行為(圖片原樣快照、檔案僅記檔名)。
+
+### 11.4 管理端可見的行為變更
+
+- 用量明細 API 回吐的 `request_content` 中,**圖片元素的語意由「base64 data URI 或遠端 URL」變更為「可直接顯示的短期 URL」**;檔案元素則由「只有 `filename`」變成「`filename` + 可開啟的短期 URL」。
+- 這是**管理端可見的行為變更**;SDK 呼叫端的 request / response 不受影響(§11.1)。
+- 歷史紀錄在遷移完成前新舊形態並存,明細頁對兩種形態皆可正常顯示。
+
+### 11.5 S3 故障不影響代理可用性(best-effort)
+
+- 附件上傳採 **best-effort**:S3 故障 / 逾時**不會**讓任何代理請求失敗——下游照常呼叫、回應照常返還、用量照常記帳。
+- 失敗時**不會**退回把 base64 寫進用量紀錄,而是在該筆紀錄中標記「此附件未留存」並保留大小 / 型別等資訊,同時落結構化 log 供追查。
+- 也就是說,最壞情況只是**該筆紀錄的附件內容沒留存**,對外行為完全正常。

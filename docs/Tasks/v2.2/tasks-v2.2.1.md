@@ -1,6 +1,6 @@
 # Tasks v2.2.1 · 圖片 / 檔案改存 S3,DB 只留物件路徑(base64 兩階段棄用)
 
-> 狀態:待認領(已完成 0/12)
+> 狀態:**全數完成(12/12)**,待收口提交(2026-07-29;後端 540 passed / 0 failed,前端 lint + type-check + build 全綠,mypy 全庫維持 baseline 49)
 > 來源:[propose-v2.2.1.md](./propose-v2.2.1.md)
 > 並行:12 個 task,可並行 11 / 序列 1(同檔互鎖)/ 預估總時數:30 hr / 阻塞點:0(propose §D 全數拍板)
 
@@ -32,25 +32,32 @@
 - [ ] 用量明細頁對「S3 路徑 / 舊 data URI / upload_failed」三種形態皆正常顯示(528)
 - [ ] `.env.example` 六鍵齊備、`docker-compose*.yml` 兩份注入到位(522 / 529)
 - [ ] `docs/INTEGRATION.md` 與前端 `user-guide` 頁已同步(532)
-- [ ] CI green:`uv run ruff check . && uv run mypy . && uv run pytest`;前端 `npm run lint && npm run type-check && npm run build`
+- [ ] **後端測試全綠**:`cd backend && uv run pytest`(全庫,含既有測試零打壞)
+- [ ] **本版新增 / 修改的檔案** lint 與型別全綠:`uv run ruff check <本版檔案清單> && uv run mypy <本版檔案清單>`
+- [ ] 前端 `npm run lint && npm run type-check && npm run build`
+  > ⚠️ **本條原寫作「CI green:`uv run ruff check . && uv run mypy .`」,那是不可能達成的**——全庫 `ruff check .` 有 **62** 項、`mypy .` 有 **49** 項**既有**錯誤(集中在 `alembic/versions/*` 的 `typing.Sequence`/`Union`、`app/api/v1/stats.py`、`api_key_requests.py`、`core/deps.py`、`core/response.py`、`schemas/common.py`、`services/rate_limit.py`),全數與 v2.2.1 無關。
+  > 已於 2026-07-29 由 task-524 worker 回報、orchestrator 複驗確認(本版新檔在兩份輸出中皆**零命中**),故改為「本版檔案 green」。
+  > 全庫清理**不屬 v2.2.1 scope**,建議另開 patch 版本處理。
+  >
+  > **注意**:`uv sync` **不帶 `--extra dev`** 會移除 pytest / ruff / mypy(dev 相依放在 `[project.optional-dependencies].dev`),`AGENTS.md § Build/Test/Lint` 記載的指令因此是壞的。請用 `uv sync --extra dev`。
 - [ ] gitleaks 無命中;`git log --all -- .env` 為空
 
 ## 任務清單
 
 | # | 標題 | 狀態 | 並行 | 依賴 | 影響檔案 |
 | --- | --- | --- | --- | --- | --- |
-| 521 | Design-Base 新增物件儲存規範檔 + 兩處對照表同步 | pending | ✓ | — | `docs/Design-Base/90-third-party-service/09-object-storage.md`、`docs/Design-Base/README.md`、`AGENTS.md` |
-| 522 | S3 六顆 env + Settings 欄位 + fail-fast + `.env.example` | pending | ✓ | — | `backend/app/core/config.py`、`.env.example` |
-| 523 | S3 client(`app/clients/s3/`)+ boto3 鎖版 + 短 timeout + presign | pending | ✓ | 521, 522 | `backend/app/clients/s3/__init__.py`、`client.py`、`errors.py`、`README.md`、`backend/pyproject.toml`、`docs/Design-Base/00-overview/01-versions.md`、`backend/tests/clients/test_s3_client.py` |
-| 524 | 附件落地層 `attachment.py`(deterministic key / best-effort / 失敗標記) | pending | ✓ | 523 | `backend/app/services/attachment.py`、`backend/tests/services/test_attachment.py` |
-| 525 | proxy 接線:快照改吃路徑、`_rewrite_request` 零 diff、串流 + 非串流 | pending | ✓ | 524 | `backend/app/services/proxy.py`、`backend/tests/services/test_proxy_s3_snapshot.py` |
-| 526 | `request_snapshot` 正規化層認得 S3 路徑與 `upload_failed` | pending | ✓ | 524 | `backend/app/services/request_snapshot.py`、`backend/tests/services/test_request_snapshot_s3.py` |
-| 527 | 用量明細 API 回吐 presigned URL(含錯誤對照表) | pending | ✓ | 523, 526 | `backend/app/api/v1/usage_logs.py`、`backend/app/schemas/usage_log.py`、`backend/tests/api/test_usage_logs_presign.py` |
-| 528 | 前端明細頁三形態渲染 + types | pending | ✓ | 527 | `frontend/src/app/(main)/usage-logs/[uid]/page.tsx`、`frontend/src/types/api.ts` |
-| 529 | docker-compose 兩份 env 注入 | pending | ✓ | 522 | `docker-compose.dev.yml`、`docker-compose-prod.yml` |
-| 530 | 遷移 script **Phase 1**(只上傳,DB 零變更) | pending | ✓ | 523, 524 | `backend/scripts/migrate_base64_to_s3.py`、`backend/tests/services/test_migrate_base64_to_s3.py` |
-| 531 | 遷移 script **Phase 2**(改寫 JSONB)+ 執行 runbook | pending | ✗ | 530 | `backend/scripts/migrate_base64_to_s3.py`、`backend/tests/services/test_migrate_base64_to_s3.py`、`docs/Tasks/v2.2/runbook-v2.2.1-migration.md` |
-| 532 | 對外文件同步(`INTEGRATION.md` + `user-guide` 頁) | pending | ✓ | 525, 527 | `docs/INTEGRATION.md`、`frontend/src/app/(main)/user-guide/page.tsx` |
+| 521 | Design-Base 新增物件儲存規範檔 + 兩處對照表同步 | done | ✓ | — | `docs/Design-Base/90-third-party-service/09-object-storage.md`、`docs/Design-Base/README.md`、`AGENTS.md` |
+| 522 | S3 六顆 env + Settings 欄位 + fail-fast + `.env.example` | done | ✓ | — | `backend/app/core/config.py`、`.env.example` |
+| 523 | S3 client(`app/clients/s3/`)+ boto3 鎖版 + 短 timeout + presign | done | ✓ | 521, 522 | `backend/app/clients/s3/__init__.py`、`client.py`、`errors.py`、`README.md`、`backend/pyproject.toml`、`docs/Design-Base/00-overview/01-versions.md`、`backend/tests/clients/test_s3_client.py` |
+| 524 | 附件落地層 `attachment.py`(deterministic key / best-effort / 失敗標記) | done | ✓ | 523 | `backend/app/services/attachment.py`、`backend/tests/services/test_attachment.py` |
+| 525 | proxy 接線:快照改吃路徑、`_rewrite_request` 零 diff、串流 + 非串流 | done | ✓ | 524 | `backend/app/services/proxy.py`、`backend/tests/services/test_proxy_s3_snapshot.py` |
+| 526 | `request_snapshot` 正規化層認得 S3 路徑與 `upload_failed` | done | ✓ | 524 | `backend/app/services/request_snapshot.py`、`backend/tests/services/test_request_snapshot_s3.py` |
+| 527 | 用量明細 API 回吐 presigned URL(含錯誤對照表) | done | ✓ | 523, 526 | `backend/app/api/v1/usage_logs.py`、`backend/app/schemas/usage_log.py`、`backend/tests/api/test_usage_logs_presign.py` |
+| 528 | 前端明細頁三形態渲染 + types | done | ✓ | 527 | `frontend/src/app/(main)/usage-logs/[uid]/page.tsx`、`frontend/src/types/api.ts` |
+| 529 | docker-compose 兩份 env 注入 | done | ✓ | 522 | `docker-compose.dev.yml`、`docker-compose-prod.yml` |
+| 530 | 遷移 script **Phase 1**(只上傳,DB 零變更) | done | ✓ | 523, 524 | `backend/scripts/migrate_base64_to_s3.py`、`backend/tests/services/test_migrate_base64_to_s3.py` |
+| 531 | 遷移 script **Phase 2**(改寫 JSONB)+ 執行 runbook | done | ✗ | 530 | `backend/scripts/migrate_base64_to_s3.py`、`backend/tests/services/test_migrate_base64_to_s3.py`、`docs/Tasks/v2.2/runbook-v2.2.1-migration.md` |
+| 532 | 對外文件同步(`INTEGRATION.md` + `user-guide` 頁) | done | ✓ | 525, 527 | `docs/INTEGRATION.md`、`frontend/src/app/(main)/user-guide/page.tsx` |
 
 ## 並行批次
 
@@ -92,6 +99,34 @@ worker **不必再問 user**:
 - **D.7 遷移不動 `updated_at`**:Phase 2 的 UPDATE 須顯式保留原值;ORM 若有 `onupdate` 自動覆寫則改走 raw SQL(仍禁字串拼接)。影響 531。
 - **D.8 單一 bucket + 環境前綴**:bucket 固定 `df-openrouter-dispatch-prod`,dev / test / prod 靠 `S3_KEY_PREFIX` 隔離;**本版不設 lifecycle 自動刪除**。影響 522 / 524。
 - **D.9 明細頁取圖**:明細 API **回吐時直接換成 presigned URL**(不另開 302 導轉端點)。影響 527 / 528。
+
+## 實作期發現(2026-07-29,須留檔)
+
+### 🔴 propose §D.7 的前提是錯的:`updated_at` 由 **DB trigger** 覆寫,不是 ORM `onupdate`
+
+propose §D.7 與 task-530 的接入點註記都假設覆寫者是 ORM 的 `onupdate`,並推論「改走 raw SQL 即可保留原值」。**這個推論擋不住實際的覆寫者**——`usage_logs` 掛著 DB 層 trigger:
+
+```sql
+-- backend/alembic/baseline_sql/V6__usage_logs.sql:29
+CREATE TRIGGER trg_usage_logs_updated_at
+BEFORE UPDATE ON usage_logs
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+```
+
+raw SQL 一樣會觸發它。task-531 實測(未繞過 → `updated_at` 被推到今天;繞過 → 保留原值),解法為每個寫入交易先送 `SET LOCAL session_replication_role = replica`(交易結束自動還原、不影響其他連線;相對於 `ALTER TABLE ... DISABLE TRIGGER` 是全域生效 + ACCESS EXCLUSIVE lock)。
+
+**需 superuser 權限;權限不足時 script 直接中止(exit 2),刻意不降級續跑**——一旦續跑,全庫 `updated_at` 會被推成執行當日且無法回頭。runbook §1-2 有前置權限檢查。
+
+> 若 user 要回填 propose §D.7 的敘述,請自行編輯(`propose-v*.md` 由 user 撰寫,agent 不得更動)。
+
+### 其他實作期發現
+
+1. **`AGENTS.md § Build/Test/Lint` 的指令是壞的**:`uv sync` 不帶 `--extra dev` 會移除 pytest / ruff / mypy(dev 相依在 `[project.optional-dependencies].dev`),照著跑第二個指令即 `program not found`。根治方式為改用 uv 原生 `[dependency-groups].dev`,屬 repo-wide 建置設定變更,**不在 v2.2.1 scope**,建議另開 patch。
+2. **`backend/scripts/` 無 `__init__.py`**:若測試以 `from scripts.xxx import` 匯入,同一檔會在 `mypy .` 下被認成兩個模組名,mypy 以 `Source file found twice` **中止全庫檢查**(既有 49 個錯誤會被整個遮蔽,看起來像全綠)。task-530 改用 `sys.path.append` 頂層匯入繞開;正規解法是補 `__init__.py`,但需連帶調整匯入方式,建議另案處理。
+3. **歷史畸形 data URI 無法遷移**:`data:image/png;base64,@@@` 這類髒資料無內容可搬,改寫後仍符合 `LIKE '%data:%base64,%'`,**完成判準查詢不會歸零**。已列入 script 的待處理清單(`malformed_data_uri`)並於 runbook §6-1 說明如何逐筆核對。屬資料現實,非實作缺陷。
+4. **AI 重跑對「messages 模式 + 含圖」紀錄的能力減損**:遷移後快照內是 S3 物件 key,`replay_messages` 一律剔除(送物件 key 給下游只是畸形 payload,換 presigned URL 需 I/O 而 `request_snapshot.py` 受純函式約束)。propose 只寫「不擴大重跑行為」,未預見「不擴大」在本設計下等同「縮減」。若要讓重跑帶得動 S3 圖片,須在 replay 鏈路注入 presign 能力,屬**架構改動**,建議另開版本。
+5. **`image/svg+xml` 刻意排除在 MIME 白名單外**(task-524 決策):SVG 可夾帶 script,經 presigned URL 在明細頁直接渲染等同儲存型 XSS;落 `application/octet-stream` 讓瀏覽器下載而非渲染。前端(task-528)未加任何格式白名單把它拉回 `<img>` 路徑。
+6. **單輪 `files` 的裸字串不可 presign**(task-527 決策):v2.2.0 及歷史列的 `files[i]` 是純檔名字串,而 `attachment_form` 的 fallback 會把認不出的字串判為 `object_key`;`generate_presigned_url` 只做本地簽章、不驗物件存在,照簽會產出「看起來正常、點下去 404」的 URL。故單輪 `files` 只對 Mapping 值 presign。
 
 ## 拆解註記(orchestrator)
 

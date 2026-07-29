@@ -45,6 +45,14 @@ class UsageLogDetail(UsageLogListItem):
     """單筆詳情視圖 — 在列表欄位之上補回完整 request_content / response_summary。
 
     供用量紀錄詳情頁顯示使用者實際傳入內容(Input,含圖片)與模型回覆(Output)。
+
+    v2.2.1(task-527)起 `request_content` 的**值語意**變動,型別不變:附件落 S3 後 DB 內
+    只留物件 key,router 於回吐時就地換成**短期 presigned URL**(`GET /usage-logs/{uid}`,
+    D.9;不另開 302 導轉端點)。因此本 model 的 `request_content` 是**視圖**而非 DB 原值 ——
+    presigned URL 有 TTL(`S3_PRESIGN_TTL_SECONDS`),**禁**被前端 / 呼叫端存起來重用。
+
+    舊 data URI(遷移期並存)、遠端 URL 與 `upload_failed` 標記一律原樣回吐;presign 失敗
+    時該附件退回原樣值(物件 key),API 仍回 200。
     """
 
     request_content: dict[str, Any] | None

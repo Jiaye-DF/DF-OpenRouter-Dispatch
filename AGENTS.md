@@ -38,6 +38,7 @@ OpenRouter / 多 provider 模型呼叫的**中控派發管理平台**:集中管�
 | 認證 / 權限 | `03-backend/02-auth.md` + `91-project-auth.md` + `92-project-permission.md` |
 | 設計 DB 表 / migration | `04-databases/00-overview.md` + `01-identifiers.md` / `08-alembic.md`(+ `90-project-database.md` Snowflake/baseline) |
 | 串模型代理 / OpenRouter / Internal | `90-third-party-service/00-overview.md` + `01-client-design.md` + `50-openrouter.md` |
+| 串物件儲存 / S3(圖片 / 檔案上傳、presigned URL) | `90-third-party-service/00-overview.md` + `01-client-design.md` + `09-object-storage.md` + `03-backend/03-async-and-tx.md` |
 | 寫 propose / tasks | `01-propose/*` + `90-project-task-spec.md` |
 | 改 env / secret | `00-overview/02-secrets.md` + `03-env-layers.md` + `91-project-naming-env.md` |
 | 部署 / compose / Dockerfile | `06-Coolify-CD/*` + `90-project-deployment.md` |

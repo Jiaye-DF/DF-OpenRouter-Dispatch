@@ -22,6 +22,7 @@ dependencies = [
     "jinja2>=3.1",
     "taskiq>=0.12",
     "taskiq-redis>=1.2",
+    "boto3>=1.40",
 ]
 
 [project.optional-dependencies]
@@ -54,6 +55,14 @@ extend-immutable-calls = [
     "fastapi.Form",
     "fastapi.File",
 ]
+
+[tool.mypy]
+
+# boto3 / botocore / seqlog 皆未附 py.typed(無型別資訊),缺少 stub 不應視為型別錯誤。
+# (seqlog 為既有相依,原本就讓 `mypy` 對 app/core/logging.py 報 import-untyped。)
+[[tool.mypy.overrides]]
+module = ["boto3.*", "botocore.*", "seqlog.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

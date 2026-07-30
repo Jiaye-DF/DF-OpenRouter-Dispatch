@@ -4,11 +4,15 @@
 (原話:「base64 先暫時不動,等確定移轉成功後再棄用」)拆成**兩個獨立可跑的階段**,
 中間卡一道人工驗收:
 
-- **Phase 1 `--phase upload`(task-530)**:只上傳,**DB 一個 byte 都不改**。
+- **`--upload`(task-530)**:只把 base64 圖片上傳到 S3,**DB 一個 byte 都不改**。
   跑完 base64 仍原封不動留在庫裡,系統行為完全等同現況,隨時可中止、零副作用。
-- **Phase 2 `--phase rewrite`(task-531)**:重掃一次、重算同一把 key、
-  `head_object` 確認物件存在後才改寫 JSONB。**這是本版唯一不可逆的操作**,
-  執行前必須有已驗證可還原的 `pg_dump`(操作手冊:`docs/Tasks/v2.2/runbook-v2.2.1-migration.md`)。
+- **`--delete`(task-531)**:重掃一次、重算同一把 key、`head_object` 確認物件存在後,
+  才把 DB 欄位裡的 base64 換成物件路徑(**不刪 S3 物件**)。
+  **這是本版唯一不可逆的操作**,執行前必須有已驗證可還原的 `pg_dump`
+  (操作手冊:`docs/Tasks/v2.2/runbook-v2.2.1-migration.md`)。
+
+兩個 mode **互斥且必填**(argparse 強制)。文件與註解裡的「Phase 1 / Phase 2」等同
+`--upload` / `--delete`,是 propose / task 文件的既有稱法,保留以便對照。
 
 ## 為什麼不需要 mapping 表 / 暫存欄位 / migration
 
@@ -29,11 +33,20 @@ CI 的 `alembic upgrade head` round-trip(`04-databases/08-alembic.md`)。本遷�
 
 ## 兩個 phase 的 DB 交易設定**刻意分開**
 
-- **Phase 1**:對 DB **只有 SELECT**,沒有任何寫入語句,連 commit 都不做;`_amain()` 另以
-  `postgresql_readonly=True` 開 transaction,讓「不寫 DB」由 Postgres 端再保證一次
-  (而非只靠人工 code review)。
+- **Phase 1**:對 DB **只有 SELECT**,沒有任何寫入語句、不 commit;`_amain()` 另在 engine
+  上掛連線層 `default_transaction_read_only=on`,讓「不寫 DB」由 Postgres 端再保證一次
+  (而非只靠人工 code review)。用連線層而非交易層(`postgresql_readonly` execution
+  option)的理由見 `_amain()`。
 - **Phase 2**:要寫入,故**不可**套用上述唯讀設定 —— 但也**不可**把 Phase 1 的唯讀保護
   拿掉。兩者各自建 engine / session,設定不共用。
+
+## 兩個 phase 都「每批放掉交易」
+
+`rows = fetch_batch(...)` 之後**立刻** `rollback()`,S3 呼叫一律在交易外進行。Phase 2 是
+為了不讓 `head_object` 佔著寫入交易;Phase 1 則是為了不要在整趟執行期間(可能數小時)
+持有一個交易 —— 那會把 xmin horizon 壓住,期間**全庫**的 dead tuple 都無法被 autovacuum
+回收,正式站跑越久 bloat 累積越多。Phase 1 的 `rollback()` 沒有任何東西要回滾,它的作用
+純粹是「放掉交易」。
 
 ## Phase 2 為什麼要 `session_replication_role = replica`
 
@@ -64,16 +77,50 @@ UPDATE 語句仍**顯式**寫回原 `updated_at`:trigger 若哪天被移除,語�
 
 ## 使用方式
 
+每批預設 50 列,每批處理完印一行進度;掃完自動結束,不需要外部迴圈。
+
+本機開發:
+
 ```bash
 cd backend
-uv run python scripts/migrate_base64_to_s3.py --phase upload --dry-run          # 只報數字
-uv run python scripts/migrate_base64_to_s3.py --phase upload --batch-size 200   # 實際上傳
-uv run python scripts/migrate_base64_to_s3.py --phase upload --limit 50         # 只掃前 50 列
+uv run python scripts/migrate_base64_to_s3.py --upload --dry-run     # 只報數字
+uv run python scripts/migrate_base64_to_s3.py --upload               # 實際上傳
+uv run python scripts/migrate_base64_to_s3.py --upload --limit 50    # 只掃前 50 列
 
-# ⚠️ Phase 2 不可逆,執行前務必先看 docs/Tasks/v2.2/runbook-v2.2.1-migration.md
-uv run python scripts/migrate_base64_to_s3.py --phase rewrite --dry-run         # 只報數字
-uv run python scripts/migrate_base64_to_s3.py --phase rewrite --batch-size 200  # 實際改寫
+# ⚠️ --delete 不可逆,執行前務必先看 docs/Tasks/v2.2/runbook-v2.2.1-migration.md
+uv run python scripts/migrate_base64_to_s3.py --delete --dry-run     # 只報數字
+uv run python scripts/migrate_base64_to_s3.py --delete               # 實際移除
 ```
+
+部署環境(容器內)一律走 `-m`;`python scripts/migrate_base64_to_s3.py` 會因為
+`/app` 不在 `sys.path` 而 `ModuleNotFoundError: No module named 'app'`。`-u` 讓進度即時吐出:
+
+```bash
+cd /app && python -u -m scripts.migrate_base64_to_s3 --upload
+```
+
+## 大表分窗:`--after-pid` / `--before-pid`
+
+掃描條件 `LIKE '%data:%base64,%'` 走不到索引,整表 JSONB 都得從 TOAST 拉出來轉 text,
+正式站一趟可能數十分鐘到數小時。想切成可控的分期付款就按 `pid` 分窗 —— `pid` 是
+`BIGSERIAL PRIMARY KEY`、單調遞增(等同時間序),也是唯一走得到索引的切法
+(`usage_logs` 沒有單獨的 `created_at` 索引)。
+
+正常情況**不需要**分窗 —— 每批 50 列已經是可控的分期付款,中斷後原指令直接重跑即可
+(兩個 mode 都冪等)。分窗只在「想把一趟切成幾個獨立 process、各自跑完就收工」時才需要。
+
+兩窗以**同一個 pid** 接軌即不重不漏(上界含、下界不含):
+
+```bash
+python -u -m scripts.migrate_base64_to_s3 --upload --before-pid 100000
+python -u -m scripts.migrate_base64_to_s3 --upload --after-pid 100000 --before-pid 200000
+python -u -m scripts.migrate_base64_to_s3 --upload --after-pid 200000   # 尾段不設上界
+```
+
+窗界不必事先算,報表末行會給你「最後處理 pid」直接當下一窗的 `--after-pid`。
+
+分窗跑 `--delete` 時記得加 `--skip-remaining-count`:完成判準是一次**全表** count,
+每一窗都付一次很浪費(而且它算的是全表、不是本窗)。全部窗跑完再單獨查一次。
 """
 
 from __future__ import annotations
@@ -82,6 +129,7 @@ import argparse
 import asyncio
 import json
 import sys
+import time
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -127,14 +175,23 @@ __all__ = [
 # `iter_image_attachments()` + `parse_data_uri()`(寧可多撈,不可漏撈)。
 _LIKE_PATTERN = "%data:%base64,%"
 
+# `pid` 上界的哨兵值(BIGINT 上限,`pid` 是 BIGSERIAL)。
+# why 綁常數而不是讓 SQL 有兩種形狀:掃描語句兩個 phase 共用、只有一份是刻意的設計
+# (見檔頭),多一個 `AND` 分支就多一處會漂移的地方。綁一個必然大於任何 pid 的值,
+# 查詢計畫仍是 PK 範圍掃描,語句形狀不變。
+_MAX_PID = 9223372036854775807
+
 # 兩個 phase 共用**同一條**掃描語句 —— WHERE 條件只有一份,不會漂移。
 # `updated_at` 只有 Phase 2 用得到(顯式寫回原值);Phase 1 撈了不用,代價是一個欄位,
 # 換來「兩階段掃的是同一批列」這件事在程式碼層不需要靠註解維持。
+# `pid > :after_pid AND pid <= :before_pid` 是**分窗**的依據:`pid` 單調遞增(等同時間序),
+# 且是唯一走得到索引的切法(`usage_logs` 沒有單獨的 `created_at` 索引)。
 _SCAN_SQL = text(
     """
     SELECT pid, usage_log_uid, request_content, updated_at
     FROM usage_logs
     WHERE pid > :after_pid
+      AND pid <= :before_pid
       AND request_content::text LIKE :pattern
     ORDER BY pid
     LIMIT :batch_size
@@ -183,7 +240,11 @@ _REASON_S3_UNAVAILABLE = "s3_unavailable"
 _REASON_MALFORMED = "malformed_data_uri"
 _REASON_VALUE_CHANGED = "row_value_changed"
 
-_DEFAULT_BATCH_SIZE = 200
+# 每批 50 列。why 不是更大:含圖的列 JSONB 可能是 MB 級,一批全部讀進 Python 記憶體 ——
+# 腳本跑在 backend 容器內、與線上 API 共用 memory limit,批次開太大時 OOM killer 可能連帶
+# 把線上服務打掉。`--delete` 另有一層理由:每批是一個 transaction,批小則鎖的列少、
+# 對線上寫入干擾小。
+_DEFAULT_BATCH_SIZE = 50
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,6 +297,7 @@ class MigrationReport:
     - `uploaded`:**實際上傳** M。
     - `existing`:**已存在** K(`head_object` 命中,冪等跳過)。
     - `planned`:dry-run 下「本來會上傳」的數量(非 dry-run 恆為 0)。
+    - `last_pid`:最後處理到的 `pid` —— 中斷後直接餵給 `--after-pid` 續跑。
     """
 
     rows_scanned: int = 0
@@ -247,6 +309,7 @@ class MigrationReport:
     uploaded: int = 0
     existing: int = 0
     planned: int = 0
+    last_pid: int = 0
     failures: list[Failure] = field(default_factory=list)
 
     @property
@@ -277,7 +340,8 @@ class RewriteReport:
     - `rewritten`:實際改寫成路徑的值數(非 dry-run)。
     - `planned`:dry-run 下「本來會改寫」的值數。
     - `rows_rewritten` / `rows_skipped`:成功改寫的列數 / 因安全網整列跳過的列數。
-    - `remaining`:執行後仍含 base64 的列數(完成判準,應為 0)。
+    - `remaining`:執行後仍含 base64 的列數(完成判準,應為 0);`-1` = 未計算。
+    - `last_pid`:最後處理到的 `pid` —— 中斷後直接餵給 `--after-pid` 續跑。
     """
 
     rows_scanned: int = 0
@@ -292,6 +356,7 @@ class RewriteReport:
     rows_rewritten: int = 0
     rows_skipped: int = 0
     remaining: int = -1
+    last_pid: int = 0
     pending: list[PendingRow] = field(default_factory=list)
 
 
@@ -430,7 +495,7 @@ def _coerce_request_content(raw: object) -> dict[str, object]:
     if isinstance(raw, str | bytes | bytearray):
         try:
             parsed = json.loads(raw)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return {}
         if isinstance(parsed, dict):
             return {str(k): v for k, v in parsed.items()}
@@ -442,6 +507,7 @@ async def fetch_batch(
     *,
     after_pid: int,
     batch_size: int,
+    before_pid: int = _MAX_PID,
 ) -> list[UsageLogRow]:
     """以 `pid` 游標撈下一批候選列(**唯讀**)。
 
@@ -449,11 +515,16 @@ async def fetch_batch(
     OFFSET 在大表上每批都要重掃前綴,且中途有新列插入時會漏列
     (`04-databases/09-indexes-and-perf.md`)。
 
+    Args:
+        before_pid: `pid` 上界(含)。分窗執行用 —— 兩窗以 `--before-pid X` /
+            `--after-pid X` 接軌即**不重不漏**(兩邊都以同一個 X 為界,一邊含、一邊不含)。
+
     SQL 走 `text(...).bindparams(...)`,**禁**字串拼接(`04-databases/04-sql-safety.md`)。
     """
     result = await session.execute(
         _SCAN_SQL.bindparams(
             after_pid=after_pid,
+            before_pid=before_pid,
             pattern=_LIKE_PATTERN,
             batch_size=batch_size,
         )
@@ -616,6 +687,16 @@ async def _process_items(
     return list(await asyncio.gather(*(_guarded(row, ref) for row, ref in items)))
 
 
+def _print_progress(line: str) -> None:
+    """輸出一行進度到 stdout。
+
+    why 用 `print(flush=True)` 而不是 logger:這是給人在 `nohup ... > log` 後 `tail -f`
+    看的,要的是即時、無格式雜訊、與最終報表同一個 stream。全量掃描動輒數十分鐘且
+    `LIKE '%data:%base64,%'` 走不到索引,沒有逐批輸出時完全無法分辨「在跑」與「卡死」。
+    """
+    print(line, flush=True)
+
+
 async def run_upload(
     session: AsyncSession,
     *,
@@ -626,37 +707,53 @@ async def run_upload(
     dry_run: bool = False,
     concurrency: int = 1,
     after_pid: int = 0,
+    before_pid: int = _MAX_PID,
 ) -> MigrationReport:
     """Phase 1 主流程:掃描 → 上傳 → 彙總報表。**全程對 DB 只有 SELECT**。
 
+    每批的節奏是「讀 → 放掉交易 → 打 S3」(與 Phase 2 一致):`put_object` / `head_object`
+    是網路 I/O,不能在持有交易時做。**這不只是效能問題** —— 一個橫跨整趟執行(可能數小時)
+    的交易會把 xmin horizon 壓住,期間**全庫**產生的 dead tuple 都無法被 autovacuum 回收,
+    正式站跑越久 bloat 累積越多。每批放掉,交易就只剩那一句 SELECT 的長度。
+
     Args:
-        session: 唯讀用的 async session(呼叫端負責開 / 關;本函式不 commit、不 flush)。
+        session: 唯讀用的 async session(呼叫端負責開 / 關)。本函式**每批結束會 rollback**
+            (Phase 1 沒有任何寫入,rollback 純粹是「放掉交易」),因此呼叫端若把 session
+            接在自己的外層交易上,需用 `join_transaction_mode="create_savepoint"`。
         client: S3 client;`None` 表「無可用 client」,僅 dry-run 允許(此時略過存在檢查)。
-        key_prefix: `S3_KEY_PREFIX`,dev / test / prod 共用單一 bucket 的隔離手段。
+        key_prefix: `S3_KEY_PREFIX`,test / prod 各自 bucket 內的前綴。
         batch_size: 每批撈幾列(`pid` 游標)。
         limit: 最多處理幾列;`0` 表不限。
         dry_run: 只報統計,**不呼叫** `put_object`。
         concurrency: 同時進行的 S3 呼叫數上限;預設 1(循序)。
-        after_pid: 從哪個 `pid` 之後開始(續跑用)。
+        after_pid: 從哪個 `pid` 之後開始(續跑 / 分窗下界)。
+        before_pid: 處理到哪個 `pid` 為止(含;分窗上界)。
 
     Returns:
         `MigrationReport`;單列 / 單附件失敗只記入 `failures`,不中斷整批。
     """
-    report = MigrationReport()
+    report = MigrationReport(last_pid=after_pid)
     cursor = after_pid
     remaining = limit if limit > 0 else None
+    started = time.monotonic()
+    batch_no = 0
 
     while True:
         size = batch_size if remaining is None else min(batch_size, remaining)
         if size <= 0:
             break
 
-        rows = await fetch_batch(session, after_pid=cursor, batch_size=size)
+        rows = await fetch_batch(session, after_pid=cursor, before_pid=before_pid, batch_size=size)
+        # 讀完立刻結束交易,不要帶著它去打 S3(理由見 docstring)。
+        await session.rollback()
         if not rows:
             break
 
+        batch_no += 1
+        batch_started = time.monotonic()
         cursor = rows[-1].pid
         report.rows_scanned += len(rows)
+        report.last_pid = cursor
         if remaining is not None:
             remaining -= len(rows)
 
@@ -677,6 +774,14 @@ async def run_upload(
         ):
             _apply(report, result)
 
+        _print_progress(
+            f"[upload] 批次 #{batch_no} pid<={cursor} 掃描 {report.rows_scanned} 列"
+            f" / 圖片 {report.images_seen} / 上傳 {report.uploaded}"
+            f" / 已存在 {report.existing} / 失敗 {report.failed}"
+            f" · 本批 {time.monotonic() - batch_started:.1f}s"
+            f" 累計 {time.monotonic() - started:.1f}s"
+        )
+
     return report
 
 
@@ -684,7 +789,7 @@ def format_report(report: MigrationReport, *, dry_run: bool) -> str:
     """把報表排成人看的文字(給 stdout;失敗清單含 `pid` 供人工複核)。"""
     lines = [
         "",
-        "=== 遷移 Phase 1(只上傳,DB 零變更)===",
+        "=== --upload 完成(只上傳,DB 零變更)===",
         f"模式          : {'dry-run(不上傳)' if dry_run else '實際上傳'}",
         f"掃描列數      : {report.rows_scanned}(其中含圖片 {report.rows_with_image} 列)",
         f"走訪圖片值    : {report.images_seen}",
@@ -698,6 +803,7 @@ def format_report(report: MigrationReport, *, dry_run: bool) -> str:
         f"遠端 URL 略過 : {report.remote_skipped}",
         f"畸形值略過    : {report.invalid}",
         f"失敗          : {report.failed}",
+        f"最後處理 pid  : {report.last_pid}(續跑 / 下一窗:--after-pid {report.last_pid})",
     ]
     if report.failures:
         lines.append("失敗清單(pid / 序號 / 原因 / 細節):")
@@ -882,6 +988,8 @@ async def run_rewrite(
     limit: int = 0,
     dry_run: bool = False,
     after_pid: int = 0,
+    before_pid: int = _MAX_PID,
+    skip_remaining_count: bool = False,
 ) -> RewriteReport:
     """Phase 2 主流程:掃描 → 重算 key → `head_object` 驗證 → 改寫 JSONB。
 
@@ -892,13 +1000,16 @@ async def run_rewrite(
     因此「連跑兩次第二次 0 列」與「中斷後重跑只補未完成列」是同一個機制,不需要進度檔。
 
     Args:
-        session: 可寫的 async session(**不可**套 Phase 1 的 `postgresql_readonly`)。
+        session: 可寫的 async session(**不可**套 Phase 1 的唯讀設定)。
         client: S3 client;`None` 時所有候選一律列入待處理,不會寫出任何路徑。
         key_prefix: `S3_KEY_PREFIX`,須與 Phase 1 跑的時候完全相同。
         batch_size: 每批撈幾列(`pid` 游標),每批一個 transaction。
         limit: 最多處理幾列;`0` 表不限。
         dry_run: 只報統計,**不執行任何 UPDATE**。
-        after_pid: 從哪個 `pid` 之後開始(續跑用)。
+        after_pid: 從哪個 `pid` 之後開始(續跑 / 分窗下界)。
+        before_pid: 處理到哪個 `pid` 為止(含;分窗上界)。
+        skip_remaining_count: 略過收尾的完成判準查詢。那是一次**全表** count,分窗執行時
+            每一窗都要付一次(且算的是全表、不是本窗),分窗跑完再單獨查一次即可。
 
     Returns:
         `RewriteReport`;單列問題只記入 `pending`,不中斷整批。
@@ -907,23 +1018,28 @@ async def run_rewrite(
         RewritePreconditionError: 無權停用 `updated_at` trigger。
         S3ConfigError: S3 憑證 / bucket 設定錯。
     """
-    report = RewriteReport()
+    report = RewriteReport(last_pid=after_pid)
     cursor = after_pid
     remaining = limit if limit > 0 else None
+    started = time.monotonic()
+    batch_no = 0
 
     while True:
         size = batch_size if remaining is None else min(batch_size, remaining)
         if size <= 0:
             break
 
-        rows = await fetch_batch(session, after_pid=cursor, batch_size=size)
+        rows = await fetch_batch(session, after_pid=cursor, before_pid=before_pid, batch_size=size)
         # 讀完立刻結束唯讀交易:接下來的 head_object 是網路 I/O,不該佔著交易。
         await session.rollback()
         if not rows:
             break
 
+        batch_no += 1
+        batch_started = time.monotonic()
         cursor = rows[-1].pid
         report.rows_scanned += len(rows)
+        report.last_pid = cursor
         if remaining is not None:
             remaining -= len(rows)
 
@@ -933,12 +1049,21 @@ async def run_rewrite(
 
         if dry_run:
             report.planned += sum(len(plan.updates) for plan in plans if not plan.blocked)
-            continue
+        else:
+            await _apply_batch(session, plans, report)
 
-        await _apply_batch(session, plans, report)
+        done = f"預計移除 {report.planned}" if dry_run else f"已移除 {report.rewritten}"
+        _print_progress(
+            f"[delete] 批次 #{batch_no} pid<={cursor} 掃描 {report.rows_scanned} 列"
+            f" / 圖片 {report.images_seen} / {done}"
+            f" / 整列跳過 {report.rows_skipped} / 待處理 {len(report.pending)}"
+            f" · 本批 {time.monotonic() - batch_started:.1f}s"
+            f" 累計 {time.monotonic() - started:.1f}s"
+        )
 
-    report.remaining = await count_remaining_base64_rows(session)
-    await session.rollback()
+    if not skip_remaining_count:
+        report.remaining = await count_remaining_base64_rows(session)
+        await session.rollback()
     return report
 
 
@@ -946,7 +1071,7 @@ def format_rewrite_report(report: RewriteReport, *, dry_run: bool) -> str:
     """把 Phase 2 報表排成人看的文字;待處理清單含 `pid` 與原因供人工複核。"""
     lines = [
         "",
-        "=== 遷移 Phase 2(改寫 JSONB,不可逆)===",
+        "=== --delete 完成(移除 DB 內的 base64,不可逆)===",
         f"模式            : {'dry-run(不寫入)' if dry_run else '實際改寫'}",
         f"掃描列數        : {report.rows_scanned}(其中含圖片 {report.rows_with_image} 列)",
         f"走訪圖片值      : {report.images_seen}",
@@ -962,6 +1087,7 @@ def format_rewrite_report(report: RewriteReport, *, dry_run: bool) -> str:
         f"完成改寫列數    : {report.rows_rewritten}",
         f"整列跳過(安全網): {report.rows_skipped}",
         f"待處理清單      : {len(report.pending)} 筆",
+        f"最後處理 pid    : {report.last_pid}(續跑 / 下一窗:--after-pid {report.last_pid})",
     ]
     if report.pending:
         lines.append("待處理清單(pid / 序號 / 原因 / 細節):")
@@ -970,7 +1096,8 @@ def format_rewrite_report(report: RewriteReport, *, dry_run: bool) -> str:
             for p in report.pending
         ]
     label = "尚待改寫列數(dry-run 前值)" if dry_run else "剩餘含 base64 列數(應為 0)"
-    lines += [f"{label}: {report.remaining}", ""]
+    value = "未計算(--skip-remaining-count)" if report.remaining < 0 else str(report.remaining)
+    lines += [f"{label}: {value}", ""]
     return "\n".join(lines)
 
 
@@ -979,17 +1106,26 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         prog="migrate_base64_to_s3",
         description="把 usage_logs.request_content 內的 base64 圖片搬到 S3(兩階段)。",
     )
-    parser.add_argument(
-        "--phase",
-        required=True,
-        choices=("upload", "rewrite"),
-        help="upload=只上傳(DB 零變更);rewrite=改寫 JSONB(不可逆,先看 runbook)",
+    # 兩個 mode **互斥且必填**:argparse 會擋掉「兩個都給」與「都不給」。
+    # why 不給預設 mode:`--delete` 不可逆,少打一個參數就跑掉是不能接受的失敗模式。
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument(
+        "--upload",
+        action="store_true",
+        help="階段一:把 base64 圖片上傳到 S3。**對 DB 只有 SELECT**,隨時可中止、零副作用",
+    )
+    mode.add_argument(
+        "--delete",
+        action="store_true",
+        help="階段二:把 DB 欄位裡的 base64 換成 S3 物件路徑(**不可逆**,先看 runbook)。"
+        "只動 usage_logs.request_content,不刪 S3 物件",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=_DEFAULT_BATCH_SIZE,
-        help=f"每批撈幾列(pid 游標),預設 {_DEFAULT_BATCH_SIZE}",
+        help=f"每批撈幾列(pid 游標),預設 {_DEFAULT_BATCH_SIZE}。"
+        "不是總量上限 —— 腳本會一直迴圈到撈不到列為止,每批印一行進度",
     )
     parser.add_argument("--limit", type=int, default=0, help="最多處理幾列;0=不限")
     parser.add_argument("--dry-run", action="store_true", help="只報統計,不上傳、不寫 DB")
@@ -997,10 +1133,25 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--concurrency",
         type=int,
         default=1,
-        help="同時進行的 S3 呼叫數上限;預設 1(循序,安全優先)。**僅 Phase 1 生效**;"
-        "Phase 2 一律循序(寫入端維持每批一個 transaction)",
+        help="同時進行的 S3 呼叫數上限;預設 1(循序,安全優先)。**僅 --upload 生效**;"
+        "--delete 一律循序(寫入端維持每批一個 transaction)",
     )
-    parser.add_argument("--after-pid", type=int, default=0, help="從此 pid 之後開始(續跑用)")
+    parser.add_argument(
+        "--after-pid", type=int, default=0, help="從此 pid 之後開始(續跑 / 分窗下界)"
+    )
+    parser.add_argument(
+        "--before-pid",
+        type=int,
+        default=0,
+        help="處理到此 pid 為止(含;分窗上界)。0=不限。"
+        "分窗以 --before-pid X / 下一窗 --after-pid X 接軌,不重不漏",
+    )
+    parser.add_argument(
+        "--skip-remaining-count",
+        action="store_true",
+        help="**僅 --delete**:略過收尾的完成判準查詢(那是一次全表 count,分窗時每窗都要付"
+        "一次且算的是全表);分窗全跑完再單獨查一次即可",
+    )
     parser.add_argument(
         "--database-url",
         default="",
@@ -1022,6 +1173,11 @@ def _resolve_client(*, dry_run: bool) -> S3Client | None:
             raise
         print(f"[warn] 取不到 S3 client({type(err).__name__});dry-run 續跑,略過存在檢查")
         return None
+
+
+def _resolve_before_pid(args: argparse.Namespace) -> int:
+    """`--before-pid 0`(預設)= 不限 → 換成哨兵值。"""
+    return args.before_pid if args.before_pid > 0 else _MAX_PID
 
 
 async def _run_rewrite(args: argparse.Namespace, *, database_url: str, key_prefix: str) -> int:
@@ -1052,6 +1208,8 @@ async def _run_rewrite(args: argparse.Namespace, *, database_url: str, key_prefi
                 limit=args.limit,
                 dry_run=args.dry_run,
                 after_pid=args.after_pid,
+                before_pid=_resolve_before_pid(args),
+                skip_remaining_count=args.skip_remaining_count,
             )
     finally:
         await engine.dispose()
@@ -1061,22 +1219,36 @@ async def _run_rewrite(args: argparse.Namespace, *, database_url: str, key_prefi
 
 
 async def _amain(args: argparse.Namespace) -> int:
+    if 0 < args.before_pid <= args.after_pid:
+        print(
+            f"[error] --before-pid({args.before_pid})必須大於 --after-pid({args.after_pid}),"
+            "否則這一窗永遠是空的"
+        )
+        return 2
+
     settings = get_settings()
     database_url = args.database_url or settings.DATABASE_URL
-    if args.phase == "rewrite":
+    if args.delete:
         return await _run_rewrite(
             args, database_url=database_url, key_prefix=settings.S3_KEY_PREFIX
         )
 
     client = _resolve_client(dry_run=args.dry_run)
 
-    engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
+    # 讓「Phase 1 不寫 DB」由 Postgres 端再保證一次:本 engine 的任何連線上任何寫入都會被
+    # server 直接拒絕,而不是只靠 code review。
+    # why 用連線層 GUC 而不是交易層的 `postgresql_readonly` execution option:Phase 1 現在
+    # 每批讀完就 rollback 放掉交易(見 `run_upload`),交易層的設定在下一批就失效了;
+    # `default_transaction_read_only` 綁在連線上,pool 裡每一條連線、每一個交易都適用。
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        pool_pre_ping=True,
+        connect_args={"server_settings": {"default_transaction_read_only": "on"}},
+    )
     maker = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
     try:
         async with maker() as session:
-            # 讓「Phase 1 不寫 DB」由 Postgres 端再保證一次:本 transaction 內任何寫入
-            # 都會被 server 直接拒絕,而不是只靠 code review。
-            await session.connection(execution_options={"postgresql_readonly": True})
             report = await run_upload(
                 session,
                 client=client,
@@ -1086,6 +1258,7 @@ async def _amain(args: argparse.Namespace) -> int:
                 dry_run=args.dry_run,
                 concurrency=args.concurrency,
                 after_pid=args.after_pid,
+                before_pid=_resolve_before_pid(args),
             )
     finally:
         await engine.dispose()

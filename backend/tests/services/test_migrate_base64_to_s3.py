@@ -55,6 +55,7 @@ from migrate_base64_to_s3 import (  # noqa: E402
     MigrationReport,
     RewritePreconditionError,
     RewriteReport,
+    _parse_args,
     format_report,
     format_rewrite_report,
     iter_image_attachments,
@@ -79,6 +80,12 @@ _GIF_URI = "data:image/gif;base64," + base64.b64encode(_GIF_BYTES).decode()
 
 _UID_A = "01920000-0000-7000-8000-0000000000aa"
 _UID_B = "01920000-0000-7000-8000-0000000000bb"
+
+
+def _uid_for(pid: int) -> str:
+    """每列一個不同的 uid。key 含 uid,同 uid + 同內容會算出同一把 key。"""
+    return f"01920000-0000-7000-8000-{pid:012d}"
+
 
 # Phase 2 用:掃描到的原 `updated_at`,與「trigger 若沒被停用會寫進去的值」。
 _FAKE_UPDATED_AT = datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
@@ -170,23 +177,30 @@ class _RecordingSession:
         self._rows = sorted(rows, key=lambda r: r[0])
         self.statements: list[str] = []
         self.commits = 0
+        self.rollbacks = 0
 
     async def execute(self, statement: object) -> _FakeResult:
         sql = str(statement)
         self.statements.append(sql)
         params = statement.compile().params  # type: ignore[attr-defined]
         after_pid = int(params["after_pid"])
+        before_pid = int(params["before_pid"])
         batch_size = int(params["batch_size"])
         picked = [
             row
             for row in self._rows
-            if row[0] > after_pid and _like_base64(json.dumps(row[2], ensure_ascii=False))
+            if after_pid < row[0] <= before_pid
+            and _like_base64(json.dumps(row[2], ensure_ascii=False))
         ]
         # 掃描語句自 task-531 起多帶一欄 `updated_at`(兩階段共用同一條 SQL)。
         return _FakeResult([(*row, _FAKE_UPDATED_AT) for row in picked[:batch_size]])
 
     async def commit(self) -> None:  # pragma: no cover - 被呼叫即代表行為已偏離
         self.commits += 1
+
+    async def rollback(self) -> None:
+        """Phase 1 每批讀完會 rollback 放掉交易(不是寫入,是釋放 xmin horizon)。"""
+        self.rollbacks += 1
 
 
 class _MemRow:
@@ -274,11 +288,12 @@ class _RewriteSession:
 
         if sql.startswith("SELECT pid"):
             after_pid = int(params["after_pid"])
+            before_pid = int(params["before_pid"])
             batch_size = int(params["batch_size"])
             picked = [
                 row
                 for row in sorted(self.rows.values(), key=lambda r: r.pid)
-                if row.pid > after_pid
+                if after_pid < row.pid <= before_pid
                 and _like_base64(json.dumps(row.content, ensure_ascii=False))
             ]
             return _FakeResult(
@@ -343,6 +358,28 @@ async def _run(
     )
 
 
+# --- 0. CLI:mode 互斥且必填 ---------------------------------------------
+
+
+def test_upload_and_delete_modes_are_mutually_exclusive_and_required() -> None:
+    """`--delete` 不可逆,所以「兩個都給」與「都不給」都必須被 argparse 擋下。
+
+    沒有預設 mode 是刻意的:少打一個參數就跑掉不可逆操作,是不能接受的失敗模式。
+    """
+    assert (_parse_args(["--upload"]).upload, _parse_args(["--upload"]).delete) == (True, False)
+    assert (_parse_args(["--delete"]).upload, _parse_args(["--delete"]).delete) == (False, True)
+
+    with pytest.raises(SystemExit):
+        _parse_args([])
+    with pytest.raises(SystemExit):
+        _parse_args(["--upload", "--delete"])
+
+
+def test_default_batch_size_is_50() -> None:
+    """每批 50 列(容器記憶體 / 單一 transaction 大小的折衷)。"""
+    assert _parse_args(["--upload"]).batch_size == 50
+
+
 # --- 1. 走訪:兩種快照形狀與序號規則 -------------------------------------
 
 
@@ -375,7 +412,10 @@ def test_iter_ignores_broken_structures() -> None:
         "messages": [
             "not-a-dict",
             {"role": "user", "content": "plain text"},
-            {"role": "user", "content": [{"type": "image_url"}, {"type": "image_url", "image_url": {}}]},
+            {
+                "role": "user",
+                "content": [{"type": "image_url"}, {"type": "image_url", "image_url": {}}],
+            },
         ],
     }
     refs = list(iter_image_attachments(content))
@@ -638,6 +678,62 @@ async def test_after_pid_resumes() -> None:
     assert report.rows_scanned == 2
 
 
+async def test_before_pid_bounds_the_window() -> None:
+    """`--before-pid` 是**含**上界(分窗接軌的依據)。"""
+    rows = [(pid, _UID_A, _single_turn(_PNG_URI)) for pid in range(1, 11)]
+    report = await _run(_RecordingSession(rows), _StubS3(), before_pid=5)
+
+    assert report.rows_scanned == 5
+    assert report.last_pid == 5
+
+
+async def test_pid_windows_cover_every_row_exactly_once() -> None:
+    """分窗契約:`--before-pid X` 與下一窗 `--after-pid X` 接軌,**不重不漏**。
+
+    這條是分窗執行的正確性根據 —— 漏了會有列沒搬到、重了會白付 head_object。
+    """
+    # 每列給不同 uid:key 含 uid,同 uid + 同圖會算出同一把 key,「上傳一次」就驗不出來了。
+    rows = [(pid, _uid_for(pid), _single_turn(_PNG_URI)) for pid in range(1, 11)]
+    client = _StubS3()
+
+    first = await _run(_RecordingSession(rows), client, before_pid=4)
+    second = await _run(_RecordingSession(rows), client, after_pid=4, before_pid=8)
+    third = await _run(_RecordingSession(rows), client, after_pid=8)
+
+    assert (first.rows_scanned, second.rows_scanned, third.rows_scanned) == (4, 4, 2)
+    # 每列只被上傳一次:三窗的實際上傳數加總 == 總列數,且沒有任何一窗命中「已存在」。
+    assert first.uploaded + second.uploaded + third.uploaded == len(rows)
+    assert first.existing == second.existing == third.existing == 0
+    assert len(client.puts) == len(rows)
+
+
+async def test_last_pid_is_reported_for_resume() -> None:
+    """報表要給得出「下一窗從哪開始」,否則分窗得回頭查 DB 才算得出窗界。"""
+    rows = [(pid, _UID_A, _single_turn(_PNG_URI)) for pid in range(1, 6)]
+    report = await _run(_RecordingSession(rows), _StubS3(), limit=3, batch_size=3)
+
+    assert report.last_pid == 3
+    assert "--after-pid 3" in format_report(report, dry_run=False)
+
+
+async def test_last_pid_falls_back_to_after_pid_when_nothing_scanned() -> None:
+    """一列都沒撈到時,續跑點應是原本的起點,不是 0(否則下一窗會從頭重跑)。"""
+    report = await _run(_RecordingSession([]), _StubS3(), after_pid=777)
+
+    assert (report.rows_scanned, report.last_pid) == (0, 777)
+
+
+async def test_phase1_releases_transaction_between_batches() -> None:
+    """每批讀完就放掉交易 —— 長交易會壓住 xmin horizon,全庫 dead tuple 無法被回收。"""
+    rows = [(pid, _UID_A, _single_turn(_PNG_URI)) for pid in range(1, 8)]
+    session = _RecordingSession(rows)
+    await _run(session, _StubS3(), batch_size=2)
+
+    # 5 次掃描(4 批有資料 + 1 批空)→ 每次讀完都 rollback 一次。
+    assert session.rollbacks == len(session.statements) == 5
+    assert session.commits == 0
+
+
 async def test_concurrency_yields_identical_counts() -> None:
     rows = [(pid, _UID_A, _single_turn(_PNG_URI, _JPG_URI)) for pid in range(1, 6)]
     sequential = await _run(_RecordingSession(rows), _StubS3(), concurrency=1)
@@ -673,7 +769,18 @@ def _new_uid() -> UUID:
 
 @pytest_asyncio.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
-    """外層 transaction + 加入式 session;測試結束整批 rollback(不污染 dev DB)。"""
+    """真 DB session(兩個 phase 共用):外層 transaction + **SAVEPOINT** 加入模式。
+
+    why 是 `create_savepoint` 而不是預設的 `conditional_savepoint`:**兩個 phase 都會
+    自己收掉交易** —— Phase 2 每批一個 transaction(`commit()`),Phase 1 每批讀完
+    `rollback()` 放掉交易(不寫入,只為釋放 xmin horizon)。預設加入模式下,session 的
+    `rollback()` 會把測試前置插入的資料一起清掉(實測過);`create_savepoint` 才有
+    「commit 只釋放 savepoint、rollback 不越界」的語意。
+
+    因此**前置資料插入後必須 `await db_session.commit()`**(釋放 savepoint),否則會被
+    script 的第一次 rollback 抹掉。測試結束仍由外層 transaction 整批 rollback,
+    dev DB 不會留下任何資料。
+    """
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
     try:
         conn = await engine.connect()
@@ -682,7 +789,9 @@ async def db_session() -> AsyncIterator[AsyncSession]:
         pytest.skip(f"測試 DB 無法連線({TEST_DATABASE_URL}):{exc}")
 
     trans = await conn.begin()
-    session = AsyncSession(bind=conn, expire_on_commit=False)
+    session = AsyncSession(
+        bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
+    )
     try:
         yield session
     finally:
@@ -727,9 +836,15 @@ async def _insert_row(session: AsyncSession, content: dict[str, object]) -> tupl
 
 async def test_phase1_leaves_database_untouched(db_session: AsyncSession) -> None:
     """對真 DB 跑完 `--phase upload` 後,全表 `request_content` / `updated_at` 完全相同。"""
-    max_pid = int((await db_session.execute(text("SELECT coalesce(max(pid), 0) FROM usage_logs"))).scalar_one())
+    max_pid = int(
+        (
+            await db_session.execute(text("SELECT coalesce(max(pid), 0) FROM usage_logs"))
+        ).scalar_one()
+    )
     _, uid_a = await _insert_row(db_session, _single_turn(_PNG_URI, _JPG_URI))
     _, uid_b = await _insert_row(db_session, _messages(_GIF_URI))
+    # 釋放 savepoint,前置資料才不會被 run_upload 每批的 rollback 抹掉(見 fixture docstring)。
+    await db_session.commit()
 
     before = await _fingerprint(db_session)
 
@@ -756,9 +871,14 @@ async def test_phase1_leaves_database_untouched(db_session: AsyncSession) -> Non
 
 async def test_real_db_scan_matches_like_filter(db_session: AsyncSession) -> None:
     """不含 base64 的列不該被撈進來(`::text LIKE` 粗篩 + 精確走訪的合力)。"""
-    max_pid = int((await db_session.execute(text("SELECT coalesce(max(pid), 0) FROM usage_logs"))).scalar_one())
+    max_pid = int(
+        (
+            await db_session.execute(text("SELECT coalesce(max(pid), 0) FROM usage_logs"))
+        ).scalar_one()
+    )
     await _insert_row(db_session, {"model": "openai/gpt-4o", "text": "純文字", "images": []})
     await _insert_row(db_session, _single_turn(_PNG_URI))
+    await db_session.commit()
 
     report = await run_upload(
         db_session,
@@ -772,16 +892,27 @@ async def test_real_db_scan_matches_like_filter(db_session: AsyncSession) -> Non
 
 
 async def test_real_db_second_run_is_idempotent(db_session: AsyncSession) -> None:
-    max_pid = int((await db_session.execute(text("SELECT coalesce(max(pid), 0) FROM usage_logs"))).scalar_one())
+    max_pid = int(
+        (
+            await db_session.execute(text("SELECT coalesce(max(pid), 0) FROM usage_logs"))
+        ).scalar_one()
+    )
     await _insert_row(db_session, _single_turn(_PNG_URI, _JPG_URI))
+    await db_session.commit()
     client = _StubS3()
 
     first = await run_upload(
-        db_session, client=client, key_prefix=_PREFIX, after_pid=max_pid  # type: ignore[arg-type]
+        db_session,
+        client=client,
+        key_prefix=_PREFIX,
+        after_pid=max_pid,  # type: ignore[arg-type]
     )
     client.puts.clear()
     second = await run_upload(
-        db_session, client=client, key_prefix=_PREFIX, after_pid=max_pid  # type: ignore[arg-type]
+        db_session,
+        client=client,
+        key_prefix=_PREFIX,
+        after_pid=max_pid,  # type: ignore[arg-type]
     )
 
     assert first.uploaded == 2
@@ -797,7 +928,8 @@ async def test_real_db_second_run_is_idempotent(db_session: AsyncSession) -> Non
 #   1. 安全網:`head_object` 回 False → 該列**未被改寫**且列入待處理清單。
 #   2. `updated_at` 不跳動(真 DB 驗證,因為覆寫者是 DB trigger 而非 ORM)。
 #   3. 只動附件:其他欄位 / 其他 JSON 節點逐欄比對無差異。
-#   4. Phase 1 的唯讀交易設定不套用到 Phase 2(見 script `_run_rewrite` 自建 session)。
+#   4. Phase 1 的唯讀設定不套用到 Phase 2(Phase 1 的 engine 帶連線層
+#      `default_transaction_read_only=on`;Phase 2 於 `_run_rewrite` 自建 engine / session)。
 # ==========================================================================
 
 
@@ -894,9 +1026,7 @@ async def test_rewrite_writes_exactly_the_keys_phase1_uploaded() -> None:
     session = _RewriteSession(rows)
     await _rewrite(session, client)
 
-    written = {
-        value for row in session.rows.values() for value in _image_values(row.content)
-    }
+    written = {value for row in session.rows.values() for value in _image_values(row.content)}
     assert written == uploaded
 
 
@@ -1034,6 +1164,33 @@ async def test_rewrite_resumes_after_interruption() -> None:
     assert rest.remaining == 0
 
 
+async def test_rewrite_pid_windows_cover_every_row_exactly_once() -> None:
+    """分窗契約(Phase 2):`--before-pid X` 與下一窗 `--after-pid X` 不重不漏。"""
+    key = _expected_key(_UID_A, 0, _PNG_BYTES, "image/png")
+    session = _RewriteSession([(pid, _UID_A, _single_turn(_PNG_URI)) for pid in range(1, 7)])
+    client = _StubS3(existing={key})
+
+    first = await _rewrite(session, client, before_pid=3)
+    second = await _rewrite(session, client, after_pid=3)
+
+    assert (first.rows_scanned, first.rows_rewritten) == (3, 3)
+    assert (second.rows_scanned, second.rows_rewritten) == (3, 3)
+    assert all("data:" not in json.dumps(row.content) for row in session.rows.values())
+
+
+async def test_rewrite_skip_remaining_count_avoids_full_table_scan() -> None:
+    """分窗時每窗都付一次全表 count 太浪費 → 可略過;報表標示「未計算」。"""
+    key = _expected_key(_UID_A, 0, _PNG_BYTES, "image/png")
+    session = _RewriteSession([(1, _UID_A, _single_turn(_PNG_URI))])
+
+    report = await _rewrite(session, _StubS3(existing={key}), skip_remaining_count=True)
+
+    assert report.rewritten == 1
+    assert report.remaining == -1
+    assert not any(sql.startswith("SELECT count(*)") for sql in session.statements)
+    assert "未計算" in format_rewrite_report(report, dry_run=False)
+
+
 async def test_rewrite_dry_run_writes_nothing() -> None:
     key0 = _expected_key(_UID_A, 0, _PNG_BYTES, "image/png")
     key1 = _expected_key(_UID_A, 1, _JPG_BYTES, "image/jpeg")
@@ -1165,9 +1322,7 @@ async def _insert_legacy_row(
 async def _row_snapshot(session: AsyncSession, pid: int) -> dict[str, object]:
     """整列全欄位快照(含 `request_content`),用來做逐欄比對。"""
     row = (
-        await session.execute(
-            text("SELECT * FROM usage_logs WHERE pid = :pid").bindparams(pid=pid)
-        )
+        await session.execute(text("SELECT * FROM usage_logs WHERE pid = :pid").bindparams(pid=pid))
     ).one()
     return dict(row._mapping)
 
@@ -1192,57 +1347,26 @@ async def _scoped_base64_rows(session: AsyncSession, after_pid: int) -> int:
     )
 
 
-@pytest_asyncio.fixture
-async def writable_db_session() -> AsyncIterator[AsyncSession]:
-    """Phase 2 專用的真 DB session:外層 transaction + **SAVEPOINT** 加入模式。
-
-    why 不共用 Phase 1 的 `db_session`:Phase 2 會自己 `commit()` / `rollback()`
-    (每批一個 transaction)。預設的 `conditional_savepoint` 加入模式下,session 的
-    `rollback()` 會把測試前置插入的資料一起清掉(實測過);`create_savepoint` 才有
-    「commit 只釋放 savepoint、rollback 不越界」的語意。測試結束仍由外層 transaction
-    整批 rollback,dev DB 不會留下任何資料。
-    """
-    engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
-    try:
-        conn = await engine.connect()
-    except (OSError, OperationalError) as exc:  # pragma: no cover - 環境相依
-        await engine.dispose()
-        pytest.skip(f"測試 DB 無法連線({TEST_DATABASE_URL}):{exc}")
-
-    trans = await conn.begin()
-    session = AsyncSession(
-        bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
-    )
-    try:
-        yield session
-    finally:
-        await session.close()
-        if trans.is_active:
-            await trans.rollback()
-        await conn.close()
-        await engine.dispose()
-
-
 async def test_rewrite_real_db_preserves_updated_at_and_other_columns(
-    writable_db_session: AsyncSession,
+    db_session: AsyncSession,
 ) -> None:
     """【必測 2 + 必測 3】真 DB 改寫後:`updated_at` 未變、其餘欄位逐欄相同。"""
-    max_pid = await _max_pid(writable_db_session)
-    pid, uid, aged = await _insert_legacy_row(writable_db_session, _rich_single_turn(_PNG_URI, _JPG_URI))
-    await writable_db_session.commit()
-    before = await _row_snapshot(writable_db_session, pid)
+    max_pid = await _max_pid(db_session)
+    pid, uid, aged = await _insert_legacy_row(db_session, _rich_single_turn(_PNG_URI, _JPG_URI))
+    await db_session.commit()
+    before = await _row_snapshot(db_session, pid)
 
     keys = [
         _expected_key(uid, 0, _PNG_BYTES, "image/png"),
         _expected_key(uid, 1, _JPG_BYTES, "image/jpeg"),
     ]
     report = await run_rewrite(
-        writable_db_session,
+        db_session,
         client=_StubS3(existing=set(keys)),  # type: ignore[arg-type]
         key_prefix=_PREFIX,
         after_pid=max_pid,
     )
-    after = await _row_snapshot(writable_db_session, pid)
+    after = await _row_snapshot(db_session, pid)
 
     assert report.rewritten == 2
     # 必測 2:updated_at 完全相同(且確實還是三天前那個值,不是被推到今天)。
@@ -1265,32 +1389,32 @@ async def test_rewrite_real_db_preserves_updated_at_and_other_columns(
     assert after_content["images"] == keys
 
 
-async def test_rewrite_real_db_safety_net_leaves_row_untouched(writable_db_session: AsyncSession) -> None:
+async def test_rewrite_real_db_safety_net_leaves_row_untouched(db_session: AsyncSession) -> None:
     """【必測 1】真 DB 上刻意讓 `head_object` 回 False → 整列一個 byte 都沒動。"""
-    max_pid = await _max_pid(writable_db_session)
-    pid, _, _ = await _insert_legacy_row(writable_db_session, _rich_single_turn(_PNG_URI))
-    await writable_db_session.commit()
-    before = await _row_snapshot(writable_db_session, pid)
+    max_pid = await _max_pid(db_session)
+    pid, _, _ = await _insert_legacy_row(db_session, _rich_single_turn(_PNG_URI))
+    await db_session.commit()
+    before = await _row_snapshot(db_session, pid)
 
     report = await run_rewrite(
-        writable_db_session,
+        db_session,
         client=_StubS3(),  # type: ignore[arg-type]
         key_prefix=_PREFIX,
         after_pid=max_pid,
     )
-    after = await _row_snapshot(writable_db_session, pid)
+    after = await _row_snapshot(db_session, pid)
 
     assert after == before, "物件不存在時該列必須原封不動"
     assert (report.rewritten, report.rows_skipped) == (0, 1)
     assert [p.reason for p in report.pending] == ["s3_object_missing"]
 
 
-async def test_rewrite_real_db_completion_criterion_is_zero(writable_db_session: AsyncSession) -> None:
+async def test_rewrite_real_db_completion_criterion_is_zero(db_session: AsyncSession) -> None:
     """完成判準:改寫後本批列已無 `data:...base64,`。"""
-    max_pid = await _max_pid(writable_db_session)
-    pid_a, uid_a, _ = await _insert_legacy_row(writable_db_session, _single_turn(_PNG_URI, _JPG_URI))
-    pid_b, uid_b, _ = await _insert_legacy_row(writable_db_session, _messages(_GIF_URI))
-    await writable_db_session.commit()
+    max_pid = await _max_pid(db_session)
+    pid_a, uid_a, _ = await _insert_legacy_row(db_session, _single_turn(_PNG_URI, _JPG_URI))
+    pid_b, uid_b, _ = await _insert_legacy_row(db_session, _messages(_GIF_URI))
+    await db_session.commit()
 
     keys = {
         _expected_key(uid_a, 0, _PNG_BYTES, "image/png"),
@@ -1298,7 +1422,7 @@ async def test_rewrite_real_db_completion_criterion_is_zero(writable_db_session:
         _expected_key(uid_b, 0, _GIF_BYTES, "image/gif"),
     }
     report = await run_rewrite(
-        writable_db_session,
+        db_session,
         client=_StubS3(existing=keys),  # type: ignore[arg-type]
         key_prefix=_PREFIX,
         after_pid=max_pid,
@@ -1306,43 +1430,49 @@ async def test_rewrite_real_db_completion_criterion_is_zero(writable_db_session:
 
     assert report.rewritten == 3
     assert report.pending == []
-    assert await _scoped_base64_rows(writable_db_session, max_pid) == 0
-    after_a = await _row_snapshot(writable_db_session, pid_a)
-    after_b = await _row_snapshot(writable_db_session, pid_b)
+    assert await _scoped_base64_rows(db_session, max_pid) == 0
+    after_a = await _row_snapshot(db_session, pid_a)
+    after_b = await _row_snapshot(db_session, pid_b)
     assert set(_image_values(after_a["request_content"])) <= keys  # type: ignore[arg-type]
     assert set(_image_values(after_b["request_content"])) <= keys  # type: ignore[arg-type]
 
 
-async def test_rewrite_real_db_dry_run_writes_nothing(writable_db_session: AsyncSession) -> None:
-    max_pid = await _max_pid(writable_db_session)
-    pid, uid, _ = await _insert_legacy_row(writable_db_session, _rich_single_turn(_PNG_URI))
-    await writable_db_session.commit()
-    before = await _row_snapshot(writable_db_session, pid)
+async def test_rewrite_real_db_dry_run_writes_nothing(db_session: AsyncSession) -> None:
+    max_pid = await _max_pid(db_session)
+    pid, uid, _ = await _insert_legacy_row(db_session, _rich_single_turn(_PNG_URI))
+    await db_session.commit()
+    before = await _row_snapshot(db_session, pid)
 
     report = await run_rewrite(
-        writable_db_session,
+        db_session,
         client=_StubS3(existing={_expected_key(uid, 0, _PNG_BYTES, "image/png")}),  # type: ignore[arg-type]
         key_prefix=_PREFIX,
         after_pid=max_pid,
         dry_run=True,
     )
-    after = await _row_snapshot(writable_db_session, pid)
+    after = await _row_snapshot(db_session, pid)
 
     assert after == before, "dry-run 不得寫入任何東西"
     assert (report.planned, report.rewritten) == (1, 0)
 
 
-async def test_rewrite_real_db_second_run_processes_zero_rows(writable_db_session: AsyncSession) -> None:
-    max_pid = await _max_pid(writable_db_session)
-    _, uid, _ = await _insert_legacy_row(writable_db_session, _single_turn(_PNG_URI))
-    await writable_db_session.commit()
+async def test_rewrite_real_db_second_run_processes_zero_rows(db_session: AsyncSession) -> None:
+    max_pid = await _max_pid(db_session)
+    _, uid, _ = await _insert_legacy_row(db_session, _single_turn(_PNG_URI))
+    await db_session.commit()
     client = _StubS3(existing={_expected_key(uid, 0, _PNG_BYTES, "image/png")})
 
     first = await run_rewrite(
-        writable_db_session, client=client, key_prefix=_PREFIX, after_pid=max_pid  # type: ignore[arg-type]
+        db_session,
+        client=client,
+        key_prefix=_PREFIX,
+        after_pid=max_pid,  # type: ignore[arg-type]
     )
     second = await run_rewrite(
-        writable_db_session, client=client, key_prefix=_PREFIX, after_pid=max_pid  # type: ignore[arg-type]
+        db_session,
+        client=client,
+        key_prefix=_PREFIX,
+        after_pid=max_pid,  # type: ignore[arg-type]
     )
 
     assert (first.rows_scanned, first.rewritten) == (1, 1)

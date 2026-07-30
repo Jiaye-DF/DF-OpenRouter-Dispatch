@@ -11,6 +11,10 @@ affected_files:
 estimated_hours: 3
 ---
 
+> **CLI 已更名(2026-07-30)**:`--phase upload` → **`--upload`**、`--phase rewrite` → **`--delete`**
+> (兩者互斥且必填),`--batch-size` 預設由 200 改為 **50**。本文件保留原始拆解內容作為歷史紀錄,
+> 實際執行指令請以 [`runbook-v2.2.1-migration.md`](../runbook-v2.2.1-migration.md) 為準。
+
 ## 目標
 
 在 Phase 1 上傳完成**且通過人工驗收**後,把 `usage_logs.request_content` 內的 base64 改寫成 S3 路徑 —— base64 於此刻才退場。**這是本版唯一不可逆的操作**(propose §D.6 Phase 2)。

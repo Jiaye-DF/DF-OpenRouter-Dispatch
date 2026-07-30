@@ -10,6 +10,10 @@ affected_files:
 estimated_hours: 3
 ---
 
+> **CLI 已更名(2026-07-30)**:`--phase upload` → **`--upload`**、`--phase rewrite` → **`--delete`**
+> (兩者互斥且必填),`--batch-size` 預設由 200 改為 **50**。本文件保留原始拆解內容作為歷史紀錄,
+> 實際執行指令請以 [`runbook-v2.2.1-migration.md`](../runbook-v2.2.1-migration.md) 為準。
+
 ## 目標
 
 把 `usage_logs.request_content` 內既有的 base64 圖片全數上傳 S3,**但一個 byte 都不改 DB**。跑完後系統行為完全等同現況,隨時可中止、零副作用(propose §D.6 Phase 1,✅ user 定案:「base64 先暫時不動,等確定移轉成功後再棄用」)。
